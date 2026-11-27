@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/repo-scaffold.md](../analysis/repo-scaffold.md)
 **설계 문서**: 없음 (설정과 도구 구성만 다루므로 설계 단계를 건너뛰었다)
 **브랜치**: `feature/repo-scaffold`
-**상태**: 진행 중 (단계 1 완료)
+**상태**: 진행 중 (단계 2 완료)
 
 스펙과 분석이 다르면 분석을 따른다. 분석은 스펙을 쓴 뒤에 레지스트리로 확인한 내용이다.
 
@@ -215,28 +215,28 @@ DB, API, 인증 변경은 없다.
 ### 단계 2: 테스트, 린트, 서식
 
 **목표**: `pnpm test`와 `pnpm lint`가 통과한다. 기존 파일은 서식만 바뀐다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-06, AC-07, AC-08, AC-09
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-06, AC-07, AC-08, AC-09
 
-- [ ] 2.1 `vitest.config.ts`를 루트에 만든다: `test.include`는 `packages/*/src/**/*.test.ts` 하나뿐.
-- [ ] 2.2 `packages/core/src/index.test.ts`에 스모크 테스트 하나를 쓴다(`vitest`에서 `expect`, `test`를 가져와 자명한 단언 하나).
-- [ ] 2.3 `package.json`에 스크립트 `test: "vitest run"`을 더한다.
-- [ ] 2.4 `.prettierrc.json`을 만든다: `singleQuote: true`만. `printWidth`는 적지 않는다(기본 80).
-- [ ] 2.5 `.prettierignore`를 만든다: `spikes/`, `format/`, `docs/`, `dist/`, `coverage/`, `pnpm-lock.yaml`. `.gitignore`에 기대지 않고 여기에 직접 적는다.
-- [ ] 2.6 `eslint.config.js`를 만든다(`.ts`가 아닌 `.js`, ESM).
+- [x] 2.1 `vitest.config.ts`를 루트에 만든다: `test.include`는 `packages/*/src/**/*.test.ts` 하나뿐.
+- [x] 2.2 `packages/core/src/index.test.ts`에 스모크 테스트 하나를 쓴다(`vitest`에서 `expect`, `test`를 가져와 자명한 단언 하나).
+- [x] 2.3 `package.json`에 스크립트 `test: "vitest run"`을 더한다.
+- [x] 2.4 `.prettierrc.json`을 만든다: `singleQuote: true`만. `printWidth`는 적지 않는다(기본 80).
+- [x] 2.5 `.prettierignore`를 만든다: `spikes/`, `format/`, `docs/`, `dist/`, `coverage/`, `pnpm-lock.yaml`. `.gitignore`에 기대지 않고 여기에 직접 적는다.
+- [x] 2.6 `eslint.config.js`를 만든다(`.ts`가 아닌 `.js`, ESM).
   - 전역 무시: `spikes/**`, `format/**`, `docs/**`, `**/dist/**`, `coverage/**`, `pnpm-lock.yaml`.
   - 규칙: `@eslint/js`의 권장 설정, `typescript-eslint`의 권장 설정, 마지막에 `eslint-config-prettier`.
   - `tools/**/*.mjs` 블록의 `languageOptions.globals`에 `process: 'readonly'`, `console: 'readonly'`를 선언한다. `globals` 패키지는 더하지 않는다.
-- [ ] 2.7 `package.json`에 스크립트 `lint: "eslint . && prettier --check ."`, `format: "prettier --write ."`를 더한다.
-- [ ] 2.8 **`prettier --write`를 실행하기 전에** AC-08(스펙 6.3)을 돌려 무시 경로가 맞는지 확인한다. 이어서 읽기 전용인 `pnpm exec prettier --check .`의 목록을 본다. `spikes/`, `format/`, `docs/` 경로가 하나라도 나오면 멈추고 2.5를 고친다.
-- [ ] 2.9 `pnpm format`을 앞뒤 상태를 비교하며 실행한다: `git status --porcelain > /tmp/status-before-format.txt` → `pnpm format` → `git status --porcelain | diff /tmp/status-before-format.txt -`. `diff`에 새로 나타나는 줄은 `tools/validate-format.mjs`와 `README.md`의 수정 표시 둘뿐이어야 한다(`package.json`과 이 계획 파일처럼 이미 바뀌어 있던 파일은 앞뒤가 같아 나오지 않는다). `format/`, `docs/`, `spikes/` 경로가 나오면 멈추고 알린다.
-- [ ] 2.10 `tools/validate-format.mjs`의 동작이 같은지 확인한다(AC-09). 출력 전체가 아니라 `OK:` 줄만 비교하고 종료 코드는 따로 본다.
+- [x] 2.7 `package.json`에 스크립트 `lint: "eslint . && prettier --check ."`, `format: "prettier --write ."`를 더한다.
+- [x] 2.8 **`prettier --write`를 실행하기 전에** AC-08(스펙 6.3)을 돌려 무시 경로가 맞는지 확인한다. 이어서 읽기 전용인 `pnpm exec prettier --check .`의 목록을 본다. `spikes/`, `format/`, `docs/` 경로가 하나라도 나오면 멈추고 2.5를 고친다.
+- [x] 2.9 `pnpm format`을 앞뒤 상태를 비교하며 실행한다: `git status --porcelain > /tmp/status-before-format.txt` → `pnpm format` → `git status --porcelain | diff /tmp/status-before-format.txt -`. `diff`에 새로 나타나는 줄은 `tools/validate-format.mjs`와 `README.md`의 수정 표시 둘뿐이어야 한다(`package.json`과 이 계획 파일처럼 이미 바뀌어 있던 파일은 앞뒤가 같아 나오지 않는다). `format/`, `docs/`, `spikes/` 경로가 나오면 멈추고 알린다.
+- [x] 2.10 `tools/validate-format.mjs`의 동작이 같은지 확인한다(AC-09). 출력 전체가 아니라 `OK:` 줄만 비교하고 종료 코드는 따로 본다.
   - `npm run validate:format; echo "exit=$?"`와 `pnpm validate:format; echo "exit=$?"`가 각각 `exit=0`이다.
   - `diff <(grep '^OK:' /tmp/validate-before.txt) <(npm run --silent validate:format | grep '^OK:')`와, `npm run --silent`를 `pnpm --silent`로 바꾼 같은 명령이 둘 다 출력 없이 종료 코드 0이다.
   - `node tools/validate-format.mjs /nonexistent-erdmaker-dir; echo "exit=$?"`가 여전히 `exit=2`다.
   - `git diff -w tools/validate-format.mjs`를 훑어 줄바꿈과 공백, 괄호 외의 변경이 없는지 본다.
-- [ ] 2.11 `pnpm exec eslint .`을 돌린다. `tools/validate-format.mjs`에서 2.6의 전역 선언으로 풀리지 않는 위반이 나오면 코드를 고치지 않고 그 규칙을 이 파일에서만 끈 뒤 7장에 규칙 이름을 적는다.
-- [ ] 2.12 **검증**: AC-06(`pnpm test`: 종료 코드 0, 통과한 테스트 1개 이상, 출력에 `spikes/` 없음), AC-07(`pnpm lint`), AC-08(스펙 6.3, `pnpm build` 뒤에), AC-04를 다시(5장의 명령. `dist/`에 `*.test.*`가 없다), AC-09(2.10).
-- [ ] 2.13 구현 변경과 이 계획 파일의 변경을 커밋한다.
+- [x] 2.11 `pnpm exec eslint .`을 돌린다. `tools/validate-format.mjs`에서 2.6의 전역 선언으로 풀리지 않는 위반이 나오면 코드를 고치지 않고 그 규칙을 이 파일에서만 끈 뒤 7장에 규칙 이름을 적는다.
+- [x] 2.12 **검증**: AC-06(`pnpm test`: 종료 코드 0, 통과한 테스트 1개 이상, 출력에 `spikes/` 없음), AC-07(`pnpm lint`), AC-08(스펙 6.3, `pnpm build` 뒤에), AC-04를 다시(5장의 명령. `dist/`에 `*.test.*`가 없다), AC-09(2.10).
+- [x] 2.13 구현 변경과 이 계획 파일의 변경을 커밋한다.
 
 ### 단계 3: CI, 문서, 마지막 검사
 
@@ -341,7 +341,17 @@ DB, API, 인증 변경은 없다.
 - 검사 스크립트: 스펙 6.1(AC-03)은 고치지 않고 통과했다. AC-04는 5장의 명령을 그대로 썼다. AC-05는 `tsc --showConfig` 출력을 사람이 보고, 같은 출력의 `lib`에 `dom`이 없고 `types`가 `[]`인지 Node로 한 번 더 검사했다.
 - 포매터 훅이 `pnpm-workspace.yaml`의 `'packages/*'`를 `"packages/*"`로 바꿨다. 단계 2의 `singleQuote` 설정 뒤 `pnpm format`에서 다시 바뀔 수 있다.
 
+### 단계 2 (2026-11-27)
+
+- 만든 파일 5개(`vitest.config.ts`, `packages/core/src/index.test.ts`, `.prettierrc.json`, `.prettierignore`, `eslint.config.js`), 고친 파일 5개(`package.json`, `tools/validate-format.mjs`, `README.md`, `pnpm-workspace.yaml`, 이 계획).
+- `eslint.config.js`: `eslint/config`의 `defineConfig`, `globalIgnores`를 쓰고 `eslint-config-prettier`는 `eslint-config-prettier/flat`으로 가져온다.
+- 2.8: AC-08이 `exit=0`. 읽기 전용 `prettier --check .`의 목록에 `spikes/`, `format/`, `docs/`, `dist/`, `pnpm-lock.yaml` 경로가 없었다. `eslint . -f json`이 검사한 파일도 `eslint.config.js`, `vitest.config.ts`, `packages/*/src`의 파일, `tools/validate-format.mjs`뿐이었다.
+- 2.9 계획과 다른 점: `pnpm format` 앞뒤 `git status` 비교에 `tools/validate-format.mjs`, `README.md` 말고 `pnpm-workspace.yaml`도 새로 나왔다. 단계 1에서 포매터 훅이 큰따옴표로 바꿔 커밋한 것을 `singleQuote` 설정이 작은따옴표로 되돌린 것이다(`"packages/*"` → `'packages/*'`, 한 줄). 단계 1 기록에서 예상한 변경이고 `format/`, `docs/`, `spikes/` 경로는 나오지 않았다. 추적하지 않는 새 파일 `vitest.config.ts`, `index.test.ts`도 훅이 넣은 큰따옴표가 작은따옴표로 바뀌었다(`??` 표시는 그대로라 비교에는 안 나온다).
+- 2.10: `git diff -w` 훑기에 더해, 바뀌기 전(`HEAD`)과 뒤의 `tools/validate-format.mjs`를 espree로 파싱해 위치 정보와 `raw`를 뺀 AST가 같고 주석 8개의 내용이 같음을 확인했다. `git diff --numstat` 기준 +187/-49줄.
+- 2.11: `pnpm exec eslint .`이 위반 없이 통과했다. 끈 규칙은 없다.
+- 검사 스크립트: 스펙 6.3(AC-08)은 고치지 않고 통과했다(`isPathIgnored`, `getFileInfo`가 분석이 가정한 대로 동작한다). AC-04는 5장의 명령을 그대로 썼다.
+
 ---
 
 마지막 수정: 2026-11-27
-상태: 진행 중 (단계 1/3 완료)
+상태: 진행 중 (단계 2/3 완료)
