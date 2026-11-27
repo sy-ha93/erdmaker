@@ -86,16 +86,30 @@ describe('validate: main', () => {
   });
 });
 
-/** A stream that keeps what is written and can be made to fail. */
+/**
+ * A stream that keeps what is written and can be made to fail. A write is
+ * done at once, or with `later` when the test calls `finish`, as a pipe
+ * that is not drained yet does it.
+ */
 class FakeStream extends EventEmitter {
   readonly written: string[] = [];
-  constructor(private readonly onWrite?: (stream: FakeStream) => void) {
+  private readonly pending: (() => void)[] = [];
+  constructor(
+    private readonly onWrite?: (stream: FakeStream) => void,
+    private readonly later = false,
+  ) {
     super();
   }
-  write(text: string): boolean {
+  write(text: string, done?: (error?: Error | null) => void): boolean {
     this.written.push(text);
     this.onWrite?.(this);
-    return true;
+    if (this.later) this.pending.push(() => done?.());
+    else done?.();
+    return !this.later;
+  }
+  /** Completes the writes that wait. */
+  finish(): void {
+    for (const done of this.pending.splice(0)) done();
   }
 }
 
@@ -160,6 +174,18 @@ describe('validate: cli', () => {
       code: undefined,
       exits: [2],
     });
+  });
+
+  test('another stdout error while stderr is slow: the exit waits for the line to be written', async () => {
+    const stdout = new FakeStream((s) => s.emit('error', new Error('full')));
+    const stderr = new FakeStream(undefined, true);
+    const { io, exits } = stdio(stdout, stderr);
+    await cli(['validate', EXAMPLE], io);
+    expect(stderr.written).toEqual(['Unexpected error: full\n']);
+    expect(exits).toEqual([]);
+    stderr.finish();
+    expect(exits).toEqual([2]);
+    expect(io.exitCode).toBeUndefined();
   });
 
   test('a stderr error: nothing more is written, exit 2', async () => {

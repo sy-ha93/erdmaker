@@ -51,7 +51,8 @@ export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
  * (from `loadModel`) the issues get lines and columns; without, only paths.
  * Sorted by file, then position. Does not change the model and never throws,
  * whatever the items' `data` holds or however the model itself is malformed
- * (see `modelItems`).
+ * (see `modelItems`). Data that reads differently each time (a Proxy that
+ * answers Ajv otherwise than it looked) is the calling code's to avoid.
  */
 export function validateModel(
   model: Model,

@@ -12,6 +12,12 @@ import type { Model } from './types.js';
  * is not JSON data, for one) or when reading a file fails other than with
  * `FileNotFoundError`: every file is read before the first write. A failure
  * of the adapter while writing can leave the files before it written.
+ *
+ * Known limits (spec 8): a save is not atomic, so a failed write can leave
+ * that file cut short, and a file changed by someone else between the read
+ * and the write is overwritten unnoticed. Every file whose text differs from
+ * the canonical form is rewritten, shared dictionaries outside the model
+ * folder included (their comments are lost).
  */
 export async function writeModel(
   fs: FileSystemAdapter,

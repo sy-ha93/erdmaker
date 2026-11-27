@@ -62,14 +62,15 @@
 
   | 메서드                  | 동작                                                                                |
   | ----------------------- | ----------------------------------------------------------------------------------- |
-  | `readText(path)`        | UTF-8 글을 돌려준다. 파일이 없으면 `FileNotFoundError`(코어가 내보낸다)로 거부한다  |
+  | `readText(path)`        | UTF-8 글을 돌려준다. 파일이 없거나 보통 파일이 아니면(폴더, FIFO, 소켓, 장치) `FileNotFoundError`(코어가 내보낸다)로 거부한다  |
   | `writeText(path, text)` | 받은 글을 그대로 쓴다(줄바꿈을 바꾸지 않는다). 상위 폴더가 없으면 만든다            |
   | `list(dir)`             | 바로 아래 항목의 `{ name, kind: 'file' \| 'directory' }` 목록. 폴더가 없으면 빈 목록 |
   | `remove(path)`          | 파일을 지운다. 없으면 아무 일도 하지 않는다                                         |
 
 - 경로는 연 폴더를 기준으로 한 상대 경로이고 구분자는 `/`다. 연 폴더 자신은 `""`다. 사전이 밖에 있으면 `../dictionary/standard.yaml`처럼 `..`로 시작할 수 있다. 그런 경로를 읽을 수 있는지는 구현에 달렸다(Node와 메모리 구현은 읽는다).
-- Node 구현에서 "없음"은 `ENOENT`, `ENOTDIR`, `ENAMETOOLONG`, 또는 경로에 NUL이 든 경우이고 `FileNotFoundError`가 된다. 메모리 구현은 길이 제한이 없고, NUL이 든 경로는 읽으면 없음이고 쓰면 거부한다. 그 밖의 실패(`EACCES`, 폴더를 파일로 읽음)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
-- `list`는 심볼릭 링크를 돌려주지 않는다. 링크인 항목은 무엇을 가리키든 오류 없이 뺀다. 직접 준 경로(연 폴더, `readText`, `writeText`, `remove`)는 운영체제가 평소대로 푼다. 브라우저 어댑터(F09)는 심볼릭 링크를 볼 수 없어 Node에서 따라가면 CLI와 앱이 다른 모델을 읽게 되고, 폴더 링크를 안전하게 따라가려면 상태가 필요하다.
+- Node 구현에서 "없음"은 `ENOENT`, `ENOTDIR`, `ENAMETOOLONG`, 경로에 NUL이 든 경우, Windows에서 경로에 역슬래시가 든 경우(코어는 `/`만 구분자로 안다)이고 `FileNotFoundError`가 된다. 보통 파일이 아닌 것(폴더, FIFO, 소켓, 장치)도 읽을 때는 없음이고, 열지 않는다(FIFO에서 멈추지 않는다). 메모리 구현은 길이 제한이 없고, NUL이 든 경로는 읽으면 없음이고 쓰면 거부한다. 폴더를 읽으면 두 구현 모두 없음이다. 그 밖의 실패(`EACCES` 등)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
+- `writeText`는 폴더를 만들기 전에 경로 전체를 본다. NUL, Windows의 역슬래시, 255바이트(Windows는 UTF-16 255자)보다 긴 이름이 있으면 아무것도 만들지 않고 거부한다.
+- **연 폴더 아래에서는 심볼릭 링크를 따라가지 않는다.** `list`는 링크인 항목을 무엇을 가리키든 오류 없이 뺀다. 모든 호출에서, 경로 가운데 연 폴더 아래에 있는 폴더 하나하나와 마지막 항목 자신이 링크이면 안 된다. 어기는 경로는 `readText`에서 `FileNotFoundError`, `list`에서 빈 목록, `remove`에서 아무 일도 하지 않음이고, `writeText`는 아무것도 만들지 않고 `Cannot write <path>: a folder on its way is a symbolic link`(마지막 항목이 링크이면 `Cannot write <path>: it is a symbolic link`)로 거부한다. 연 폴더 자신은 링크이거나 링크를 거쳐 닿아도 된다. 앞의 `..`로 연 폴더 위로 올라가는 경로(`dictionaries: [../shared]`)는 그대로 되고, 올라간 곳 다음의 이름들에 같은 규칙이 붙는다. 브라우저 어댑터(F09)는 심볼릭 링크를 볼 수 없어 Node에서 따라가면 CLI와 앱이 다른 모델을 읽게 되고, 폴더 링크를 안전하게 따라가려면 상태가 필요하다. 링크가 아님을 확인하는 데 드는 일은 호출마다 경로 깊이와 상관없이 몇 번의 시스템 호출이다(Linux는 연 폴더의 실제 경로를 `/proc/self/fd`에서 한 번에 읽는다. 다른 운영체제는 `realpath`).
 - `remove`는 이 기능에서 부르지 않는다. F03이 인터페이스를 바꾸지 않도록 지금 둔다.
 - 구현 둘: `createMemoryFileSystem(files?)`(`@erdmaker/core`), `createNodeFileSystem(rootDir)`(`@erdmaker/core/node`).
 - 계약 테스트는 `core`의 테스트 안에 있는 공유 묶음 하나이고, 메모리 구현과 Node 구현에 돌린다.
@@ -93,9 +94,10 @@
 - `loadModel(fs, modelDir)`는 `{ model, issues, positions }`를 돌려준다. `issues`는 모델에 들어가지 못한 파일의 오류와 `comment` 경고다. `model.yaml`이 없으면 `FileNotFoundError`로 거부한다. 읽는 대상은 옛 도구와 같다.
   - `model.yaml`
   - `entities/`, `relationships/`, `subtypes/`, `subject-areas/` 아래의 `*.yaml`과 `layouts/` 아래의 `*.json`. 하위 폴더까지 들어가고, 폴더마다 이름순(코드 단위 비교)으로 읽는다.
-  - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다. 사전 파일은 한 번씩만 읽는다: 적힌 폴더들이 정규화한 뒤 같거나 겹치면 적힌 순서에서 먼저 나온 쪽이 이긴다. 절대 경로 항목(`/`나 `\`로 시작하거나 `C:/`, `C:\`처럼 드라이브 문자로 시작)은 읽지 않는다. 있을 수 없는 경로인 항목은 없는 폴더처럼 빈 사전이다.
+  - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다. 사전 파일은 한 번씩만 읽는다: 적힌 폴더들이 정규화한 뒤 같거나 겹치면 적힌 순서에서 먼저 나온 쪽이 이긴다. 폴더도 한 번씩만 나열한다: 정규화해 같은 폴더(`a/../dictionary`)나 이미 나열한 폴더 안의 폴더는 다시 걷지 않는다. 절대 경로 항목(`/`나 `\`로 시작하거나 `C:/`, `C:\`처럼 드라이브 문자로 시작)은 읽지 않는다. 있을 수 없는 경로인 항목은 없는 폴더처럼 빈 사전이다.
 - YAML은 1.2 core 스키마로 읽는다(`parseDocument`에 `version: '1.2'`, `schema: 'core'`, `lineCounter`, `logLevel: 'error'`). 중복 키는 `yaml`의 `uniqueKeys` 옵션(키 수의 제곱으로 느려진다)을 쓰지 않고 직접 찾으며, 메시지 `Map keys must be unique at line L, column C:`와 뒤 키의 위치는 그대로다. 파일 맨 앞의 UTF-8 BOM은 열로 세지 않는다. 태그·앵커·별칭·주석은 `yaml`의 CST 토큰에서 찾고 그 토큰의 위치를 쓴다. `NO`, `yes`, `on`은 문자열이다. 중복 키와 문법 오류는 `syntax`, 앵커·별칭·태그는 `yaml-feature` 오류다. 메시지는 `YAML anchors are not allowed`, `YAML aliases are not allowed`, `YAML tag <tag> is not allowed`다. 파일에 적힌 태그는 모두 거부한다(`!!binary`, `!!timestamp`, `!!set` 같은 `tag:yaml.org,2002:` 태그와 `%TAG`로 선언한 것 포함).
-- 컬렉션이 256단계보다 깊이 겹친 파일은 `syntax` 오류 `Collections are nested more than 256 levels deep at line L, column C:`이고 위치는 한도를 넘은 첫 컬렉션이다(더 깊은 입력은 YAML 라이브러리와 엔진을 죽일 수 있고, 실제 모델 파일은 몇 단계뿐이다).
+- 컬렉션이 256단계보다 깊이 겹친 파일은 `syntax` 오류 `Collections are nested more than 256 levels deep at line L, column C:`이고 위치는 한도를 넘은 첫 컬렉션이다(더 깊은 입력은 YAML 라이브러리와 엔진을 죽일 수 있고, 실제 모델 파일은 몇 단계뿐이다). 라이브러리의 CST 파서는 한 번에 닫히는 컬렉션마다 재귀하므로(`- - - … x` 다음에 왼쪽 끝 줄), 읽기는 어휘 토큰 하나씩 파서에 넣고 열린 컬렉션이 한도를 넘는 순간 멈춘다. 몇만 단계라도 예외 없이 이 오류다.
+- 파서 오류는 라이브러리가 꾸미지 않게 읽는다(`prettyErrors: false`. 꾸미기는 오류마다 그 줄 전체를 복사해 한 줄에 오류가 많으면 제곱으로 느리다). 메시지의 `at line L, column C`와 뒤의 쌍점은 오프셋과 한 번 만든 줄 색인으로 라이브러리와 같게 붙인다.
 - 객체로 바꾸면 같은 문자열이 되는 맵 키(`true`와 `"true"`)는 `syntax` 오류 `Map keys collide as "<key>"`이고 위치는 뒤의 키다. 컬렉션인 맵 키(`? [a, b]`)도 `syntax` 오류다.
 - JSON 값은 null, 불리언, 문자열, 유한한 수, 배열, 평범한 객체다. 값이 정수인 수는 어떻게 적었든 안전한 정수(`Number.MAX_SAFE_INTEGER` 이하)여야 한다(`1e300`은 거부). 메모리 모델에서 `Array`의 하위 클래스 인스턴스는 JSON 값이 아니고, 빈 칸이 있는 배열은 배열마다 첫 빈 칸에서 오류 하나를 낸다. `ext` 안을 포함해 JSON 값이 아닌 것(`.inf`, `.nan`, 큰 정수)은 그 값의 위치에서 `schema` 오류 `<path> must be a JSON value`다.
 - `syntax`, `yaml-feature`, `schema` 오류가 있는 파일은 모델에 넣지 않고 오류만 남긴다. `syntax`나 `yaml-feature` 오류가 있으면 그 파일의 스키마 검사는 하지 않는다. 나머지 파일은 계속 읽는다.
@@ -104,7 +106,7 @@
 
 ### FR-06 쓰기
 
-- `serializeModel(model)`은 파일 접근 없이 `경로 → 글` 목록을 돌려준다. 같은 모델은 항상 같은 바이트다. 다음이면 `TypeError`를 던진다: JSON 값이 아닌 값이 있다, 데이터가 256단계보다 깊이 겹쳤다(읽기 한도라 다시 읽을 수 없다), `Model` 객체의 모양이 틀렸다(객체가 아님, 배열이 아닌 목록, 객체가 아닌 항목, 글이 아니거나 정규화하면 연 폴더 자신이 되는 `file`(`''`, `.`, `./`, `a/..`, `/`)), 두 항목의 정규화한 파일 경로가 같다. 없는 목록은 빈 목록이다. `writeModel`은 이것을 먼저 부르므로 그때 아무것도 쓰지 않는다.
+- `serializeModel(model)`은 파일 접근 없이 `경로 → 글` 목록을 돌려준다. 같은 모델은 항상 같은 바이트다. 다음이면 `TypeError`를 던진다: JSON 값이 아닌 값이 있다, 데이터가 256단계보다 깊이 겹쳤다(읽기 한도라 다시 읽을 수 없다), 공유한 객체를 곳마다 풀어 쓰면 늘어나는 값이 항목 하나에서 100000개(`MAX_COPIED_VALUES`)를 넘는다(메시지 `Cannot write <file>: / has shared objects whose copies would hold more than 100000 values`), `Model` 객체의 모양이 틀렸다(객체가 아님, 배열이 아닌 목록, 객체가 아닌 항목, 글이 아니거나 정규화하면 연 폴더 자신이 되는 `file`(`''`, `.`, `./`, `a/..`, `/`)), 두 항목의 정규화한 파일 경로가 같다. 없는 목록은 빈 목록이다. `writeModel`은 이것을 먼저 부르므로 그때 아무것도 쓰지 않는다.
 - `writeModel(fs, model)`은 그 목록에서 지금 파일 내용과 다르거나 파일이 없는 것만 쓰고, 쓴 경로 목록을 돌려준다. 쓰기 전에 대상 파일을 모두 읽으며, "없음"이 아닌 읽기 실패는 아무것도 쓰기 전에 거부한다. 모델에 없는 파일(읽다가 오류로 빠진 파일 포함)은 건드리지 않는다. 파일 삭제는 F03에서 더한다.
 - 항목은 읽어 온 `file` 경로에 그대로 쓴다.
 - 어떤 값의 스키마는 이렇게 찾는다: `$ref`는 같은 파일(`#/$defs/…`)과 다른 파일(`urn:…#/$defs/…`) 모두 따라가고, 배열은 `items`, 맵의 값은 `additionalProperties`, `oneOf`는 값이 객체일 때 `properties`가 있는 갈래를 쓴다. `allOf`·`if`·`then`·`else`는 보지 않는다(키를 정의하지 않는다). `default`는 키 자리에서 먼저 찾고 없으면 `$ref` 대상에서 찾는다.
@@ -116,7 +118,7 @@
   - YAML 1.1 파서가 불리언·null·숫자로 읽을 문자열은 큰따옴표로 감싼다(`"NO"`, `"no"`, `"0.1"`). `=`와 `<<`도 같다. 공백·탭·줄바꿈만으로 된 여러 줄 글도 큰따옴표로 쓴다(블록 글로 쓰면 공백 없이 읽힌다).
   - 정렬하는 목록은 주제영역의 `entities` 하나다(코드 단위 비교, 항목이 모두 문자열일 때만). 다른 목록은 순서를 지킨다.
   - 블록 글로 쓰면 파일이 줄바꿈 둘 이상으로 끝나게 되는 값(파일의 마지막 값이고 줄바꿈 둘 이상으로 끝나는 글)은 이스케이프한 큰따옴표 글로 쓴다.
-  - 앵커와 별칭을 쓰지 않는다. 같은 객체가 두 곳에서 참조돼도 두 번 풀어 쓴다.
+  - 앵커와 별칭을 쓰지 않는다. 같은 객체가 두 곳에서 참조돼도 두 번 풀어 쓴다. 단계마다 아래 단계를 두 번 가리키는 메모리 데이터는 펼치면 지수로 커지므로, 늘어나는 값이 100000개를 넘으면 위처럼 거부한다. 파일에서 읽은 데이터는 객체를 공유하지 않아 이 한도에 닿지 않는다.
 - 배치 JSON 쓰기 규칙:
   - 고정 키는 스키마의 `properties` 순서. `nodes`와 `edges`의 키(ID)는 글자로 비교해 정렬한다(숫자뿐인 ID도 `10`, `2`, `9` 순).
   - 들여쓰기 2칸으로 펼쳐 쓰되, `nodes`의 값 하나와 `waypoints` 배열은 길이와 상관없이 한 줄로 쓴다: `{ "x": 40, "y": 320 }`, `[{ "x": 520, "y": 380 }]`. 빈 `nodes`, 빈 `edges`, 빈 엣지 값, 빈 `waypoints`는 `{}`나 `[]`로 한 줄에 쓴다.
@@ -132,7 +134,7 @@
 
 ### FR-08 검증
 
-- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 두 검사는 항목마다 둘 다 한다(`.inf` 같은 값이 그 항목의 스키마 오류를 가리지 않는다). 스키마 검사는 안전하게 읽을 수 없는 데이터(순환, 빈 칸이 있는 배열, 접근자, 클래스 인스턴스, 들여다보면 예외를 던지는 컨테이너)에서만 건너뛰고, 평범한 객체처럼 동작하는 Proxy는 평범한 객체로 검사한다. 매니페스트의 절대 `dictionaries` 항목은 그 항목에 `schema` 오류 `dictionaries entries must be relative paths`로 보고한다(메모리 모델도 같다. 스키마 파일은 바꾸지 않는다). 이것은 매니페스트에 대한 규칙이지 파일의 스키마 실패가 아니어서, 오류가 이것뿐인 매니페스트는 파일 간 규칙에 그대로 쓰인다. 어떤 모양의 `data`나 `Model`이 와도 예외를 던지지 않는다: 없는 목록은 빈 목록으로 보고, 읽다가 예외가 나는 데이터(던지는 트랩이 있는 Proxy)는 `/ must be a JSON value`로 보고한다. 256단계보다 깊이 겹친 데이터는 한도를 넘은 첫 컬렉션에서 `schema` 오류 `<path> is nested more than 256 levels deep`로 보고하고 그 항목을 파일 간 규칙에서 뺀다. 그래서 오류 없이 검증을 통과한 모델은 직렬화된다. 예외는 둘이다. 하나는 모양이 틀린 `Model` 객체로, `validateModel`은 이것을 보고하지 않는다(배열이 아닌 목록은 빈 목록으로 보고 틀린 항목은 건너뛴다). 다른 하나는 정규화하면 같은 경로가 되는 `file`을 가진 두 항목(`entities/a.yaml`과 `entities//a.yaml`)과, `file`이 글이 아니거나 파일을 가리키지 않는 항목이다. `file`은 사용자 데이터가 아니라 부르는 코드가 만드는 값이어서(읽어 온 모델에는 이런 `file`이 생길 수 없다) `validateModel`은 보고하지 않고 `serializeModel`이 `TypeError`로 거부한다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
+- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 두 검사는 항목마다 둘 다 한다(`.inf` 같은 값이 그 항목의 스키마 오류를 가리지 않는다). 스키마 검사는 안전하게 읽을 수 없는 데이터(순환, 빈 칸이 있는 배열, 접근자, 클래스 인스턴스, 들여다보면 예외를 던지는 컨테이너)에서만 건너뛰고, 평범한 객체처럼 동작하는 Proxy는 평범한 객체로 검사한다. 매니페스트의 절대 `dictionaries` 항목은 그 항목에 `schema` 오류 `dictionaries entries must be relative paths`로 보고한다(메모리 모델도 같다. 스키마 파일은 바꾸지 않는다). 이것은 매니페스트에 대한 규칙이지 파일의 스키마 실패가 아니어서, 오류가 이것뿐인 매니페스트는 파일 간 규칙에 그대로 쓰인다. 어떤 모양의 `data`나 `Model`이 와도 예외를 던지지 않는다: 없는 목록은 빈 목록으로 보고, 읽다가 예외가 나는 데이터(던지는 트랩이 있는 Proxy)는 `/ must be a JSON value`로 보고한다. 256단계보다 깊이 겹친 데이터는 한도를 넘은 첫 컬렉션에서 `schema` 오류 `<path> is nested more than 256 levels deep`로 보고하고 그 항목을 파일 간 규칙에서 뺀다. 공유한 객체의 복사로 늘어나는 값이 100000개를 넘는 데이터는 `""`에서 `schema` 오류 `/ has shared objects whose copies would hold more than 100000 values`로 보고하고, 그 항목은 스키마 검사와 파일 간 규칙에서 뺀다(`serializeModel`이 거부하는 것과 같은 기준이다). JSON 값 검사는 오류 없이 끝난 공유 객체를 다시 걷지 않으므로(그 자리에서 깊이 한도를 넘지 않을 때) 서로 다른 객체 수에 선형이다. 오류가 있는 공유 객체는 곳마다 다시 걸어 곳마다 보고하되, 늘어나는 값이 한도를 넘으면 멈춘다. 그래서 오류 없이 검증을 통과한 모델은 직렬화된다. 예외는 둘이다. 하나는 모양이 틀린 `Model` 객체로, `validateModel`은 이것을 보고하지 않는다(배열이 아닌 목록은 빈 목록으로 보고 틀린 항목은 건너뛴다). 다른 하나는 정규화하면 같은 경로가 되는 `file`을 가진 두 항목(`entities/a.yaml`과 `entities//a.yaml`)과, `file`이 글이 아니거나 파일을 가리키지 않는 항목이다. `file`은 사용자 데이터가 아니라 부르는 코드가 만드는 값이어서(읽어 온 모델에는 이런 `file`이 생길 수 없다) `validateModel`은 보고하지 않고 `serializeModel`이 `TypeError`로 거부한다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
 - `validateProject(fs, dir)`는 모델 찾기, 읽기, 검증을 한 번에 해서 `{ issues, models }`를 돌려준다. `issues`는 `P01`·`P02`만 담고, `models`의 항목은 `{ dir, issues, counts }`다(`issues`는 `loadModel`과 `validateModel`의 것). 프로젝트 오류는 `file`로 모델과 이어진다. CLI와 MCP(F08)가 이것을 부른다.
 - `Issue`의 필드:
 
@@ -175,7 +177,7 @@
   - 오류가 없는 모델은(경고만 있어도) stdout에 `OK: <n> entities, <n> relationships, <n> subtype clusters, <n> subject areas, <n> layouts, <n> words, <n> terms, <n> domains`. `<dir>`이 모델 폴더가 아니면 줄 앞에 `<모델 폴더>: `를 붙인다. `P01`·`P02`는 다른 오류와 같은 줄 모양으로 그 `file`과 함께 찍고 오류 개수와 종료 코드 1에 센다. `P01`이 난 모델과 `P02`의 안쪽 `model.yaml`을 품은 모델은 OK 줄을 내지 않는다.
   - 종료 2의 이유는 stderr에 한 줄이다: `Usage: erdmaker validate <dir>`(인자 없음, 폴더 없는 `validate`, 인자가 셋 이상), `Unknown command: <명령>. Usage: erdmaker validate <dir>`, `Not a folder: <dir>`(`<dir>`이 없거나(`ENOENT`, `ENOTDIR`) 폴더가 아님), `No model found in <dir>`, `Cannot read <dir>: <메시지>`. `<dir>`은 사용자가 적은 그대로다.
   - **읽기 실패**: `<dir>`의 `stat`이 `ENOENT`, `ENOTDIR` 말고 다른 이유로 실패하거나(예: 부모 폴더의 권한이 없어 `EACCES`), 모델 찾기나 검증 중에 어댑터가 거부하면(`EACCES` 등, FR-02) 그 예외를 잡아 stderr에 `Cannot read <dir>: <메시지>` 한 줄만 찍고 stdout에는 아무것도 내지 않으며 종료 코드는 2다. `<메시지>`는 `Error`이면 그 `message`, 아니면 `String(값)`이다(그것도 던지면 `unknown error`). `<메시지>`가 코드 포인트 500개보다 길면 앞의 500개 뒤에 `…`를 붙여 자른다(`Unexpected error: <메시지>`도 같다). 모델 찾기는 읽지 못하는 폴더를 건너뛰지 않고 거기서 멈춘다. 모델이 아닌 폴더라도 같다(그 아래에 모델이 있는지 알 수 없어서다). `bin.ts`도 예외를 스택으로 내보내지 않는다: `main` 밖으로 나온 예외는 `Unexpected error: <메시지>` 한 줄과 종료 코드 2다.
-  - **출력이 닫힘**: `main`을 부르기 전에 stdout과 stderr에 `error` 처리기를 단다. `EPIPE`(읽는 쪽이 파이프를 닫음. 예: `erdmaker validate <dir> | head -1`)면 더 쓰지 않고 조용히 끝낸다. 종료 코드는 `main`이 이미 돌려줬으면 그 코드, 아직이면 2다. 다른 스트림 오류면 더 쓰지 않고, stderr가 쓸 수 있으면(오류가 stderr의 것이 아니면) `Unexpected error: <메시지>` 한 줄을 찍고 종료 2다. 어느 경우에도 스택을 찍지 않는다.
+  - **출력이 닫힘**: `main`을 부르기 전에 stdout과 stderr에 `error` 처리기를 단다. `EPIPE`(읽는 쪽이 파이프를 닫음. 예: `erdmaker validate <dir> | head -1`)면 더 쓰지 않고 조용히 끝낸다. 종료 코드는 `main`이 이미 돌려줬으면 그 코드, 아직이면 2다. 다른 스트림 오류면 더 쓰지 않고, stderr가 쓸 수 있으면(오류가 stderr의 것이 아니면) `Unexpected error: <메시지>` 한 줄을 찍고, 그 쓰기가 끝나거나 실패한 뒤에 종료 2다. 어느 경우에도 스택을 찍지 않는다.
   - **한 기록은 한 줄**: CLI가 찍는 줄은 모두(경로, `<dir>`, 메시지 조각 포함) C0 제어 문자(U+0000~U+001F), U+007F, C1 제어 문자(U+0080~U+009F), U+2028, U+2029, 양방향 제어 문자(U+202A~U+202E, U+2066~U+2069), 짝 없는 서로게이트(U+D800~U+DFFF 중 짝을 이루지 않은 것)를 보이는 이스케이프로 바꾼다. 짝을 이룬 서로게이트(이모지 등)는 그대로다. 줄바꿈·복귀·탭은 `\n`, `\r`, `\t`, 나머지는 `\u{<16진수>}`(소문자, 앞의 0 없음. 예: `\u{1b}`, `\u{2028}`, `\u{d800}`)다. 한 번 훑어 바꾸므로 줄 길이에 선형이다. 역슬래시를 포함해 다른 글자는 그대로라 보통의 경로는 바이트까지 전과 같다. 이름에 줄바꿈이 든 모델 폴더 `a<줄바꿈>b`의 OK 줄은 `a\nb: OK: …` 한 줄이다.
 - 종료 코드:
 
@@ -219,11 +221,11 @@
 | AC-06 | FR-05, FR-08  | `core` 테스트 "문법과 스키마"                             | 사례마다 `Issue` 목록 전체를 `rule`, `file`, `path`, `line`, `column`, `message`로 비교한다. 앵커, 별칭, 풀리지 않는 별칭, `!custom` 태그, `!!binary` 태그, `%TAG`로 선언한 태그: 사례 파일마다 모르는 키도 함께 넣는다. FR-05의 메시지로 `yaml-feature`만 나오고, 그 파일의 `schema` 오류는 없으며, 그 파일은 모델에 없다. 중복 키, `ext` 안의 `true`와 `"true"` 키: `syntax`(뒤는 키 이름이 든 메시지). 모르는 키, 필수 키 누락, `ext` 안의 `.inf`, `ext` 안의 `9007199254740993`과 `1e300`: `schema`. 컬렉션 맵 키: `syntax`. 예제 사전의 `abbreviation` `"NO"`는 문자열 `NO`로 읽힌다. 주석 한 줄을 넣은 사례는 `severity`가 `warning`인 `comment` 하나만 낸다 |
 | AC-07 | FR-09         | `core` 테스트 "깨진 배치"                                 | `layouts/sales.json`을 `{"formatVersion": "0.1", "nodes": {`와 줄바꿈으로 바꾸고 엔터티 하나에 모르는 도메인을 넣은 사례에서, 예외 없이 오류가 정확히 2개 나온다: `layouts/sales.json`의 `syntax`(위치가 정확히 2:1)와 엔터티 파일의 `R02`. 한 줄에 `nodes` 키가 둘인 배치는 `syntax` 하나이고 `column`이 둘째 키의 자리다 |
 | AC-08 | FR-10         | `core` 테스트 "모델 찾기" (메모리 어댑터)                 | 깊이 3의 모델은 찾고 깊이 4는 찾지 않는다. `.hidden/`과 `node_modules/` 안의 모델은 찾지 않는다. 모델 안의 모델은 `findModels`의 `models`에 없고 `issues`에 `P02`로 있으며 `file`이 안쪽 `model.yaml`이다. `id`가 같은 두 모델은 `validateProject`의 `issues`에 `P01`이 둘 있고 `file`이 각 모델의 `model.yaml`이며, 두 모델의 `issues`에는 없다. 두 모델이 `../dictionary`를 함께 가리키는 프로젝트는 오류가 0개다 |
-| AC-09 | FR-02         | `core` 테스트 "어댑터 계약"                               | 같은 테스트 묶음이 메모리 구현과 Node 구현(임시 폴더)에서 통과한다: 쓰고 읽기, 없는 상위 폴더에 쓰기, `list`의 종류 구분, 없는 폴더의 `list`가 빈 목록, 없는 파일과 경로 중간이 파일인 경로 읽기가 `FileNotFoundError`, 폴더를 읽으면 `FileNotFoundError`가 아닌 오류, `remove`, `..`로 시작하는 경로 읽기 |
+| AC-09 | FR-02         | `core` 테스트 "어댑터 계약"                               | 같은 테스트 묶음이 메모리 구현과 Node 구현(임시 폴더)에서 통과한다: 쓰고 읽기, 없는 상위 폴더에 쓰기, `list`의 종류 구분, 없는 폴더의 `list`가 빈 목록, 없는 파일과 경로 중간이 파일인 경로 읽기가 `FileNotFoundError`, 폴더를 읽어도 `FileNotFoundError`, `remove`, `..`로 시작하는 경로 읽기. Node 구현만의 `core` 테스트가 연 폴더 아래의 링크(폴더 링크, 깊은 곳의 링크, 마지막 항목의 링크, `..` 다음의 링크)와 FIFO·소켓, 폴더를 만들기 전의 이름 거부를 확인한다 |
 | AC-10 | FR-01         | `cli` 테스트 "브라우저 번들"                              | 6.1                                                                                                                                                                                                                                                    |
 | AC-11 | FR-01         | `pnpm --filter @erdmaker/core exec tsc --showConfig`      | `lib`가 `["es2022"]`이고 `types`가 `[]`다                                                                                                                                                                                                              |
 | AC-12 | FR-03         | `core` 테스트 "스키마 동기화"                             | `format/v0/schema`의 파일 8개를 파싱한 값과 생성 모듈의 값이 개수가 같고, 파일마다 `JSON.stringify` 결과가 같다(키 순서까지 본다) |
-| AC-13 | FR-11         | `cli` 테스트 "validate"                                   | `packages/cli/package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행해 종료 코드, stdout, stderr를 각각 단언한다. 예제: 0과 6.2의 요약 줄. `format/v0/examples`: 0과 `shop: `이 앞에 붙은 같은 줄. 규칙 사례 하나를 푼 임시 폴더: 1, stderr에 `<file>:<line>:<column>: <message> [<rule>]` 줄과 `1 error(s)`. 주석만 넣은 사례: 0, stderr에 `warning: `이 든 줄, stdout에 요약 줄. `id`가 같은 모델 둘과 모델 안의 `model.yaml`이 있는 임시 프로젝트: 1, stderr에 `P01` 줄 둘과 `P02` 줄 하나가 각자의 `model.yaml` 경로로 나오고, stdout에 그 모델들의 OK 줄이 없다. 모델이 없는 폴더, 없는 경로, 인자 없음, 모르는 명령: 각각 2. 권한을 없앤(`chmod 000`) 엔터티 파일, 모델 폴더, 프로젝트 안의 모델이 아닌 폴더, `<dir>`의 부모 폴더, 모델 밖의 사전 폴더(`dictionaries: [../dictionary]`): 각각 2, stdout은 비고 stderr는 `Cannot read <dir>: `로 시작하는 정확히 한 줄(root로 돌면 건너뛴다). stdout을 넘칠 만큼(파이프 버퍼보다 큰) OK 줄을 내는 프로젝트에서 첫 덩어리를 받은 뒤 stdout을 닫으면: stderr에 `node:events`도 `at ` 스택 줄도 없고, 신호로 끝나지 않으며 종료 코드는 규칙대로(0 또는 2)다. 이름에 줄바꿈이 든 모델 폴더와 파일: 각자 한 줄이고 줄바꿈은 `\n`이다 |
+| AC-13 | FR-11         | `cli` 테스트 "validate"                                   | `packages/cli/package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행해 종료 코드, stdout, stderr를 각각 단언한다. 예제: 0과 6.2의 요약 줄. `format/v0/examples`: 0과 `shop: `이 앞에 붙은 같은 줄. 규칙 사례 하나를 푼 임시 폴더: 1, stderr에 `<file>:<line>:<column>: <message> [<rule>]` 줄과 `1 error(s)`. 주석만 넣은 사례: 0, stderr에 `warning: `이 든 줄, stdout에 요약 줄. `id`가 같은 모델 둘과 모델 안의 `model.yaml`이 있는 임시 프로젝트: 1, stderr에 `P01` 줄 둘과 `P02` 줄 하나가 각자의 `model.yaml` 경로로 나오고, stdout에 그 모델들의 OK 줄이 없다. 모델이 없는 폴더, 없는 경로, 인자 없음, 모르는 명령: 각각 2. 권한을 없앤(`chmod 000`) 엔터티 파일, 모델 폴더, 프로젝트 안의 모델이 아닌 폴더, `<dir>`의 부모 폴더, 모델 밖의 사전 폴더(`dictionaries: [../dictionary]`): 각각 2, stdout은 비고 stderr는 `Cannot read <dir>: `로 시작하는 정확히 한 줄(root로 돌면 건너뛴다). 첫 덩어리와 파이프 버퍼를 합친 것보다 몇 배 큰 OK 줄을 내는 프로젝트에서 첫 덩어리를 받은 뒤 stdout을 닫으면: 자식이 닫힌 뒤에도 쓰므로 쓰기가 `EPIPE`로 실패하고(자식에 먼저 실은 모듈이 stdout의 첫 오류 코드와 그때의 `process.exitCode`를 적는다), stderr에 `node:events`도 `at ` 스택 줄도 없고, 신호로 끝나지 않으며, 종료 코드는 그때 `main`이 돌려줬으면 그 코드(0), 아니면 2다. 이름에 줄바꿈이 든 모델 폴더와 파일: 각자 한 줄이고 줄바꿈은 `\n`이다 |
 | AC-14 | FR-11, FR-13  | 6.2                                                       | `npm run validate:format`과 `pnpm validate:format`이 선언된 bin 파일을 실행하고, 종료 코드 0과 같은 요약 줄을 낸다. 옛 도구 파일이 없다 |
 | AC-15 | FR-12         | 6.3                                                       | 테스트 파일에 타입 오류가 있으면 `pnpm lint`가 그 오류로 실패한다 |
 | AC-16 | FR-13         | 대조 테스트가 든 커밋의 CI (`gh run list --commit <sha>`) | 성공이다. PR 설명에 그 커밋의 해시를 적는다                                                                                                                                                                                                            |
@@ -299,15 +301,24 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 - YAML 파서도 받아들이는 깨진 JSON(끝 쉼표 등)은 엔진이 위치를 주지 않으면 1:1로 보고된다.
 - YAML 주석은 파일을 다시 쓸 때 사라진다. 경고로만 알린다.
 - `writeModel` 도중에 어댑터가 실패하면 그 전에 쓴 파일은 남는다.
-- 여러 곳에서 참조되는 객체는 곳마다 풀어 쓰므로 출력 크기는 펼친 크기를 따른다.
+- 저장은 원자적이지 않다. 파일 하나를 쓰다 실패하면 그 파일이 잘린 채 남을 수 있고, 읽은 뒤 밖에서 바뀐 파일을 알아채지 못하고 덮어쓴다. 임시 파일로 바꿔 넣기와 충돌 감지는 편집·저장 기능의 일이다.
+- 읽고 저장하면 정규형과 바이트가 다른 파일을 모두 다시 쓴다. 모델 폴더 밖의 공용 사전(`dictionaries: [../shared]`)도 같고, 주석은 사라진다(주석을 보존하지 않는 것은 정한 것이다).
+- 여러 곳에서 참조되는 객체는 곳마다 풀어 쓰므로 출력 크기는 펼친 크기를 따른다. 늘어나는 값은 항목마다 100000개까지다(FR-06).
 - 내용 전체가 스칼라인 파일(어떤 스키마도 허용하지 않는다)은 왕복을 보장하지 않는다.
-- 모델 폴더 안의 심볼릭 링크는 무시한다. 사전을 함께 쓰려면 링크 대신 `dictionaries: [../shared]`로 가리킨다.
+- 모델 폴더 안의 심볼릭 링크는 무시한다. 링크를 거치는 경로도 없는 것으로 다룬다(FR-02). 사전을 함께 쓰려면 링크 대신 `dictionaries: [../shared]`로 가리킨다.
+- Node 어댑터의 링크 검사와 그 뒤의 파일 작업은 한 동작이 아니다. 그 사이에 링크로 바뀐 경로는 따라간다(경로로 부르는 Node API로는 막을 수 없다).
+- 대소문자를 가리지 않는 파일 시스템(Windows, macOS 기본)에서 디스크의 이름과 대소문자가 다른 경로는 링크를 거친 것으로 보여 없음이 된다. 모델 파일은 Git에 있어 대소문자가 다르면 Linux에서도 읽히지 않는다.
+- Linux가 아닌 운영체제에서 링크 검사는 `realpath`를 쓰므로 호출 하나가 경로 깊이의 제곱만큼 일한다. 깊이가 수백 단계인 폴더에서만 드러난다.
+- Node 어댑터는 앞의 `/`를 연 폴더 기준으로 읽는다(`/a`는 `a`다). 절대 경로를 막는 것은 부르는 코드(`dictionaries`의 절대 항목 검사 등)의 일이다.
 - 메모리 어댑터의 `list`는 저장된 경로를 모두 훑으므로 폴더가 수천 개인 모델에서 느리다. 실제 모델은 폴더가 몇 개다.
 - `ext` 안의 맵에 숫자뿐인 키가 있으면 순서가 보존되지 않는다(JavaScript 객체의 키 순서).
 - `pnpm build`는 `dist/bin.js`에 실행 권한을 주지 않는다. `node packages/cli/dist/bin.js`로 부르거나 패키지 관리자가 만든 `bin` 링크로 부른다.
 - 브라우저 번들 테스트(AC-10)는 번들 안에서 검증 경로(`validateProject`와 메모리 어댑터)만 실행한다. 쓰기(`serializeModel`, `writeModel`)가 번들에서 도는지는 확인하지 않는다.
 - CLI는 읽지 못하는 폴더나 파일이 하나라도 있으면 나머지 모델도 검사하지 않고 종료 2로 끝난다(FR-11).
 - CLI의 출력이 닫혀 끝날 때(`EPIPE`) `main`이 아직 돌고 있었으면 종료 코드는 검사 결과와 상관없이 2다(FR-11).
+- CR만 줄바꿈으로 쓰는 JSON 배치 파일은 유효하게 읽히지만, 그 파일의 `Issue`에는 줄·열이 없다(위치 색인을 YAML 파서로 만드는데 YAML은 CR만으로 줄을 나누지 않는다).
+- 읽을 때마다 다른 값을 주는 Proxy, 색인이 아닌 자기 키를 가진 배열, 열거되지 않는 배열 항목 같은 메모리 데이터는 부르는 코드의 책임이다. `validateModel`은 Ajv에게 거짓말하는 Proxy를 막지 않는다(D-06과 같은 기준).
+- 정렬(`Issue`, 파일, 배치의 ID)은 비교 정렬이라 O(n log n)이다. 이 프로젝트에서 "선형"의 뜻은 제곱 이상이 없다는 것이다. 시간 테스트의 비 한도 8(크기 4배)이 이것을 허용한다.
 - `get` 트랩이 던지는 Proxy인 데이터는 `validateModel`이 `/ must be a JSON value`로 보고하지만, `serializeModel`은 속성 서술자로 읽으므로 그대로 쓴다. 아무것도 던지지 않고 잃는 데이터도 없다.
 
 ## 부록 A. 규칙 메시지와 사례

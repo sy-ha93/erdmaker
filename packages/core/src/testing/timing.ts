@@ -18,7 +18,7 @@ export interface LinearTime<Input, Result> {
   readonly check?: (result: Result, size: number) => void;
   /** The large size's best time over the small size's must stay below this. */
   readonly maxRatio: number;
-  /** The large size's best time must stay below this many milliseconds. */
+  /** The large size's best time in a measurement must stay below this many milliseconds. */
   readonly backstop: number;
 }
 
@@ -31,13 +31,14 @@ export const ATTEMPTS = 3;
  * Measures `spec` and fails unless the large size's best time over the small
  * size's is below `maxRatio` and below `backstop` milliseconds. One untimed
  * warm-up run of the small size first (code compiled, caches filled; a
- * large warm-up would only add the slowest run to every test), then
- * `ROUNDS` rounds that time each size once, alternating which goes first, so
- * that a slow moment of the machine falls on both sizes alike; the best time
- * of each size counts. A measurement whose ratio is at the limit or above is
- * repeated, up to `ATTEMPTS` in all: quadratic code fails every one of them,
- * a disturbed run of linear code does not. A large run past the backstop
- * ends the measurement and fails at once, without repeats.
+ * large warm-up would only add the slowest run to every test), then a
+ * measurement: `ROUNDS` rounds that time each size once, alternating which
+ * goes first, so that a slow moment of the machine falls on both sizes
+ * alike. Every round runs; then the best time of each size counts. A
+ * measurement whose best large time is past the backstop fails at once,
+ * without repeats. One whose ratio is at the limit or above is repeated, up
+ * to `ATTEMPTS` in all: quadratic code fails every one of them, a disturbed
+ * run of linear code does not.
  */
 export async function expectLinearTime<Input, Result>(
   spec: LinearTime<Input, Result>,
@@ -57,12 +58,7 @@ export async function expectLinearTime<Input, Result>(
   const measured: string[] = [];
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     const best = [Infinity, Infinity];
-    // Every large run so far past the backstop: more rounds would not pass.
-    for (
-      let round = 0;
-      round < ROUNDS && (round === 0 || best[1]! < backstop);
-      round += 1
-    ) {
+    for (let round = 0; round < ROUNDS; round += 1) {
       for (const which of round % 2 === 0
         ? ([0, 1] as const)
         : ([1, 0] as const)) {

@@ -34,7 +34,7 @@ export function compareIssues(a: Issue, b: Issue): number {
   );
 }
 
-/** Placed and sorted copies; the input is not changed. */
+/** Placed and sorted copies (a comparison sort, O(n log n)); the input is not changed. */
 export function finishIssues(
   issues: readonly Issue[],
   positions?: FilePositions,

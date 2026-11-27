@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import {
   type FileSystemAdapter,
   type Issue,
+  type ProjectResult,
   validateProject,
 } from '@erdmaker/core';
 import { createNodeFileSystem } from '@erdmaker/core/node';
@@ -74,9 +75,48 @@ function issueLine(issue: Issue): string {
   return `${issue.file}${at}: ${warning}${issue.message} [${issue.rule}]`;
 }
 
-/** Whether `file` (relative to the opened folder) is in the model folder `dir`. */
-const inFolder = (dir: string, file: string) =>
-  dir === '' || file.startsWith(`${dir}/`);
+/**
+ * The model folders among the folders holding `file` (relative to the
+ * opened folder): `''`, then each folder of its path in turn.
+ */
+function holdingModels(file: string, models: ReadonlySet<string>): string[] {
+  const found = models.has('') ? [''] : [];
+  const names = file.split('/');
+  let dir = '';
+  for (let i = 0; i < names.length - 1; i += 1) {
+    dir = i === 0 ? names[0]! : `${dir}/${names[i]}`;
+    if (models.has(dir)) found.push(dir);
+  }
+  return found;
+}
+
+/**
+ * The OK line of each model without errors, in model order (spec FR-11): a
+ * model with an error of its own, or holding the file of a project issue
+ * (`P01` at its `model.yaml`, `P02` at one inside it), has none.
+ */
+export function okLines(project: ProjectResult): string[] {
+  // The models a project issue is in, found once per issue.
+  const dirs = new Set(project.models.map((model) => model.dir));
+  const held = new Set<string>();
+  for (const issue of project.issues) {
+    for (const dir of holdingModels(issue.file, dirs)) held.add(dir);
+  }
+  const lines: string[] = [];
+  for (const model of project.models) {
+    const failed =
+      held.has(model.dir) ||
+      model.issues.some((issue) => issue.severity === 'error');
+    if (failed) continue;
+    const c = model.counts;
+    const summary =
+      `OK: ${c.entities} entities, ${c.relationships} relationships, ` +
+      `${c.subtypes} subtype clusters, ${c.subjectAreas} subject areas, ` +
+      `${c.layouts} layouts, ${c.words} words, ${c.terms} terms, ${c.domains} domains`;
+    lines.push(model.dir === '' ? summary : `${model.dir}: ${summary}`);
+  }
+  return lines;
+}
 
 /** Why `path` cannot be opened as a folder, or `undefined` when it can. */
 async function folderProblem(path: string): Promise<string | undefined> {
@@ -142,21 +182,10 @@ export async function main(
     err(issueLine(issue));
   };
   for (const issue of project.issues) report(issue);
-  const ok: string[] = [];
   for (const model of project.models) {
     for (const issue of model.issues) report(issue);
-    const failed =
-      model.issues.some((issue) => issue.severity === 'error') ||
-      project.issues.some((issue) => inFolder(model.dir, issue.file));
-    if (failed) continue;
-    const c = model.counts;
-    const summary =
-      `OK: ${c.entities} entities, ${c.relationships} relationships, ` +
-      `${c.subtypes} subtype clusters, ${c.subjectAreas} subject areas, ` +
-      `${c.layouts} layouts, ${c.words} words, ${c.terms} terms, ${c.domains} domains`;
-    ok.push(model.dir === '' ? summary : `${model.dir}: ${summary}`);
   }
-  for (const line of ok) out(line);
+  for (const line of okLines(project)) out(line);
   if (errors > 0) {
     err('');
     err(`${errors} error(s)`);
@@ -179,7 +208,7 @@ export interface Stdio {
  * `| head -1` does) stops all writing and exits quietly with `main`'s exit
  * code, or 2 while `main` has not returned yet. Any other stream error
  * stops all writing, prints `Unexpected error: <message>` on stderr unless
- * stderr failed, and exits 2. An exception out of `main` is that same line
+ * stderr failed, and exits 2 (after that line is written, or failed to be). An exception out of `main` is that same line
  * and 2. Nothing prints a stack.
  */
 export async function cli(
@@ -197,8 +226,13 @@ export async function cli(
       stdio.exit(code ?? 2);
       return;
     }
-    if (failed === 'stdout') stdio.stderr.write(unexpected(error));
-    stdio.exit(2);
+    // The line may still be on its way when `write` returns: exit once it is
+    // written, or once writing it failed.
+    if (failed === 'stdout') {
+      stdio.stderr.write(unexpected(error), () => stdio.exit(2));
+    } else {
+      stdio.exit(2);
+    }
   };
   stdio.stdout.on('error', onError('stdout'));
   stdio.stderr.on('error', onError('stderr'));

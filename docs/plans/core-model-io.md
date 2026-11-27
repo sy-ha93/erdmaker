@@ -579,8 +579,24 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - 6.11 (AC-18): 기준선(866줄)과 `diff` 출력 없음, `exit=0`.
 - 검사 명령: 고치지 않았다.
 - 계획과 달라진 점: (1) 6.8의 `CLAUDE.md` 종료 코드 설명은 계획을 쓴 뒤 6A 리뷰에서 바뀐 FR-11(종료 2의 뜻, 한 줄 이스케이프, `cli()` 감싸기의 출력 닫힘 처리)을 따랐다. (2) `docs/stage1-backlog.md`에 F02 상태 줄을 더했다(결정 9의 세 줄 밖. 리드의 지시). (3) `docs/format-v0.md` 18행의 예제 검사 문장에 "`pnpm build` 뒤에"를 더했다(옛 도구를 가리키지는 않지만 새 `validate:format`의 전제가 바뀌었다).
+### 마지막 Codex 리뷰 대응 (2026-11-28)
+
+브랜치 전체에 대한 마지막 Codex 리뷰(치명 1, 경고 15, 참고 3)를 D-11의 표대로 처리했다. 구현하며 정한 것은 D-12에 있다. 고칠 것마다 고치기 전에 실패하는 테스트를 먼저 썼고, 고친 코드를 잠시 `HEAD`의 것으로 되돌려 실패를 다시 봤다.
+
+- **A. Node 어댑터의 링크(치명, 경고 1)**: 모든 호출에서 연 폴더 아래의 폴더와 마지막 항목이 링크이면 읽기는 `FileNotFoundError`, `list`는 빈 목록, `remove`는 아무 일도 하지 않음, `writeText`는 아무것도 만들지 않고 `Cannot write <path>: a folder on its way is a symbolic link`(마지막 항목이면 `…: it is a symbolic link`)로 거부한다. 앞의 `..` 다음 이름에도 같다. 확인은 Linux에서 폴더를 열어 `/proc/self/fd`의 실제 경로를 읽고, 다른 곳은 `realpath`(D-12). `readText`는 `lstat`으로 보통 파일만 열고(`O_NOFOLLOW | O_NONBLOCK`, 연 뒤 `fstat`으로 한 번 더), `writeText`는 폴더를 만들기 전에 NUL, Windows의 역슬래시, 255바이트보다 긴 이름을 거부한다. 폴더 읽기는 두 어댑터 모두 `FileNotFoundError`로 바꿨다(AC-09의 계약 테스트). 테스트: `fs.test.ts`의 `no symbolic link below the opened folder` 7개, 이름 거부 3개, win32 역슬래시 1개, 고친 기존 2개(링크인 파일과 `model.yaml`은 이제 없음). 고치기 전: 12개 실패, FIFO 사례는 5초 시간 제한까지 멈췄다.
+- **B. 사라진 항목(경고 2)**: 형식 있는 `readdir`가 `ENOENT`로 거부하면 이름만 다시 읽고 항목마다 `lstat`한다. `fs-vanishing.test.ts`가 `node:fs/promises`를 바꿔 그 거부를 만든다. 고치기 전: 폴더 전체가 빈 목록.
+- **C. 깊은 YAML의 내어쓰기(경고 4)**: `parseCst`가 어휘 토큰을 하나씩 파서에 넣고 열린 항목이 258개를 넘으면 멈춘다. 모양 일곱(압축 블록 시퀀스, 들여쓴 블록 시퀀스, 블록 맵, 시퀀스 안의 맵, 블록 안의 흐름 시퀀스·맵, 닫히지 않은 흐름)을 300·8000단계, 한 줄 모양 넷은 10만 단계까지 각각 두 번 읽어 정확한 위치의 중첩 한도 오류 하나를 단언한다. 고치기 전: 8000·10만 단계의 블록 모양 8개가 `RangeError`.
+- **D. 오류 꾸미기(경고 5)**: 모든 `parseDocument`에 `prettyErrors: false`. `errorAt`이 오프셋과 한 번 만드는 줄 색인으로 라이브러리와 같은 첫 줄(`at line L, column C`와 쌍점)을 만든다. 중복 키 오류의 쌍점도 같은 색인으로 정한다. 예비 경로는 라이브러리의 제곱 검사 대신 `scanKeys`가 찾은 중복으로 만든다. 기존 메시지와 위치는 모든 테스트에서 그대로다. 시간 테스트 둘(한 줄에 오류 1만/4만 개, 중복 키 1만/4만 개). 고치기 전: 오류 쪽이 비 8.8~9.2로 실패(중복 키 쪽은 긴 줄을 이미 일찍 끝내 통과했다).
+- **E. 빈 줄 정규식(경고 6)**: `isBlankLines`가 한 번 훑는다. 시간 테스트에 "줄바꿈 n개와 글자 하나"를 더했다. 고치기 전: 비 15.8~16.1. 기존 출력은 모든 쓰기 테스트에서 바이트가 같다.
+- **F. `__proto__`(경고 10)**: Ajv가 해시로 검사할 `uniqueItems`를 `erdmakerUniqueScalars`로 바꾸고 `Map`으로 찾는다(뒤에서부터, 다른 타입은 건너뛴다. Ajv와 같은 쌍과 문구). 사용자 문자열을 키로 쓰는 평범한 객체는 코어에 더 없었다(`canonical.ts`의 `equalsDefault`는 스키마 기본값의 키만, CLI의 `SHORT_ESCAPES`는 제어 문자만 키로 쓴다). 테스트: 이름 넷(`__proto__`, `constructor`, `toString`, `hasOwnProperty`)마다 세 모양, Ajv의 해시 검사와 무작위 3000번 비교, `loadModel` → `validateModel` → `serializeModel` 왕복. 고치기 전: `__proto__` 사례와 왕복이 실패.
+- **G. 사전 폴더 별칭(경고 12)**: 한 번 읽는 동안 나열한 폴더를 기억해 같은 폴더와 그 안의 폴더를 다시 걷지 않는다. 시간 테스트(`load.perf.test.ts`, 별칭과 파일 500/2000개)와 `list` 호출을 세는 단위 테스트. 고치기 전: 비 13.4~13.6, `list` 호출이 겹친다.
+- **H. 공유 객체(경고 9)**: `checkJsonValue`가 끝까지 걸은 객체의 높이, 펼친 크기, 오류 유무를 기억한다. 오류 없는 객체는 그 자리에서 깊이 한도를 넘지 않으면 다시 걷지 않고, 오류 있는 객체는 다시 걸어 곳마다 보고한다. 복사로 늘어나는 값이 100000개를 넘으면 `tooLarge`(`""`, `schema`)이고 `validateModel`과 `serializeModel`이 같이 쓴다(D-12). 테스트: 40단계, 15·16단계의 경계, 공유 없는 큰 데이터, 오류가 있는 공유 객체, 한 곳에서만 깊은 공유 객체, 저장 거부와 10단계 저장, 시간(`bestTime` 200ms). 고치기 전: 40단계 테스트가 끝나지 않아 60초에 끊었다.
+- **I. CLI(경고 13, 14)**: OK 줄을 만드는 `okLines(project)`가 프로젝트 오류를 모델마다 한 번 색인한다(파일의 상위 폴더마다 집합 조회). 출력 스트림 오류 때 `Unexpected error` 줄의 쓰기가 끝나거나 실패한 뒤에 종료한다. 테스트: `main.perf.test.ts`(같은 `id`의 모델 5000/20000개), 쓰기를 미루는 가짜 stderr. 고치기 전: 비 22.3~22.6, 줄이 쓰이기 전에 종료.
+- **J. 테스트**: EPIPE 자식 프로세스 테스트는 OK 줄을 약 560KB로 키우고 먼저 실은 모듈이 첫 stdout 오류(`EPIPE`)와 그때의 `process.exitCode`를 적어 종료 코드를 정확히 단언한다. `expectLinearTime`은 측정마다 모든 회차를 돈 뒤 가장 좋은 시간을 본다(설명도 고쳤다. `timing.test.ts` 둘이 고치기 전에 실패). 쓰기 시간 테스트는 사례마다 크기에 따르는 출력 성질을 확인한다. 줄바꿈·탭 이름과 `chmod 000` 사례는 win32에서 건너뛴다.
+- **문서로만 남긴 것**: 스펙 8장에 줄마다 하나씩(저장의 원자성과 밖의 변경, 공용 사전 다시 쓰기, 앞의 `/`, CR만 쓰는 JSON, 적대적인 메모리 객체, O(n log n) 정렬, 링크 검사와 작업 사이의 경합, 대소문자를 가리지 않는 파일 시스템, Linux가 아닌 곳의 `realpath` 비용). 메모리 어댑터의 `list`는 이미 있었다. 해당 함수의 JSDoc에도 한 줄씩.
+- 관문: `dist` 넷을 지운 뒤 `pnpm build`, `pnpm lint`, `npm run --silent validate:format` 모두 `exit=0`. 예제의 CLI stdout은 고치기 전과 바이트가 같다. `pnpm test` 5번 연속 통과(37개 파일 604개, 70.0~71.5초. 고치기 전 551개). 새 시간 테스트가 든 파일 여섯(`load.perf`, `cli/main.perf`, `yaml.perf`, `serialize.perf`, `json-value.perf`, `fs.perf`)을 하나씩 15번: 90번 모두 통과. Codex의 재현(A, C, F 스크립트, B는 `fs-vanishing.test.ts`)을 다시 돌려 모두 고쳐진 결과를 봤다.
 
 ---
 
-마지막 수정: 2026-11-28 (단계 6B 완료)
+마지막 수정: 2026-11-28 (마지막 Codex 리뷰 대응)
 상태: 구현 완료 (push와 `gh pr checks`는 리드)
