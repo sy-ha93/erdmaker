@@ -5,6 +5,7 @@ import {
   mkdir,
   open,
   readdir,
+  stat,
   unlink,
 } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -71,7 +72,9 @@ function badPath(path: string): TypeError | undefined {
 /**
  * The most folders a path may name below the opened folder (or below the
  * folder its leading `..` climb to). Each call looks at each of them with
- * one `lstat`, so a call costs a bounded number of system calls.
+ * one `lstat`, so a call costs a bounded number of system calls while
+ * nothing else changes the folders: a write that loses a race to make a
+ * folder (`EEXIST`) looks at that folder once more.
  */
 export const MAX_PATH_DEPTH = 32;
 
@@ -160,8 +163,15 @@ async function makeFolders(
   base: string,
   folders: readonly string[],
 ): Promise<Walk> {
-  // The opened folder (or the one `..` climbs to) is made as given, links allowed.
-  await mkdir(base, { recursive: true });
+  // The opened folder (or the one `..` climbs to) is used as given, links
+  // allowed, and made only when missing: a recursive `mkdir` of a Windows
+  // drive root fails with EPERM even though the root is there.
+  try {
+    await stat(base);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+    await mkdir(base, { recursive: true });
+  }
   let path = base;
   let making = false;
   for (const name of folders) {
@@ -181,7 +191,8 @@ async function makeFolders(
         continue;
       } catch (error) {
         if (errorCode(error) !== 'EEXIST') throw error;
-        // Made by someone else since: looked at as any folder that is there.
+        // Made by someone else since: looked at as any folder that is there,
+        // with one more `lstat` for this folder.
         entry = await lstat(path);
       }
     }
@@ -223,9 +234,12 @@ async function typesByName(
  * (longer than 4096 characters, more than `MAX_PATH_DEPTH` folders below
  * the folder it climbs to, a NUL character, on Windows a backslash) is
  * read, listed and removed as a missing one, and refused by `writeText`
- * before any folder is made. The adapter keeps nothing between calls. The
- * checks and the call that follows them are not one step: a link put in
- * place between the two is followed (a known limit).
+ * before any folder is made; `list` leaves out the entries whose own path
+ * would be one, so all it returns can be read or listed. `writeText`
+ * refuses to write over an entry that is not a regular file (a folder,
+ * FIFO, socket or device) without opening it. The adapter keeps nothing
+ * between calls. The checks and the call that follows them are not one
+ * step: a link put in place between the two is followed (a known limit).
  */
 export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
   const root = resolve(rootDir);
@@ -298,7 +312,12 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
           : join(base, names.join('/'));
       const isLink = () =>
         new Error(`Cannot write ${path}: it is a symbolic link`);
-      if ((await entryAt(full))?.isSymbolicLink()) throw isLink();
+      const notRegular = () =>
+        new Error(`Cannot write ${path}: it is not a regular file`);
+      const existing = await entryAt(full);
+      if (existing?.isSymbolicLink()) throw isLink();
+      // Not opened: opening a FIFO for writing can block or reach a reader.
+      if (existing && !existing.isFile()) throw notRegular();
       let handle: FileHandle;
       try {
         handle = await open(
@@ -311,9 +330,8 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
         throw error;
       }
       try {
-        if (!(await handle.stat()).isFile()) {
-          throw new Error(`Cannot write ${path}: it is not a file`);
-        }
+        // Replaced since `lstat`: still only a regular file is written.
+        if (!(await handle.stat()).isFile()) throw notRegular();
         await handle.truncate(0);
         await handle.writeFile(text, 'utf8');
       } finally {
@@ -324,6 +342,12 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
     async list(dir) {
       const located = locate(dir, true);
       if (!located) return [];
+      // An entry whose own path `locate` would refuse is left out, so all
+      // that is listed can be passed back: the path `dir/name` is at most
+      // `MAX_PATH_LENGTH` long, and a folder's contents at most
+      // `MAX_PATH_DEPTH` folders deep.
+      const room = MAX_PATH_LENGTH - dir.length - 1;
+      const folderFits = located.names.length + 1 <= MAX_PATH_DEPTH;
       const walk = await walkFolders(located.base, located.names);
       if (walk.found !== 'folder') return [];
       const full = walk.path;
@@ -351,10 +375,13 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
       }
       const entries: FileEntry[] = [];
       for (const [name, given] of typed) {
+        if (name.length > room) continue;
         // An entry removed since `readdir` is left out like any missing one.
         const type = known(given) ? given : await entryAt(join(full, name));
         if (type?.isFile()) entries.push({ name, kind: 'file' });
-        else if (type?.isDirectory()) entries.push({ name, kind: 'directory' });
+        else if (type?.isDirectory() && folderFits) {
+          entries.push({ name, kind: 'directory' });
+        }
       }
       return entries;
     },

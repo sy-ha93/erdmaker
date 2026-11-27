@@ -171,7 +171,7 @@ describe('validate: cli', () => {
     await cli(['validate', EXAMPLE], io);
     expect(stderr.written).toEqual(['Unexpected error: disk\\nfull\n']);
     expect({ code: io.exitCode, exits }).toEqual({
-      code: undefined,
+      code: 2,
       exits: [2],
     });
   });
@@ -185,7 +185,7 @@ describe('validate: cli', () => {
     expect(exits).toEqual([]);
     stderr.finish();
     expect(exits).toEqual([2]);
-    expect(io.exitCode).toBeUndefined();
+    expect(io.exitCode).toBe(2);
   });
 
   describe('another stdout error while stderr never finishes the line', () => {
@@ -203,6 +203,13 @@ describe('validate: cli', () => {
       expect(run.exits).toEqual([]);
       return run;
     };
+
+    test('a natural exit before any callback or timer also reports 2', async () => {
+      const { io, exits } = await stalled();
+      // Nothing calls back and no timer fires: the process may simply end.
+      expect(exits).toEqual([]);
+      expect(io.exitCode).toBe(2);
+    });
 
     test('exit 2 after 1000 ms, once', async () => {
       const { exits, stderr } = await stalled();

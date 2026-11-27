@@ -200,10 +200,11 @@ function modelFiles(
  *   array, an item is not an object, an item's `file` is not a string or
  *   normalizes to the opened folder itself (`''`, `.`, `./`, `a/..`, `/`);
  * - two items' `file` normalize to the same path;
- * - an item's text would be longer than the longest JavaScript string
- *   (building it throws a `RangeError`): `Cannot write <file>: it is too
- *   large`. Nothing checks for this beforehand; `validateModel` does not
- *   report it.
+ * - building an item's text throws a `RangeError`: the text would be
+ *   longer than the longest JavaScript string, or (with a small stack)
+ *   building it overflows the stack: `Cannot write <file>: it is too large
+ *   or too deeply nested to write`. Nothing checks for this beforehand;
+ *   `validateModel` does not report it.
  * The `TypeError` is the only error it throws itself; an exception thrown by
  * a getter of the model object (not of its data) passes through unchanged.
  * Any other data is written as it is, valid against the schemas or not.
@@ -234,11 +235,13 @@ export function serializeModel(model: Model): SerializedFile[] {
           text: schema === 'layout' ? layoutJson(written) : yamlText(written),
         };
       } catch (error) {
-        // Longer than the longest string; the checks above do not predict it.
+        // Longer than the longest string, or past the stack; the checks
+        // above do not predict either.
         if (error instanceof RangeError) {
-          throw new TypeError(`Cannot write ${file}: it is too large`, {
-            cause: error,
-          });
+          throw new TypeError(
+            `Cannot write ${file}: it is too large or too deeply nested to write`,
+            { cause: error },
+          );
         }
         throw error;
       }

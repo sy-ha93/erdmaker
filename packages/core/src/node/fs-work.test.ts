@@ -81,6 +81,15 @@ test.each([1, 2, 8, MAX_PATH_DEPTH])(
   },
 );
 
+test('writeText makes no folder when the opened folder, or the one `..` climbs to, is there', async () => {
+  const fs = createNodeFileSystem(join(root, 'tree'));
+  await fs.writeText('g.yaml', 'y');
+  expect(calls.mkdir).toBe(0);
+  await fs.writeText('../tree/d/g.yaml', 'y');
+  expect(calls.mkdir).toBe(0);
+  expect(await fs.readText('d/g.yaml')).toBe('y');
+});
+
 test.each([1, 2, 8, MAX_PATH_DEPTH])(
   'writeText into a fully missing chain of %i folders: work linear in the depth',
   async (depth) => {

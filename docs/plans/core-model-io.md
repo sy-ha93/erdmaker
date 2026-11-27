@@ -606,7 +606,20 @@ D-13대로 처리했다. 고칠 것마다 고치기 전에 실패하는 테스�
 - **D. CLI(경고 8)**: `cli`의 `exitWhenWritten`이 유일한 종료 길이다. 테스트: 가짜 타이머로 넷(1000ms, stderr `error` 먼저, `close` 먼저, `unref`). 고치기 전: 넷 모두 실패.
 - **문서**: 스펙 FR-02(링크 검사 방법, 경로 한도), FR-06(너무 큰 글), FR-11(종료), AC-09, 8장(대소문자, 32단 한도, 글 길이를 세지 않음. `realpath` 비용 줄은 지웠다). 형식 문서에 32단 한 문장. D-13.
 
+### 세 번째 Codex 리뷰 대응 (2026-11-28)
+
+D-14대로 처리했다. 고칠 것마다 고치기 전에 실패하는 테스트를 먼저 썼다(새 테스트와 바뀐 단언으로 12개가 고치기 전에 실패했다: core 9개, cli 3개).
+
+- **A. `list`와 `readText`(경고 1)**: `list`가 `<dir>/<이름>`이 4096자를 넘는 항목과, `<dir>`이 이미 32단일 때의 하위 폴더를 뺀다. `loadModel`의 목록에 나온 파일 읽기(엔터티 등, 사전, 배치)는 `FileNotFoundError`이면 건너뛴다. `model.yaml`은 따로 읽어 그대로 거부한다. 테스트: `load.test.ts`에 어댑터를 감싸 파일 하나(`entities/order.yaml`, `dictionary/standard.yaml`, `layouts/sales.json`)의 `readText`가 `FileNotFoundError`를 던지게 한 사례 셋(그 파일이 없는 예제를 읽은 결과와 같다), `fs.test.ts`에 `x/../`로 4096자 가까이 채운 폴더의 `list`와 32단 폴더의 `list`. 33단 테스트의 `list` 단언은 새 규칙에 맞게 한 단씩 옮겼다.
+- **B. 있는 FIFO에 쓰기(경고 2)**: 마지막 `lstat`에서 보통 파일이 아니면 열기 전에 `Cannot write <path>: it is not a regular file`. `fstat` 뒤의 문구도 같게 했다. 테스트: 읽는 쪽이 없는 실제 FIFO, 소켓, 폴더(1초 안에 거부, win32 건너뜀).
+- **C. 기준 폴더(경고 3)**: `stat`으로 보고 `ENOENT`일 때만 재귀 `mkdir`. 테스트: `fs-work.test.ts`에서 있는 연 폴더와 `..`가 올라간 폴더에 쓰면 `mkdir` 0번. Windows에서는 돌려 보지 못했다.
+- **D. CLI(경고 4)**: `exitWhenWritten`을 기다리기 전에 `exitCode = 2`. 테스트: 콜백도 타이머도 오지 않는 가짜 stdio에서 `exitCode`가 이미 2. 예전 단언 둘(`exitCode`가 `undefined`)을 2로 바꿨다.
+- **E. 문구와 주석(참고 1, 2)**: `Cannot write <file>: it is too large or too deeply nested to write`(스펙 FR-06과 8장, JSDoc, 테스트). `lstat` 한도는 동시 변경이 없을 때의 것이라고 주석과 FR-02에 적었다.
+- **F. `FileNotFoundError` 메시지**: 경로를 200자와 `…`로 자른다(`path` 속성은 그대로). 클래스 생성자에서 자르므로 메모리 구현도 같고, 보통 경로의 메시지는 바뀌지 않는다.
+- 관문: `dist` 넷을 지운 뒤 `pnpm build`, `pnpm lint`, `npm run --silent validate:format` 모두 `exit=0`(OK 줄은 그대로). `pnpm test` 3번 연속 통과(39개 파일 657개, 73.5~74.1초). 바꾼 시간 테스트 파일은 없다.
+- AC-19 칸은 열어 둔다. 남은 `gh pr checks`는 리드가 닫는다.
+
 ---
 
-마지막 수정: 2026-11-28 (D-11 재확인 리뷰 대응)
+마지막 수정: 2026-11-28 (세 번째 Codex 리뷰 대응)
 상태: 구현 완료 (push와 `gh pr checks`는 리드)

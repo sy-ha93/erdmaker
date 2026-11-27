@@ -1,5 +1,5 @@
 import { compareCodeUnits } from '../compare.js';
-import type { FileSystemAdapter } from '../fs/adapter.js';
+import { FileNotFoundError, type FileSystemAdapter } from '../fs/adapter.js';
 import { joinPath } from '../fs/path.js';
 import { parseJson } from '../parse/json.js';
 import { parseYaml } from '../parse/yaml.js';
@@ -86,8 +86,10 @@ async function filesUnder(
  * it names none or cannot be read), each file once in the order first found;
  * an absolute folder is not read (`validateModel` reports it). A file with syntax, YAML
  * feature or schema errors is left out and its errors are returned; the other
- * files are still read. The adapter's failures, a missing `model.yaml`
- * included, reject.
+ * files are still read. A listed file that reads as not found (gone since
+ * it was listed, or a path the system refuses) is left out quietly, as if
+ * it had not been listed. The adapter's other failures, a missing
+ * `model.yaml` included, reject.
  */
 export async function loadModel(
   fs: FileSystemAdapter,
@@ -97,11 +99,11 @@ export async function loadModel(
   const issues: Issue[] = [];
   const positions = new Map<string, PositionIndex>();
 
-  const read = async <T>(
+  const parse = <T>(
     file: string,
     schema: SchemaName,
-  ): Promise<ModelItem<T> | undefined> => {
-    const text = await fs.readText(file);
+    text: string,
+  ): ModelItem<T> | undefined => {
     const parsed =
       schema === 'layout' ? parseJson(file, text) : parseYaml(file, text);
     if (parsed.issues.length > 0) {
@@ -129,6 +131,21 @@ export async function loadModel(
     return { file, data: parsed.value as T };
   };
 
+  /** A file `list` gave, read and parsed; one not found by now is left out. */
+  const read = async <T>(
+    file: string,
+    schema: SchemaName,
+  ): Promise<ModelItem<T> | undefined> => {
+    let text: string;
+    try {
+      text = await fs.readText(file);
+    } catch (error) {
+      if (error instanceof FileNotFoundError) return undefined;
+      throw error;
+    }
+    return parse<T>(file, schema, text);
+  };
+
   const readAll = async <T>(
     folder: string,
     extension: string,
@@ -142,9 +159,12 @@ export async function loadModel(
     return items;
   };
 
-  const manifest = await read<ManifestData>(
-    joinPath(dir, 'model.yaml'),
+  // Not listed: a missing `model.yaml` rejects.
+  const manifestFile = joinPath(dir, 'model.yaml');
+  const manifest = parse<ManifestData>(
+    manifestFile,
     'model',
+    await fs.readText(manifestFile),
   );
   // Each dictionary file once, where its first listed folder finds it, so
   // folders that are the same or nest give one item and one warning per file.

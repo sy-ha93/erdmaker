@@ -213,8 +213,9 @@ export const EXIT_WAIT_MS = 1_000;
  * stops all writing, prints `Unexpected error: <message>` on stderr unless
  * stderr failed, and exits 2: once the line is written, stderr fails or
  * closes, or `EXIT_WAIT_MS` have passed, whichever comes first (the timer
- * does not keep the process alive). An exception out of `main` is that same
- * line and 2. Nothing prints a stack.
+ * does not keep the process alive; `exitCode` is 2 from the start, so a
+ * process that ends first reports 2 too). An exception out of `main` is
+ * that same line and 2. Nothing prints a stack.
  */
 export async function cli(
   args: readonly string[],
@@ -240,7 +241,9 @@ export async function cli(
       stdio.exit(2);
       return;
     }
-    // The line may still be on its way when `write` returns.
+    // The line may still be on its way when `write` returns. Should the
+    // process end before any of the exits below, it still reports 2.
+    stdio.exitCode = 2;
     let exited = false;
     const timer = setTimeout(() => exitWhenWritten?.(), EXIT_WAIT_MS);
     timer.unref?.();

@@ -395,6 +395,28 @@ describe.skipIf(process.platform === 'win32')(
         await new Promise((done) => server.close(done));
       }
     });
+
+    test('writing over a FIFO, a socket or a folder is refused before it is opened, at once with no reader', async () => {
+      const { root } = await besideOutside();
+      execFileSync('mkfifo', [join(root, 'pipe.yaml')]);
+      const server = createServer();
+      await new Promise<void>((done) =>
+        server.listen(join(root, 'socket.yaml'), done),
+      );
+      try {
+        const fs = createNodeFileSystem(root);
+        for (const path of ['pipe.yaml', 'socket.yaml', 'real']) {
+          const started = Date.now();
+          expect(await rejection(fs.writeText(path, 'x'))).toEqual(
+            new Error(`Cannot write ${path}: it is not a regular file`),
+          );
+          expect(Date.now() - started).toBeLessThan(1_000);
+        }
+        expect((await lstat(join(root, 'pipe.yaml'))).isFIFO()).toBe(true);
+      } finally {
+        await new Promise((done) => server.close(done));
+      }
+    });
   },
 );
 
@@ -517,11 +539,14 @@ describe('node adapter: at most 32 folders below the opened folder', () => {
       tooDeep(`new/${path}`),
     );
     expect(await exists(join(root, 'new'))).toBe(false);
-    // Leading `..` and parts normalized away do not count; names after `..` do.
+    // Leading `..` and parts normalized away do not count; names after `..`
+    // do. A folder is listed while its contents are at most 32 folders deep.
     const listed = [{ name: 'd', kind: 'directory' }];
-    expect(await fs.list(`../root/${folders(31)}`)).toEqual(listed);
+    expect(await fs.list(folders(31))).toEqual(listed);
+    expect(await fs.list(`../root/${folders(30)}`)).toEqual(listed);
+    expect(await fs.list(`../root/${folders(31)}`)).toEqual([]);
     expect(await fs.list(`../root/${folders(32)}`)).toEqual([]);
-    expect(await fs.list(`${'x/../'.repeat(40)}${folders(32)}`)).toEqual(
+    expect(await fs.list(`${'x/../'.repeat(40)}${folders(31)}`)).toEqual(
       listed,
     );
   });
@@ -542,6 +567,45 @@ describe('node adapter: at most 32 folders below the opened folder', () => {
       );
     }
     expect(await readdir(root)).toEqual(['real']);
+  });
+
+  test('the message of a not-found path cuts it to 200 characters, its path stays whole', async () => {
+    const { root } = await besideOutside();
+    const fs = createNodeFileSystem(root);
+    const long = 'a/'.repeat(500_000) + 'f';
+    const error = (await rejection(fs.readText(long))) as FileNotFoundError;
+    expect(error.message).toBe(`File not found: ${long.slice(0, 200)}…`);
+    expect(error.path).toBe(long);
+    const short = (await rejection(
+      fs.readText('real/none.yaml'),
+    )) as FileNotFoundError;
+    expect(short.message).toBe('File not found: real/none.yaml');
+  });
+
+  test('list leaves out the entries whose path the adapter would refuse: everything listed reads or lists', async () => {
+    const { root } = await besideOutside();
+    // Names past the 4096 characters of the path; padded with parts that
+    // normalize away, so the folder on disk stays short.
+    await writeFile(join(root, 'real', 'x'.repeat(100)), 'x\n', 'utf8');
+    await mkdir(join(root, 'real', 'y'.repeat(100)));
+    const fs = createNodeFileSystem(root);
+    const dir = `${'x/../'.repeat(800)}real`;
+    expect(4096 - dir.length).toBeGreaterThan('in.yaml'.length);
+    expect(4096 - dir.length).toBeLessThan(100);
+    expect(await fs.list(dir)).toEqual([{ name: 'in.yaml', kind: 'file' }]);
+    expect(await fs.readText(`${dir}/in.yaml`)).toBe('inside\n');
+    // A folder whose contents would lie past 32 folders is left out; its
+    // files 32 folders deep are listed and read.
+    const deep = join(root, ...Array(MAX_PATH_DEPTH + 1).fill('d'));
+    await mkdir(deep, { recursive: true });
+    await writeFile(join(deep, '..', 'f.yaml'), 'x\n', 'utf8');
+    expect(await fs.list(folders(MAX_PATH_DEPTH))).toEqual([
+      { name: 'f.yaml', kind: 'file' },
+    ]);
+    expect(await fs.readText(`${folders(MAX_PATH_DEPTH)}/f.yaml`)).toBe('x\n');
+    expect(await fs.list(folders(MAX_PATH_DEPTH - 1))).toEqual([
+      { name: 'd', kind: 'directory' },
+    ]);
   });
 
   test('a missing opened folder is made for a write', async () => {

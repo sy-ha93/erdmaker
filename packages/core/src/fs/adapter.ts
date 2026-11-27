@@ -20,11 +20,16 @@ export interface FileSystemAdapter {
   remove(path: string): Promise<void>;
 }
 
+/**
+ * A file that is not there. `path` is the path as given; the message cuts
+ * it to its first 200 characters and `…`, so a huge path makes a short one.
+ */
 export class FileNotFoundError extends Error {
   readonly path: string;
 
   constructor(path: string, options?: { cause?: unknown }) {
-    super(`File not found: ${path}`, options);
+    const shown = path.length > 200 ? `${path.slice(0, 200)}…` : path;
+    super(`File not found: ${shown}`, options);
     this.name = 'FileNotFoundError';
     this.path = path;
   }

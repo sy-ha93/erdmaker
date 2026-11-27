@@ -651,4 +651,28 @@ describe('what loadModel reads', () => {
     };
     await expect(loadModel(fs, '')).rejects.toBe(denied);
   });
+
+  test.each([
+    'entities/order.yaml',
+    'dictionary/standard.yaml',
+    'layouts/sales.json',
+  ])(
+    'a listed file %s that reads as not found is left out quietly, as if not listed',
+    async (gone) => {
+      const memory = exampleFileSystem();
+      const fs = {
+        ...memory,
+        readText: async (path: string) => {
+          if (path === gone) throw new FileNotFoundError(path);
+          return memory.readText(path);
+        },
+      };
+      const files = exampleFiles();
+      delete files[gone];
+      const expected = await loadModel(exampleFileSystem(files), '');
+      const loaded = await loadModel(fs, '');
+      expect(loaded).toEqual(expected);
+      expect(JSON.stringify(loaded.model)).not.toContain(gone);
+    },
+  );
 });

@@ -49,7 +49,9 @@ describe('serializeModel: a file too large for a string', () => {
       ],
     });
     expect(() => serializeModel(of)).toThrow(
-      new TypeError('Cannot write entities/e.yaml: it is too large'),
+      new TypeError(
+        'Cannot write entities/e.yaml: it is too large or too deeply nested to write',
+      ),
     );
   });
 
@@ -64,7 +66,9 @@ describe('serializeModel: a file too large for a string', () => {
       ],
     });
     expect(() => serializeModel(of)).toThrow(
-      new TypeError('Cannot write layouts/main.json: it is too large'),
+      new TypeError(
+        'Cannot write layouts/main.json: it is too large or too deeply nested to write',
+      ),
     );
   });
 
