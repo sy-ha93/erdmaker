@@ -6,7 +6,7 @@ verbPhrase:
   parentToChild: 주문한다
   childToParent: 주문된다
 referentialIntegrity:
-  parentDelete: restrict
   parentUpdate: restrict
+  parentDelete: restrict
 physical:
   name: FK_ORDERS_CUSTOMER

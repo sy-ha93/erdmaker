@@ -14,9 +14,6 @@ importers:
       '@types/node':
         specifier: ^22.20.7
         version: 22.20.7
-      ajv:
-        specifier: ^8.17.1
-        version: 8.20.0
       eslint:
         specifier: ^10.15.0
         version: 10.15.0
@@ -38,9 +35,6 @@ importers:
       vitest:
         specifier: ^5.1.2
         version: 5.1.2(@types/node@22.20.7)(vite@8.4.0(@types/node@22.20.7)(yaml@2.9.1))
-      yaml:
-        specifier: ^2.6.0
-        version: 2.9.1
 
   packages/cli:
     dependencies:
@@ -48,7 +42,14 @@ importers:
         specifier: workspace:*
         version: link:../core
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   packages/mcp:
     dependencies:

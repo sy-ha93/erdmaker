@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
+  "bin": {
+    "erdmaker": "dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,7 +13,8 @@
     }
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@erdmaker/core": "workspace:*"

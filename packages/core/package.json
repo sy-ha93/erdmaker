@@ -7,9 +7,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
     }
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc && tsc -p tsconfig.node.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "generate:schemas": "node scripts/generate-schemas.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.1"
   }
 }

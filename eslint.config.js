@@ -10,18 +10,10 @@ export default defineConfig(
     'docs/**',
     '**/dist/**',
     'coverage/**',
+    'packages/core/src/generated/**',
     'pnpm-lock.yaml',
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,
-  {
-    files: ['tools/**/*.mjs'],
-    languageOptions: {
-      globals: {
-        process: 'readonly',
-        console: 'readonly',
-      },
-    },
-  },
   prettier,
 );

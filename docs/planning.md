@@ -239,7 +239,7 @@ Vanna는 스키마, 문서, 질문-SQL 예시를 검색해 LLM에 넘겨 SQL을 
 
 ### 5.1 모델 파일 형식
 
-형식 v0 초안(formatVersion 0.1)을 2026-11-26에 썼다. 모델은 YAML, 배치는 JSON으로 나누고, 엔터티·관계·서브타입 묶음을 각각 파일 하나로 둔다. 작업 폴더에서 형식 문서는 `docs/format-v0.md`, 스키마 8개와 예제 모델은 `format/v0/`, 검증 스크립트는 `tools/validate-format.mjs`에 있다.
+형식 v0 초안(formatVersion 0.1)을 2026-11-26에 썼다. 모델은 YAML, 배치는 JSON으로 나누고, 엔터티·관계·서브타입 묶음을 각각 파일 하나로 둔다. 작업 폴더에서 형식 문서는 `docs/format-v0.md`, 스키마 8개와 예제 모델은 `format/v0/`, 검증기는 `packages/core`에 있고 명령줄에서는 `erdmaker validate <dir>`로 돌린다(F02에서 처음의 검증 스크립트를 옮겼다).
 
 ```
 <모델 디렉터리>/

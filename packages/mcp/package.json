@@ -10,7 +10,8 @@
     }
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@erdmaker/core": "workspace:*"
