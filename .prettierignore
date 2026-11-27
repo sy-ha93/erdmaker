@@ -3,4 +3,5 @@ format/
 docs/
 dist/
 coverage/
+packages/core/src/generated/
 pnpm-lock.yaml

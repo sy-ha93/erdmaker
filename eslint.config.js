@@ -10,6 +10,7 @@ export default defineConfig(
     'docs/**',
     '**/dist/**',
     'coverage/**',
+    'packages/core/src/generated/**',
     'pnpm-lock.yaml',
   ]),
   js.configs.recommended,

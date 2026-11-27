@@ -90,7 +90,12 @@
           "type": "string"
         },
         "scope": {
-          "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+          "description": "both = exists in the logical and the physical model; logical = logical only; physical = physical only. Absent: inherits the scope of the entity.",
+          "enum": [
+            "both",
+            "logical",
+            "physical"
+          ]
         },
         "term": {
           "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",

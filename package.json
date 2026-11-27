@@ -9,7 +9,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "vitest run",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint . && prettier --check . && pnpm -r typecheck",
     "format": "prettier --write .",
     "validate:format": "node tools/validate-format.mjs format/v0/examples/shop"
   },

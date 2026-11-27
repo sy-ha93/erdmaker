@@ -2,7 +2,6 @@ id: customer_type
 supertype: customer
 discriminator: cust_type_cd
 completeness: complete
-exclusivity: exclusive
 members:
   - id: customer_is_personal
     entity: personal_customer

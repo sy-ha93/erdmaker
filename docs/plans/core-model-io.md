@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
 **설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
 **브랜치**: `feature/core-model-io`
-**상태**: 대기
+**상태**: 진행 중 (단계 1/6 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
 
@@ -222,7 +222,7 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 ### 단계 0: 준비
 
 **목표**: `spikes/` 기준선이 있고 문서 세 개가 따로 커밋돼 있다.
-**위험**: 낮음 · **상태**: 대기 · **수용 기준**: 없음 (AC-18의 "작업 전" 절반)
+**위험**: 낮음 · **상태**: 완료 · **수용 기준**: 없음 (AC-18의 "작업 전" 절반)
 
 - [x] 0.1 **(다른 어떤 명령보다 먼저)** 저장소 루트에서 `spikes/`의 "작업 전" 목록을 찍는다.
 
@@ -237,22 +237,22 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 
   `exit=0`이 아니면 멈추고 알린다. 이어서 `git check-ignore -q docs/handoff/core-model-io-spikes-before.sha256; echo "exit=$?"`가 `exit=0`인지 본다(무시 대상이 아니면 멈춘다). 이 파일은 6.11까지 고치지도 지우지도 않는다.
 
-- [ ] 0.2 `git branch --show-current`가 `feature/core-model-io`인지 확인한다(다르면 멈추고 알린다). 문서 세 개만 커밋한다: `git add docs/specs/core-model-io.md docs/analysis/core-model-io.md docs/plans/core-model-io.md` 뒤 커밋. 해시를 7장에 적는다(그 기록은 단계 1의 커밋에 들어간다). 되돌릴 때 이 커밋은 남긴다.
+- [x] 0.2 `git branch --show-current`가 `feature/core-model-io`인지 확인한다(다르면 멈추고 알린다). 문서 세 개만 커밋한다: `git add docs/specs/core-model-io.md docs/analysis/core-model-io.md docs/plans/core-model-io.md` 뒤 커밋. 해시를 7장에 적는다(그 기록은 단계 1의 커밋에 들어간다). 되돌릴 때 이 커밋은 남긴다.
 
 ### 단계 1: 패키지 틀
 
 **목표**: `core`가 프로젝트 둘로 컴파일되고, 테스트 파일이 타입 검사를 받고, 스키마가 코어 안에 들어 있고, 예제·스키마·형식 문서가 쓰기 규칙과 맞는다. 기능 코드는 아직 없다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-11, AC-12, AC-15 · **요구사항**: FR-01(일부), FR-03, FR-07, FR-12
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-11, AC-12, AC-15 · **요구사항**: FR-01(일부), FR-03, FR-07, FR-12
 
-- [ ] 1.1 `packages/core/package.json`을 고친다: `dependencies`에 `ajv`·`yaml`(2장 결정 10의 범위), `exports["./node"]`, 스크립트 `build`·`typecheck`(분석 3.2절의 모양)와 `generate:schemas`(`node scripts/generate-schemas.ts`, 인자 없음). `pnpm install`로 `pnpm-lock.yaml`을 고친다. 루트 devDependencies의 `ajv`·`yaml`은 그대로 둔다. 설치 뒤 `packages/core/node_modules/{ajv,yaml}/package.json`의 `version`이 루트 `node_modules`의 것과 같은지 확인한다. 다르면 같은 버전으로 풀리도록 `core`의 범위를 좁히고 7장에 적는다.
-- [ ] 1.2 `core`의 TypeScript 프로젝트를 만든다: `packages/core/tsconfig.json`의 `exclude`에 `src/node`, `src/testing` 추가, `packages/core/tsconfig.node.json`, `packages/core/tsconfig.test.json` 새로 만들기(분석 3.2절). `packages/core/src/node/index.ts`를 내용 없이 만든다(둘째 프로젝트에 입력이 있어야 한다. 단계 2에서 채운다).
-- [ ] 1.3 테스트 타입 검사를 넣는다(FR-12): `packages/cli/tsconfig.test.json`, `packages/mcp/tsconfig.test.json`, `packages/{cli,mcp}/package.json`의 `typecheck`, 루트 `package.json`의 `lint` 끝에 `&& pnpm -r typecheck`.
-- [ ] 1.4 `format/v0/schema/entity.schema.json`의 속성 `scope`를 FR-07대로 고친다.
-- [ ] 1.5 **테스트 먼저**: `packages/core/src/schema/schemas.test.ts`에 "스키마 동기화"(AC-12)를 쓴다(무시 대상인 `src/generated/`에는 생성물만 둔다). 원본 폴더의 `*.schema.json` 개수가 8이 아니어도 실패하게 한다. 이 테스트가 생기므로 `packages/core/src/index.test.ts`를 `git rm`한다.
-- [ ] 1.6 `packages/core/scripts/generate-schemas.ts`를 쓴다. 스키마 폴더(`format/v0/schema`)와 출력 파일(`packages/core/src/generated/schemas.ts`)의 경로는 `import.meta.url`에서 구한다. 인자와 현재 폴더에 기대지 않는다(시제품은 `process.argv`에서 읽으므로 이 부분을 따라 쓰지 않는다). 생성물의 모양은 분석 4.5절이다. `.prettierignore`와 `eslint.config.js`의 무시 목록에 생성물 폴더를 더한다.
-- [ ] 1.7 예제 세 파일을 FR-07대로 고친다(스펙 2장의 네 군데). 분석의 `corrected/`가 남아 있으면 `diff`로 비교한다. 최종 판정은 단계 5의 AC-01이다.
-- [ ] 1.8 `docs/format-v0.md`의 "쓰기 규칙"과 "검증 규칙"(규칙 4, 5, 6, 8, 10)을 FR-07대로 고친다. 검사 도구를 가리키는 문장(18행, 121행 근처)은 6B에서 고친다(그때까지 사실이다).
-- [ ] 1.9 **검증**: 5장의 단계 관문, `pnpm install --frozen-lockfile`, 그리고 다음을 돌린다.
+- [x] 1.1 `packages/core/package.json`을 고친다: `dependencies`에 `ajv`·`yaml`(2장 결정 10의 범위), `exports["./node"]`, 스크립트 `build`·`typecheck`(분석 3.2절의 모양)와 `generate:schemas`(`node scripts/generate-schemas.ts`, 인자 없음). `pnpm install`로 `pnpm-lock.yaml`을 고친다. 루트 devDependencies의 `ajv`·`yaml`은 그대로 둔다. 설치 뒤 `packages/core/node_modules/{ajv,yaml}/package.json`의 `version`이 루트 `node_modules`의 것과 같은지 확인한다. 다르면 같은 버전으로 풀리도록 `core`의 범위를 좁히고 7장에 적는다.
+- [x] 1.2 `core`의 TypeScript 프로젝트를 만든다: `packages/core/tsconfig.json`의 `exclude`에 `src/node`, `src/testing` 추가, `packages/core/tsconfig.node.json`, `packages/core/tsconfig.test.json` 새로 만들기(분석 3.2절). `packages/core/src/node/index.ts`를 내용 없이 만든다(둘째 프로젝트에 입력이 있어야 한다. 단계 2에서 채운다).
+- [x] 1.3 테스트 타입 검사를 넣는다(FR-12): `packages/cli/tsconfig.test.json`, `packages/mcp/tsconfig.test.json`, `packages/{cli,mcp}/package.json`의 `typecheck`, 루트 `package.json`의 `lint` 끝에 `&& pnpm -r typecheck`.
+- [x] 1.4 `format/v0/schema/entity.schema.json`의 속성 `scope`를 FR-07대로 고친다.
+- [x] 1.5 **테스트 먼저**: `packages/core/src/schema/schemas.test.ts`에 "스키마 동기화"(AC-12)를 쓴다(무시 대상인 `src/generated/`에는 생성물만 둔다). 원본 폴더의 `*.schema.json` 개수가 8이 아니어도 실패하게 한다. 이 테스트가 생기므로 `packages/core/src/index.test.ts`를 `git rm`한다.
+- [x] 1.6 `packages/core/scripts/generate-schemas.ts`를 쓴다. 스키마 폴더(`format/v0/schema`)와 출력 파일(`packages/core/src/generated/schemas.ts`)의 경로는 `import.meta.url`에서 구한다. 인자와 현재 폴더에 기대지 않는다(시제품은 `process.argv`에서 읽으므로 이 부분을 따라 쓰지 않는다). 생성물의 모양은 분석 4.5절이다. `.prettierignore`와 `eslint.config.js`의 무시 목록에 생성물 폴더를 더한다.
+- [x] 1.7 예제 세 파일을 FR-07대로 고친다(스펙 2장의 네 군데). 분석의 `corrected/`가 남아 있으면 `diff`로 비교한다. 최종 판정은 단계 5의 AC-01이다.
+- [x] 1.8 `docs/format-v0.md`의 "쓰기 규칙"과 "검증 규칙"(규칙 4, 5, 6, 8, 10)을 FR-07대로 고친다. 검사 도구를 가리키는 문장(18행, 121행 근처)은 6B에서 고친다(그때까지 사실이다).
+- [x] 1.9 **검증**: 5장의 단계 관문, `pnpm install --frozen-lockfile`, 그리고 다음을 돌린다.
   - 생성 명령이 인자 없이 된다. 생성물을 지우고 워크스페이스 명령으로 다시 만든 뒤 AC-12를 돌린다. 이어서 다른 폴더(저장소 루트)에서 직접 실행해도 결과가 같은지 본다. `exit=0`이어야 한다.
 
     ```bash
@@ -271,7 +271,7 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
   - AC-15: 스펙 6.3의 스크립트.
   - 고친 예제와 스키마가 옛 도구로도 같다: `out=$(pnpm --silent validate:format) && test "$out" = "$want"`(`want`는 스펙 6.2의 줄).
   - 두 프로젝트의 출력이 같은지는 여기서 보지 않는다. `src/node/`가 아직 비어 있어 둘째 프로젝트가 공유 파일을 내보내지 않는다. 2.7에서 본다.
-- [ ] 1.10 커밋한다. 경로를 지정해 스테이징한다.
+- [x] 1.10 커밋한다. 경로를 지정해 스테이징한다.
 
 ### 단계 2: 파일 어댑터와 파서
 
@@ -417,7 +417,7 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 
 ### AC별 확인
 
-- [ ] AC-11 (단계 1). 설정을 읽지 못하면 `JSON.parse`가 던져 실패한다.
+- [x] AC-11 (단계 1). 설정을 읽지 못하면 `JSON.parse`가 던져 실패한다.
 
   ```bash
   pnpm --filter @erdmaker/core exec tsc --showConfig | node -e "
@@ -426,7 +426,7 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
   ```
 
 - [ ] AC-12, AC-09, AC-06, AC-05, AC-07, AC-01~04, AC-08, AC-13, AC-10: 스펙 6장이 이름 붙인 테스트가 `pnpm test`에 있고 통과한다. 테스트의 `describe`나 `test` 이름에 스펙의 이름("예제 왕복" 등)을 그대로 쓴다. 닫을 때 `pnpm exec vitest run -t '<이름>'`의 출력에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
-- [ ] AC-15 (단계 1): 스펙 6.3.
+- [x] AC-15 (단계 1): 스펙 6.3.
 - [ ] AC-16 (6A 뒤, 리드): 6.6의 판정.
 - [ ] AC-14, AC-17 (6B): 스펙 6.2, 6.4.
 - [ ] AC-18 (6B): 6.11.
@@ -471,7 +471,22 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 
 (구현하면서 적는다: 문서 커밋 해시(0.2), 풀린 `ajv`·`yaml` 버전(1.1), 고친 검사 스크립트, 6A의 해시와 AC-16의 판정, 계획과 달라진 점. 이 절의 변경은 각 단계의 커밋에 넣는다)
 
+### 단계 0 (2026-11-27)
+
+- 0.1: `spikes/` 기준선 `docs/handoff/core-model-io-spikes-before.sha256`(866줄). 명령 `exit=0`, `git check-ignore` `exit=0`. 이 단계의 첫 명령으로 실행했다.
+- 0.2: 브랜치 `feature/core-model-io` 확인. 문서 커밋 `e1851c84e64c44b5711bdda8dc8f7c3afdb532f9`. 그 커밋의 계획에는 0.1의 체크만 들어 있다.
+
+### 단계 1 (2026-11-27)
+
+- 1.1: 풀린 버전은 `core`와 루트가 같다. `ajv` 8.20.0, `yaml` 2.9.1. 범위를 좁히지 않았다.
+- 1.4: 속성 `scope`의 설명은 공통 정의의 설명 뒤에 `Absent: inherits the scope of the entity.`를 붙였다. 열거값은 공통 정의와 같은 셋이고 `default`만 없다. 키(`keys`)의 `scope`는 FR-07의 대상이 아니라 그대로 공통 정의를 참조한다.
+- 1.5: 테스트 이름은 `describe('스키마 동기화')` 아래 10개(개수 8, 이름 집합, 파일별 8개).
+- 1.7: 고친 세 파일이 분석의 `corrected/`와 `diff`로 같다.
+- 1.8: 쓰기 규칙에 `properties`가 없는 맵의 순서와 큰따옴표의 대상(불리언·null·숫자로 읽히는 글)도 적었다(FR-06의 문장). 검사 도구를 가리키는 121행은 6B까지 그대로다.
+- 1.9: 계획과 스펙의 검사 명령을 고치지 않고 그대로 돌렸다. 모두 `exit=0`: 단계 관문, `pnpm install --frozen-lockfile`, 생성 명령 검사, AC-11, `vitest run -t '스키마 동기화'`(10개 통과), AC-15(세 패키지 모두 `pnpm lint`가 종료 2로 실패하고 `zz-probe.test.ts(1,14): error TS2322`가 나온 뒤, 탐침을 지운 `pnpm lint`가 성공), 옛 도구의 요약 줄(`pnpm --silent`, `npm run --silent` 둘 다 `want`와 같다).
+- 계획과 달라진 점: 없다. 5장 AC 확인의 AC-12 줄은 다른 AC와 묶여 있어 체크하지 않았다(AC-12 자체는 위 1.9에서 닫혔다).
+
 ---
 
-마지막 수정: 2026-11-27 (계획 리뷰 1차 반영)
-상태: 대기
+마지막 수정: 2026-11-27 (단계 0, 1 구현)
+상태: 진행 중 (단계 1/6 완료)
