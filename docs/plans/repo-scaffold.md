@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/repo-scaffold.md](../analysis/repo-scaffold.md)
 **설계 문서**: 없음 (설정과 도구 구성만 다루므로 설계 단계를 건너뛰었다)
 **브랜치**: `feature/repo-scaffold`
-**상태**: 대기
+**상태**: 진행 중 (단계 1 완료)
 
 스펙과 분석이 다르면 분석을 따른다. 분석은 스펙을 쓴 뒤에 레지스트리로 확인한 내용이다.
 
@@ -178,7 +178,7 @@ DB, API, 인증 변경은 없다.
 ### 단계 1: 기준선, 워크스페이스, 패키지
 
 **목표**: `pnpm install`과 `pnpm build`가 통과하고 기존 형식 검사가 그대로 돈다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-01, AC-02, AC-03, AC-04, AC-05, AC-09
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-01, AC-02, AC-03, AC-04, AC-05, AC-09
 
 - [x] 1.1 **(가장 먼저, 다른 어떤 명령보다 앞서)** 저장소 루트에서 `spikes/`의 "작업 전" 목록을 찍는다. 스펙 6.5절과 같은 내용을 오류가 숨지 않게 실행한다.
 
@@ -191,26 +191,26 @@ DB, API, 인증 변경은 없다.
 
   `exit=0`이고 `test -s /tmp/spikes-before.sha256`이 통과해야 한다. 아니면 멈추고 알린다(불완전한 기준선으로 진행하지 않는다). 이 파일은 다시 만들 수 없으므로 AC-11이 끝날 때까지 지우지 않는다.
 
-- [ ] 1.2 `git branch --show-current`가 `feature/repo-scaffold`인지 확인한다(확인된 상태다. 다르면 멈추고 알린다). 이어서 문서 세 개만 먼저 커밋한다: `git add docs/specs/repo-scaffold.md docs/analysis/repo-scaffold.md docs/plans/repo-scaffold.md` 뒤 커밋한다. 해시는 7장에 적고, 그 기록은 단계 1의 커밋(1.15)에 들어간다. 되돌릴 때 이 문서 커밋은 남긴다.
-- [ ] 1.3 형식 검사 기준선을 찍는다: `npm run --silent validate:format > /tmp/validate-before.txt; echo "exit=$?"`. `exit=0`이고 파일에 `OK:` 줄 하나만 있어야 한다(`--silent`가 npm의 스크립트 머리말을 뺀다). 오류 경로도 찍는다: `node tools/validate-format.mjs /nonexistent-erdmaker-dir; echo "exit=$?"`가 `exit=2`인지 확인한다.
-- [ ] 1.4 `corepack enable pnpm`을 실행한다(nvm bin 폴더에 `pnpm`, `pnpx` 링크가 생긴다). **실패하면 멈추고 사용자에게 알린다.** `corepack pnpm`으로 우회하지 않는다(루트 스크립트가 `pnpm`을 직접 부르므로 PATH에 `pnpm`이 없으면 `build`가 실패한다). pnpm 버전은 `packageManager`를 넣은 뒤인 1.5에서 확인한다.
-- [ ] 1.5 `package.json`을 고친다: `packageManager: "pnpm@10.34.9"`, `engines.node: "^22.13.0"`, 스크립트 `build: "pnpm -r build"` 추가, devDependencies에 2장 표의 도구 9개 추가. `validate:format`, `ajv`, `yaml`은 그대로 둔다. `test`, `lint`, `format` 스크립트는 단계 2에서 넣는다(설정 없이 돌면 `spikes/`를 훑는다). `devEngines`는 넣지 않는다. 고친 뒤 `hash -r; pnpm --version`이 `10.34.9`인지 확인한다. 아니면 멈추고 알린다.
-- [ ] 1.6 `pnpm-workspace.yaml`을 만든다: `packages`에 `packages/*`만. 빌드 허용 설정은 넣지 않는다.
-- [ ] 1.7 `.gitignore`에 `dist/`, `*.tsbuildinfo`, `coverage/`를 더한다.
-- [ ] 1.8 `tsconfig.base.json`을 만든다: `strict: true`, `target: "ES2022"`, `moduleDetection: "force"`, `skipLibCheck: true`. 출력 경로와 `lib`, `types`, `module`은 패키지마다 적는다.
-- [ ] 1.9 `packages/core/`를 만든다.
+- [x] 1.2 `git branch --show-current`가 `feature/repo-scaffold`인지 확인한다(확인된 상태다. 다르면 멈추고 알린다). 이어서 문서 세 개만 먼저 커밋한다: `git add docs/specs/repo-scaffold.md docs/analysis/repo-scaffold.md docs/plans/repo-scaffold.md` 뒤 커밋한다. 해시는 7장에 적고, 그 기록은 단계 1의 커밋(1.15)에 들어간다. 되돌릴 때 이 문서 커밋은 남긴다.
+- [x] 1.3 형식 검사 기준선을 찍는다: `npm run --silent validate:format > /tmp/validate-before.txt; echo "exit=$?"`. `exit=0`이고 파일에 `OK:` 줄 하나만 있어야 한다(`--silent`가 npm의 스크립트 머리말을 뺀다). 오류 경로도 찍는다: `node tools/validate-format.mjs /nonexistent-erdmaker-dir; echo "exit=$?"`가 `exit=2`인지 확인한다.
+- [x] 1.4 `corepack enable pnpm`을 실행한다(nvm bin 폴더에 `pnpm`, `pnpx` 링크가 생긴다). **실패하면 멈추고 사용자에게 알린다.** `corepack pnpm`으로 우회하지 않는다(루트 스크립트가 `pnpm`을 직접 부르므로 PATH에 `pnpm`이 없으면 `build`가 실패한다). pnpm 버전은 `packageManager`를 넣은 뒤인 1.5에서 확인한다.
+- [x] 1.5 `package.json`을 고친다: `packageManager: "pnpm@10.34.9"`, `engines.node: "^22.13.0"`, 스크립트 `build: "pnpm -r build"` 추가, devDependencies에 2장 표의 도구 9개 추가. `validate:format`, `ajv`, `yaml`은 그대로 둔다. `test`, `lint`, `format` 스크립트는 단계 2에서 넣는다(설정 없이 돌면 `spikes/`를 훑는다). `devEngines`는 넣지 않는다. 고친 뒤 `hash -r; pnpm --version`이 `10.34.9`인지 확인한다. 아니면 멈추고 알린다.
+- [x] 1.6 `pnpm-workspace.yaml`을 만든다: `packages`에 `packages/*`만. 빌드 허용 설정은 넣지 않는다.
+- [x] 1.7 `.gitignore`에 `dist/`, `*.tsbuildinfo`, `coverage/`를 더한다.
+- [x] 1.8 `tsconfig.base.json`을 만든다: `strict: true`, `target: "ES2022"`, `moduleDetection: "force"`, `skipLibCheck: true`. 출력 경로와 `lib`, `types`, `module`은 패키지마다 적는다.
+- [x] 1.9 `packages/core/`를 만든다.
   - `package.json`: `name: "@erdmaker/core"`, `private: true`, `type: "module"`, `license: "Apache-2.0"`, `exports["."]`가 `types: ./dist/index.d.ts`와 `default: ./dist/index.js`, 스크립트 `build: "tsc"`.
   - `tsconfig.json`: 기본 설정 확장. `rootDir: "src"`, `outDir: "dist"`, `declaration: true`, `lib: ["ES2022"]`, `types: []`, `module: "NodeNext"`, `moduleResolution: "NodeNext"`, `include: ["src"]`, `exclude: ["src/**/*.test.ts"]`.
   - `src/index.ts`: 내용 없음.
-- [ ] 1.10 `packages/cli/`와 `packages/mcp/`를 `core`와 같은 구성으로 만든다. 다른 점: 이름(`@erdmaker/cli`, `@erdmaker/mcp`), `dependencies`에 `"@erdmaker/core": "workspace:*"`, `types: ["node"]`. `bin`은 넣지 않는다.
-- [ ] 1.11 `packages/web/`을 만든다.
+- [x] 1.10 `packages/cli/`와 `packages/mcp/`를 `core`와 같은 구성으로 만든다. 다른 점: 이름(`@erdmaker/cli`, `@erdmaker/mcp`), `dependencies`에 `"@erdmaker/core": "workspace:*"`, `types: ["node"]`. `bin`은 넣지 않는다.
+- [x] 1.11 `packages/web/`을 만든다.
   - `package.json`: `name: "@erdmaker/web"`, `private`, `type: "module"`, `license`, `dependencies`에 `@erdmaker/core`(`workspace:*`), 스크립트 `build: "tsc --noEmit && vite build"`.
   - `tsconfig.json`: 기본 설정 확장. `rootDir: "src"`, `noEmit: true`, `lib: ["ES2022", "DOM"]`, `types: []`, `module: "ESNext"`, `moduleResolution: "Bundler"`, `include: ["src"]`.
   - `index.html`: `<script type="module" src="/src/main.ts"></script>`를 가진 최소 HTML. `src/main.ts`: 내용 없음. `vite.config.ts`는 만들지 않는다.
-- [ ] 1.12 잠금 파일을 바꾼다. 이 순서대로, 저장소 루트에서 실행한다: `git rm package-lock.json` → `rm -rf ./node_modules`(루트 한 곳만, 다른 경로나 glob을 붙이지 않는다) → `pnpm install`. 여기서 막혀 되돌려야 하면 3장 "단계 1을 커밋하기 전"을 따른다.
-- [ ] 1.13 설치 출력을 확인한다: engine 경고가 없는지, "Ignored build scripts" 경고가 없는지(`pnpm ignored-builds`로도 확인). 차단된 패키지가 없으면 아무것도 넣지 않는다. 있으면 그 패키지만 `pnpm-workspace.yaml`의 `allowBuilds`에 넣고, `pnpm rebuild <패키지>`로 그 스크립트를 실행한 뒤 `pnpm ignored-builds`가 비었는지 확인하고, 7장에 패키지 이름을 적는다. esbuild는 넣지 않는다.
-- [ ] 1.14 **검증**: AC-01(`pnpm install --frozen-lockfile`), AC-02, AC-03(스펙 6.1), AC-04(5장의 명령), AC-05(`pnpm --filter @erdmaker/core exec tsc --showConfig`에서 `lib`에 `dom`이 없고 `types`가 `[]`), AC-09(2.10의 비교 방법으로). 추가로 `pnpm --filter web exec pwd`가 `packages/web`을 가리키는지, 네 패키지의 `tsc --showConfig`에 `strict: true`가 나오는지 본다.
-- [ ] 1.15 구현 변경과 이 계획 파일의 변경을 커밋한다. `spikes/`와 `docs/.yyy-workflow-state.json`은 스테이징하지 않는다(`git add -A`를 쓰지 않고 경로를 지정한다).
+- [x] 1.12 잠금 파일을 바꾼다. 이 순서대로, 저장소 루트에서 실행한다: `git rm package-lock.json` → `rm -rf ./node_modules`(루트 한 곳만, 다른 경로나 glob을 붙이지 않는다) → `pnpm install`. 여기서 막혀 되돌려야 하면 3장 "단계 1을 커밋하기 전"을 따른다.
+- [x] 1.13 설치 출력을 확인한다: engine 경고가 없는지, "Ignored build scripts" 경고가 없는지(`pnpm ignored-builds`로도 확인). 차단된 패키지가 없으면 아무것도 넣지 않는다. 있으면 그 패키지만 `pnpm-workspace.yaml`의 `allowBuilds`에 넣고, `pnpm rebuild <패키지>`로 그 스크립트를 실행한 뒤 `pnpm ignored-builds`가 비었는지 확인하고, 7장에 패키지 이름을 적는다. esbuild는 넣지 않는다.
+- [x] 1.14 **검증**: AC-01(`pnpm install --frozen-lockfile`), AC-02, AC-03(스펙 6.1), AC-04(5장의 명령), AC-05(`pnpm --filter @erdmaker/core exec tsc --showConfig`에서 `lib`에 `dom`이 없고 `types`가 `[]`), AC-09(2.10의 비교 방법으로). 추가로 `pnpm --filter web exec pwd`가 `packages/web`을 가리키는지, 네 패키지의 `tsc --showConfig`에 `strict: true`가 나오는지 본다.
+- [x] 1.15 구현 변경과 이 계획 파일의 변경을 커밋한다. `spikes/`와 `docs/.yyy-workflow-state.json`은 스테이징하지 않는다(`git add -A`를 쓰지 않고 경로를 지정한다).
 
 ### 단계 2: 테스트, 린트, 서식
 
@@ -330,7 +330,18 @@ DB, API, 인증 변경은 없다.
 
 (구현하면서 적는다: 문서 커밋 해시(1.2), `allowBuilds`에 넣은 패키지, 끈 ESLint 규칙, 고친 검사 스크립트, 확인한 액션 버전, 올린 `engines.node` 하한. 이 절의 변경은 각 단계의 커밋에 넣는다)
 
+### 단계 1 (2026-11-27)
+
+- 문서 커밋(1.2): `af18457b68e1d4285ff0916f6ba4892ecab067ad`
+- 만든 파일 16개(`pnpm-lock.yaml` 포함), 고친 파일 3개(`package.json`, `.gitignore`, 이 계획), 지운 파일 1개(`package-lock.json`, `git rm`). 루트 `./node_modules`를 지우고 다시 설치했다.
+- `spikes/` 기준선(1.1): `exit=0`, 866줄.
+- `allowBuilds`: 넣지 않았다. 설치 출력에 "Ignored build scripts"와 engine 경고가 없었다.
+- `pnpm ignored-builds`(1.13): pnpm 10.34.9는 `node_modules/.modules.yaml`에 `ignoredBuilds` 키가 없으면 `node_modules`가 있어도 "Cannot identify as no node_modules found"를 출력한다(pnpm 소스 `getAutomaticallyIgnoredBuilds` 확인). 그래서 `.modules.yaml`에 `ignoredBuilds` 키가 없고 `pendingBuilds: []`인 것으로 차단된 빌드가 없음을 확인했다.
+- `engines.node`: `^22.13.0` 그대로. 올리지 않았다.
+- 검사 스크립트: 스펙 6.1(AC-03)은 고치지 않고 통과했다. AC-04는 5장의 명령을 그대로 썼다. AC-05는 `tsc --showConfig` 출력을 사람이 보고, 같은 출력의 `lib`에 `dom`이 없고 `types`가 `[]`인지 Node로 한 번 더 검사했다.
+- 포매터 훅이 `pnpm-workspace.yaml`의 `'packages/*'`를 `"packages/*"`로 바꿨다. 단계 2의 `singleQuote` 설정 뒤 `pnpm format`에서 다시 바뀔 수 있다.
+
 ---
 
 마지막 수정: 2026-11-27
-상태: 대기
+상태: 진행 중 (단계 1/3 완료)
