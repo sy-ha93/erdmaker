@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/repo-scaffold.md](../analysis/repo-scaffold.md)
 **설계 문서**: 없음 (설정과 도구 구성만 다루므로 설계 단계를 건너뛰었다)
 **브랜치**: `feature/repo-scaffold`
-**상태**: 진행 중 (단계 3의 3.8 대기)
+**상태**: 완료 (PR #3, CI 통과)
 
 스펙과 분석이 다르면 분석을 따른다. 분석은 스펙을 쓴 뒤에 레지스트리로 확인한 내용이다.
 
@@ -241,7 +241,7 @@ DB, API, 인증 변경은 없다.
 ### 단계 3: CI, 문서, 마지막 검사
 
 **목표**: CI가 같은 명령을 돌리고 문서가 pnpm 기준이다. 로컬 관문(AC-12까지)을 모두 통과한다.
-**위험**: 중간 · **상태**: 진행 중 (3.1~3.7 완료, 3.8 대기) · **수용 기준**: AC-10, AC-11, AC-12, AC-13
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-10, AC-11, AC-12, AC-13
 
 - [x] 3.1 `actions/checkout`과 `actions/setup-node`의 현재 메이저 버전을 공식 저장소에서 확인한다(`gh api repos/actions/checkout/releases/latest --jq .tag_name`, `setup-node`도 같게). 분석에서 확인하지 못한 값이다. 확인한 태그를 7장에 적는다.
 - [x] 3.2 `.github/workflows/ci.yml`을 만든다.
@@ -257,7 +257,7 @@ DB, API, 인증 변경은 없다.
 - [x] 3.5 **검증 (로컬 전체)**: CI와 같은 순서로 돌린다: `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm test` → `pnpm lint` → `pnpm validate:format`. 이어서 AC-10(스펙 6.4), AC-12(스펙 6.6), AC-02, AC-03을 돌린다.
 - [x] 3.6 **AC-11**: 1.1과 같은 명령으로 출력 파일만 `/tmp/spikes-after.sha256`으로 바꿔 "작업 후" 목록을 찍는다. `exit=0`이어야 한다. 이어서 `diff /tmp/spikes-before.sha256 /tmp/spikes-after.sha256; echo "exit=$?"`가 출력 없이 `exit=0`이어야 한다. 두 목록 중 하나라도 실패했거나 `diff`가 0이 아니면 커밋하지 않고 멈춘 뒤 사용자에게 알린다.
 - [x] 3.7 구현 변경과 이 계획 파일의 변경(체크박스, 7장)을 커밋한다. 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다(추적 중인 파일에 남은 변경이 없다). `git status --short`의 추적하지 않는 항목은 `spikes/`와 `docs/.yyy-workflow-state.json`뿐이어야 한다.
-- [ ] 3.8 push하고 PR을 연 뒤 AC-13을 확인한다. push와 PR 생성은 사용자가 승인한 뒤에 한다. `gh pr checks --watch`는 보고된 검사가 아직 없으면 바로 끝나므로, 검사가 나타날 때까지 최대 2분 기다린 뒤에 지켜본다.
+- [x] 3.8 push하고 PR을 연 뒤 AC-13을 확인한다. push와 PR 생성은 사용자가 승인한 뒤에 한다. `gh pr checks --watch`는 보고된 검사가 아직 없으면 바로 끝나므로, 검사가 나타날 때까지 최대 2분 기다린 뒤에 지켜본다.
 
   ```bash
   (n=0
@@ -291,7 +291,7 @@ DB, API, 인증 변경은 없다.
   ```
 
 - [x] AC-11: 3.6의 방식으로 실행한다
-- [ ] PR 뒤 AC-13: 3.8의 명령이 `exit=0`이고 CI 작업이 성공이다
+- [x] PR 뒤 AC-13: 3.8의 명령이 `exit=0`이고 CI 작업이 성공이다
 
 스펙 6장의 스크립트는 도구를 설치하기 전에 쓴 것이다. 도구의 API나 출력 형식이 달라 스크립트가 틀리면 같은 조건을 검사하도록 스크립트를 고치고 7장에 적는다. 조건을 낮추지 않는다.
 
@@ -366,4 +366,4 @@ DB, API, 인증 변경은 없다.
 ---
 
 마지막 수정: 2026-11-27 12:29
-상태: 진행 중 (단계 3, 3.8 대기)
+상태: 완료. PR #3의 CI 작업 `check`가 20초 만에 통과했다(2026-11-27). 첫 push는 gh 토큰에 `workflow` 범위가 없어 거부됐고, 범위를 추가한 뒤 다시 올렸다.
