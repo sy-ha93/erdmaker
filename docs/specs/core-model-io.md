@@ -68,7 +68,7 @@
   | `remove(path)`          | 파일을 지운다. 없으면 아무 일도 하지 않는다                                         |
 
 - 경로는 연 폴더를 기준으로 한 상대 경로이고 구분자는 `/`다. 연 폴더 자신은 `""`다. 사전이 밖에 있으면 `../dictionary/standard.yaml`처럼 `..`로 시작할 수 있다. 그런 경로를 읽을 수 있는지는 구현에 달렸다(Node와 메모리 구현은 읽는다).
-- Node 구현은 `ENOENT`와 `ENOTDIR`을 `FileNotFoundError`로 바꾼다. 그 밖의 실패(권한, 폴더를 파일로 읽음)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
+- Node 구현은 `ENOENT`와 `ENOTDIR`을 `FileNotFoundError`로 바꾼다. `list`는 끊어진 심볼릭 링크(`ENOENT`, `ENOTDIR`)를 건너뛰고, 나열 중인 폴더나 그 조상으로 되돌아가는 심볼릭 링크 폴더에는 들어가지 않으며, `ELOOP`·`EACCES` 같은 다른 실패는 거부한다. 그 밖의 실패(권한, 폴더를 파일로 읽음)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
 - `remove`는 이 기능에서 부르지 않는다. F03이 인터페이스를 바꾸지 않도록 지금 둔다.
 - 구현 둘: `createMemoryFileSystem(files?)`(`@erdmaker/core`), `createNodeFileSystem(rootDir)`(`@erdmaker/core/node`).
 - 계약 테스트는 `core`의 테스트 안에 있는 공유 묶음 하나이고, 메모리 구현과 Node 구현에 돌린다.
@@ -89,10 +89,10 @@
 
 ### FR-05 읽기
 
-- `loadModel(fs, modelDir)`는 `{ model, issues, positions }`를 돌려준다. `issues`는 모델에 들어가지 못한 파일의 오류와 `comment` 경고다. 읽는 대상은 옛 도구와 같다.
+- `loadModel(fs, modelDir)`는 `{ model, issues, positions }`를 돌려준다. `issues`는 모델에 들어가지 못한 파일의 오류와 `comment` 경고다. `model.yaml`이 없으면 `FileNotFoundError`로 거부한다. 읽는 대상은 옛 도구와 같다.
   - `model.yaml`
   - `entities/`, `relationships/`, `subtypes/`, `subject-areas/` 아래의 `*.yaml`과 `layouts/` 아래의 `*.json`. 하위 폴더까지 들어가고, 폴더마다 이름순(코드 단위 비교)으로 읽는다.
-  - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다.
+  - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다. 사전 파일은 한 번씩만 읽는다: 적힌 폴더들이 정규화한 뒤 같거나 겹치면 적힌 순서에서 먼저 나온 쪽이 이긴다. 절대 경로 항목은 읽지 않고 `model.yaml`의 그 항목에 `schema` 오류 `dictionaries entries must be relative paths`를 낸다.
 - YAML은 1.2 core 스키마로 읽는다(`parseDocument`에 `version: '1.2'`, `schema: 'core'`, `lineCounter`, `logLevel: 'error'`). 중복 키는 `yaml`의 `uniqueKeys` 옵션(키 수의 제곱으로 느려진다)을 쓰지 않고 직접 찾으며, 메시지 `Map keys must be unique at line L, column C:`와 뒤 키의 위치는 그대로다. 파일 맨 앞의 UTF-8 BOM은 열로 세지 않는다. 태그·앵커·별칭·주석은 `yaml`의 CST 토큰에서 찾고 그 토큰의 위치를 쓴다. `NO`, `yes`, `on`은 문자열이다. 중복 키와 문법 오류는 `syntax`, 앵커·별칭·태그는 `yaml-feature` 오류다. 메시지는 `YAML anchors are not allowed`, `YAML aliases are not allowed`, `YAML tag <tag> is not allowed`다. 파일에 적힌 태그는 모두 거부한다(`!!binary`, `!!timestamp`, `!!set` 같은 `tag:yaml.org,2002:` 태그와 `%TAG`로 선언한 것 포함).
 - 컬렉션이 256단계보다 깊이 겹친 파일은 `syntax` 오류 `Collections are nested more than 256 levels deep at line L, column C:`이고 위치는 한도를 넘은 첫 컬렉션이다(더 깊은 입력은 YAML 라이브러리와 엔진을 죽일 수 있고, 실제 모델 파일은 몇 단계뿐이다).
 - 객체로 바꾸면 같은 문자열이 되는 맵 키(`true`와 `"true"`)는 `syntax` 오류 `Map keys collide as "<key>"`이고 위치는 뒤의 키다. 컬렉션인 맵 키(`? [a, b]`)도 `syntax` 오류다.
@@ -131,7 +131,7 @@
 
 ### FR-08 검증
 
-- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 어떤 모양의 `data`가 와도 예외를 던지지 않는다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
+- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 두 검사는 항목마다 둘 다 한다(`.inf` 같은 값이 그 항목의 스키마 오류를 가리지 않는다). 스키마 검사는 안전하게 읽을 수 없는 데이터(순환, 접근자, Proxy, 클래스 인스턴스)에서만 건너뛴다. 어떤 모양의 `data`나 `Model`이 와도 예외를 던지지 않는다: 없는 목록은 빈 목록으로 보고, 읽다가 예외가 나는 데이터(던지는 트랩이 있는 Proxy)는 `/ must be a JSON value`로 보고한다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
 - `validateProject(fs, dir)`는 모델 찾기, 읽기, 검증을 한 번에 해서 `{ issues, models }`를 돌려준다. `issues`는 `P01`·`P02`만 담고, `models`의 항목은 `{ dir, issues, counts }`다(`issues`는 `loadModel`과 `validateModel`의 것). 프로젝트 오류는 `file`로 모델과 이어진다. CLI와 MCP(F08)가 이것을 부른다.
 - `Issue`의 필드:
 
@@ -141,7 +141,7 @@
   | `severity`       | `error` 또는 `warning`. `comment`만 `warning`이다                                                       |
   | `file`           | 연 폴더 기준 경로                                                                                       |
   | `path`           | 파일 데이터 안의 JSON Pointer. `syntax`와 `yaml-feature`는 `""`                                         |
-  | `line`, `column` | 1부터. 순서대로 정한다. (1) 파서나 주석이 준 위치가 있으면 그것(`syntax`, `yaml-feature`, `comment`). (2) 없으면 `path`를 위치 색인에서 찾는다: 객체의 키이면 키의 시작, 배열 항목이면 값의 시작. (3) `path`가 `""`이고 파서 위치가 없으면 1:1 |
+  | `line`, `column` | 1부터. 순서대로 정한다. (1) 파서나 주석이 준 위치가 있으면 그것(`syntax`, `yaml-feature`, `comment`). (2) 없으면 `path`를 위치 색인에서 찾는다: 객체의 키이면 키의 시작, 배열 항목이면 값의 시작. (3) `path`가 `""`이고 파서 위치가 없으면, 위치 색인이 있는 파일은 1:1이고 메모리에서 만든 항목은 줄·열이 없다 |
   | `message`        | 영어 한 줄                                                                                              |
 
 - (2)에서 그 파일의 색인이 없거나 `path`가 색인에 없으면 `line`과 `column`을 뺀다. `path`는 항상 있다. 디스크에서 읽어 바로 검증하면(`validateProject`) 모든 `Issue`에 줄·열이 있다.
@@ -149,7 +149,7 @@
 - `syntax` 오류: YAML은 파서 메시지의 첫 줄을 쓴다.
 - `R01`~`R12`: 메시지마다의 규칙 ID와 `path`는 부록 A를 따른다. 검사 내용과 문구는 옛 도구와 같되, 형식 문서와 옛 도구가 다른 네 곳은 형식 문서를 따른다(부록 A의 18, 25, 26, 38).
 - 돌려주는 순서는 `file`, 위치가 없는 것 먼저, `line`, `column`, `rule`, `message` 순 정렬이다.
-- 주석이 있는 YAML 파일마다 `comment` 경고 하나를 낸다. 모델에 들어간 파일에만 낸다. 위치는 첫 주석이고, 메시지는 도구가 이 파일을 다시 쓰면 주석이 사라진다는 내용이다. 예제는 경고가 0개다.
+- 주석이 있는 YAML 파일마다 `comment` 경고 하나를 낸다. 모델에 들어간 파일에만 낸다. 위치는 첫 주석이고, 메시지는 `YAML comments are not kept when erdmaker rewrites this file`이다. 예제는 경고가 0개다.
 
 ### FR-09 깨진 배치 JSON
 
@@ -293,6 +293,7 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 - 조용히 넘어가는 것(옛 도구와 같다): `dictionaries`에 적힌 폴더가 없을 때, `entities/foo.yml`처럼 확장자가 다른 파일, 모델 폴더의 모르는 파일.
 - YAML 파서도 받아들이는 깨진 JSON(끝 쉼표 등)은 엔진이 위치를 주지 않으면 1:1로 보고된다.
 - YAML 주석은 파일을 다시 쓸 때 사라진다. 경고로만 알린다.
+- 메모리 어댑터의 `list`는 저장된 경로를 모두 훑으므로 폴더가 수천 개인 모델에서 느리다. 실제 모델은 폴더가 몇 개다.
 - `ext` 안의 맵에 숫자뿐인 키가 있으면 순서가 보존되지 않는다(JavaScript 객체의 키 순서).
 
 ## 부록 A. 규칙 메시지와 사례
