@@ -1537,4 +1537,203 @@ export const RULE_CASES: RuleCase[] = [
     ],
     parityExcluded: FR13_KEY_PART,
   },
+  {
+    // Row 38 is checked apart from row 15, so a swapped relationship gives both.
+    name: 'relationship with its parent and child swapped',
+    rows: [38, 15, 27],
+    changes: [
+      replace(
+        relationship('customer_places_order'),
+        'parent: customer\nchild: order\n',
+        'parent: order\nchild: customer\n',
+      ),
+    ],
+    issues: [
+      error(
+        'R04',
+        entity('order'),
+        '/attributes/1/migratedFrom/0/relationship',
+        22,
+        9,
+        'attribute "cust_no": "customer_places_order" does not have this entity as its child',
+      ),
+      error(
+        'R04',
+        entity('order'),
+        '/attributes/1/migratedFrom/0/attribute',
+        23,
+        9,
+        'attribute "cust_no": order.cust_no is not part of the key that "customer_places_order" migrates',
+      ),
+      error(
+        'R04',
+        relationship('customer_places_order'),
+        '',
+        1,
+        1,
+        '"customer_places_order": order.ord_no must migrate to exactly one attribute of "customer" (found 0)',
+      ),
+    ],
+    parityExcluded: FR13_KEY_PART,
+  },
+  {
+    name: 'subtype member id that another member has',
+    rows: [9],
+    changes: [
+      replace(
+        SUBTYPE,
+        '  - id: customer_is_corporate\n',
+        '  - id: customer_is_personal\n',
+      ),
+    ],
+    issues: [
+      error(
+        'R02',
+        entity('corporate_customer'),
+        '/attributes/0/migratedFrom/0/relationship',
+        14,
+        9,
+        'attribute "cust_no": unknown relationship "customer_is_corporate"',
+      ),
+      error(
+        'R01',
+        SUBTYPE,
+        '/members/1/id',
+        9,
+        5,
+        'member id "customer_is_personal" clashes with another relationship or subtype member',
+      ),
+    ],
+  },
+  {
+    // A subtype member's link is the member, so the third message of row 26 points at it.
+    name: 'supertype without a primary key',
+    rows: [26],
+    changes: [
+      replace(
+        entity('customer'),
+        '    kind: primary\n',
+        '    kind: alternate\n',
+      ),
+    ],
+    issues: [
+      error(
+        'R04',
+        relationship('customer_has_address'),
+        '',
+        1,
+        1,
+        '"customer_has_address": parent "customer" has no primary key to migrate',
+      ),
+      error(
+        'R04',
+        relationship('customer_places_order'),
+        '',
+        1,
+        1,
+        '"customer_places_order": parent "customer" has no primary key to migrate',
+      ),
+      error(
+        'R04',
+        SUBTYPE,
+        '/members/0',
+        6,
+        5,
+        '"customer_is_personal": parent "customer" has no primary key to migrate',
+      ),
+      error(
+        'R04',
+        SUBTYPE,
+        '/members/1',
+        9,
+        5,
+        '"customer_is_corporate": parent "customer" has no primary key to migrate',
+      ),
+    ],
+  },
+  {
+    // The subtype file has no scope key, so the path is the object that would hold it.
+    name: 'subtype without a scope over a physical member entity',
+    rows: [25],
+    changes: [
+      replace(
+        entity('personal_customer'),
+        'name: 개인고객\n',
+        'name: 개인고객\nscope: physical\n',
+      ),
+    ],
+    issues: [
+      error(
+        'R08',
+        SUBTYPE,
+        '',
+        1,
+        1,
+        '"customer_is_personal": scope is wider than its child entity\'s',
+      ),
+    ],
+  },
+  {
+    // Ids that pass the id pattern and name an Object.prototype member (`constructor`) or nearly do.
+    name: 'ids that look like prototype keys',
+    rows: [11, 14, 27, 32, 35],
+    changes: [
+      replace(
+        entity('address'),
+        '    domain: code\n',
+        '    domain: constructor\n',
+      ),
+      replace(
+        entity('order'),
+        '      - relationship: order_bills_to\n',
+        '      - relationship: constructor\n',
+      ),
+      replace(
+        PARTY,
+        '  - personal_customer\n',
+        '  - personal_customer\n  - constructor\n  - valueof\n',
+      ),
+      replace(
+        CATALOG_LAYOUT,
+        '"tag": { "x": 1060, "y": 40 }\n',
+        '"tag": { "x": 1060, "y": 40 },\n    "constructor": { "x": 0, "y": 0 }\n',
+      ),
+    ],
+    issues: [
+      error(
+        'R02',
+        entity('address'),
+        '/attributes/2/domain',
+        24,
+        5,
+        'attribute "zip_cd": unknown domain "constructor"',
+      ),
+      error(
+        'R02',
+        entity('order'),
+        '/attributes/3/migratedFrom/0/relationship',
+        40,
+        9,
+        'attribute "bill_addr_no": unknown relationship "constructor"',
+      ),
+      error(
+        'R09',
+        CATALOG_LAYOUT,
+        '/nodes/constructor',
+        9,
+        5,
+        'node for unknown entity "constructor"',
+      ),
+      error(
+        'R04',
+        relationship('order_bills_to'),
+        '',
+        1,
+        1,
+        '"order_bills_to": address.addr_no must migrate to exactly one attribute of "order" (found 0)',
+      ),
+      error('R02', PARTY, '/entities/4', 9, 5, 'unknown entity "constructor"'),
+      error('R02', PARTY, '/entities/5', 10, 5, 'unknown entity "valueof"'),
+    ],
+  },
 ];

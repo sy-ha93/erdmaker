@@ -32,6 +32,15 @@ export interface RuleItems {
   layouts: ModelItem<unknown>[];
 }
 
+/** R01 for an id that an earlier item of the same kind (`what`) has; `first` is that item's file. */
+type Duplicate = (
+  file: string,
+  path: string,
+  what: string,
+  id: string,
+  first: string,
+) => void;
+
 const read = <T>(
   items: ModelItem<unknown>[],
   reader: (file: string, data: unknown) => T | undefined,
@@ -53,23 +62,24 @@ const read = <T>(
  */
 export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
   const context = new RuleContext();
-  const inModel = (file: string) => relativePath(modelDir, file);
+  const duplicate: Duplicate = (file, path, what, id, first) =>
+    context.report(
+      'R01',
+      file,
+      path,
+      `duplicate ${what} id "${id}" (also in ${relativePath(modelDir, first)})`,
+    );
 
-  /** The first item of each id; R01 for the others. */
+  /** The first item of each id, added to `map`; R01 for the others. */
   const byId = <T extends { file: string; id: string }>(
     list: T[],
     what: string,
+    map = new Map<string, T>(),
   ): Map<string, T> => {
-    const map = new Map<string, T>();
     for (const item of list) {
       const first = map.get(item.id);
       if (first) {
-        context.report(
-          'R01',
-          item.file,
-          '/id',
-          `duplicate ${what} id "${item.id}" (also in ${inModel(first.file)})`,
-        );
+        duplicate(item.file, '/id', what, item.id, first.file);
       } else {
         map.set(item.id, item);
       }
@@ -78,9 +88,13 @@ export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
   };
 
   const dictionaries = read(items.dictionaries, readDictionary);
-  const names = dictionaryIssues(context, dictionaries, inModel);
+  const names = dictionaryIssues(context, dictionaries, duplicate);
 
-  const entities = byId(read(items.entities, readEntity), 'entity');
+  const entities = byId(
+    read(items.entities, readEntity),
+    'entity',
+    context.entities,
+  );
   const relationships = byId(
     read(items.relationships, readRelationship),
     'relationship',
@@ -88,7 +102,6 @@ export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
   const subtypes = byId(read(items.subtypes, readSubtype), 'subtype');
   const areas = byId(read(items.subjectAreas, readSubjectArea), 'subject area');
   const layouts = read(items.layouts, readLayout);
-  for (const [id, entity] of entities) context.entities.set(id, entity);
 
   const manifest = items.manifest
     ? readManifest(items.manifest.file, items.manifest.data)
@@ -96,16 +109,7 @@ export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
   const { schemas, groups } = manifestIssues(context, manifest);
 
   physicalIssues(context, entities.values(), schemas);
-  for (const area of areas.values()) {
-    if (area.group !== undefined && !groups.has(area.group)) {
-      context.report(
-        'R12',
-        area.file,
-        '/group',
-        `unknown area group "${area.group}"`,
-      );
-    }
-  }
+  groupIssues(context, areas.values(), groups);
 
   addLinks(context, relationships.values(), subtypes.values());
   for (const entity of entities.values()) {
@@ -113,46 +117,9 @@ export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
   }
   for (const link of context.links.values()) linkIssues(context, link);
 
-  for (const relationship of relationships.values()) {
-    if (
-      relationship.resolvedBy !== undefined &&
-      !entities.has(relationship.resolvedBy)
-    ) {
-      context.report(
-        'R02',
-        relationship.file,
-        '/resolvedBy',
-        `unknown resolvedBy entity "${relationship.resolvedBy}"`,
-      );
-    }
-  }
-  for (const subtype of subtypes.values()) {
-    const supertype = entities.get(subtype.supertype);
-    if (
-      subtype.discriminator !== undefined &&
-      supertype &&
-      !context.attribute(supertype, subtype.discriminator)
-    ) {
-      context.report(
-        'R02',
-        subtype.file,
-        '/discriminator',
-        `supertype "${subtype.supertype}" has no attribute "${subtype.discriminator}"`,
-      );
-    }
-  }
-  for (const area of areas.values()) {
-    for (const { index, value } of area.entities) {
-      if (!entities.has(value)) {
-        context.report(
-          'R02',
-          area.file,
-          `/entities/${index}`,
-          `unknown entity "${value}"`,
-        );
-      }
-    }
-  }
+  resolvedByIssues(context, relationships.values());
+  discriminatorIssues(context, subtypes.values());
+  areaEntityIssues(context, areas.values());
   layoutIssues(context, layouts, areas);
   return context.issues;
 }
@@ -161,7 +128,7 @@ export function ruleIssues(items: RuleItems, modelDir: string): Issue[] {
 function dictionaryIssues(
   context: RuleContext,
   dictionaries: Dictionary[],
-  inModel: (file: string) => string,
+  duplicate: Duplicate,
 ) {
   const words = new Map<string, string>();
   const terms = new Map<
@@ -169,19 +136,6 @@ function dictionaryIssues(
     { file: string; term: Dictionary['terms'][number] }
   >();
   const domains = new Map<string, string>();
-  const duplicate = (
-    file: string,
-    path: string,
-    what: string,
-    id: string,
-    first: string,
-  ) =>
-    context.report(
-      'R01',
-      file,
-      path,
-      `duplicate ${what} id "${id}" (also in ${inModel(first)})`,
-    );
   for (const dictionary of dictionaries) {
     const { file } = dictionary;
     for (const { index, value } of dictionary.words) {
@@ -404,6 +358,82 @@ function layoutIssues(
           layout.file,
           `/edges/${escapePointerToken(edge)}`,
           `edge for unknown relationship "${edge}"`,
+        );
+      }
+    }
+  }
+}
+
+/** R12 for a subject area in an area group that `model.yaml` does not list. */
+function groupIssues(
+  context: RuleContext,
+  areas: Iterable<SubjectArea>,
+  groups: Set<string>,
+) {
+  for (const area of areas) {
+    if (area.group !== undefined && !groups.has(area.group)) {
+      context.report(
+        'R12',
+        area.file,
+        '/group',
+        `unknown area group "${area.group}"`,
+      );
+    }
+  }
+}
+
+/** R02 for a relationship resolved by an entity the model does not have. */
+function resolvedByIssues(
+  context: RuleContext,
+  relationships: Iterable<Relationship>,
+) {
+  for (const relationship of relationships) {
+    if (
+      relationship.resolvedBy !== undefined &&
+      !context.entities.has(relationship.resolvedBy)
+    ) {
+      context.report(
+        'R02',
+        relationship.file,
+        '/resolvedBy',
+        `unknown resolvedBy entity "${relationship.resolvedBy}"`,
+      );
+    }
+  }
+}
+
+/** R02 for a discriminator that the supertype has no attribute for. */
+function discriminatorIssues(
+  context: RuleContext,
+  subtypes: Iterable<Subtype>,
+) {
+  for (const subtype of subtypes) {
+    const supertype = context.entities.get(subtype.supertype);
+    if (
+      subtype.discriminator !== undefined &&
+      supertype &&
+      !context.attribute(supertype, subtype.discriminator)
+    ) {
+      context.report(
+        'R02',
+        subtype.file,
+        '/discriminator',
+        `supertype "${subtype.supertype}" has no attribute "${subtype.discriminator}"`,
+      );
+    }
+  }
+}
+
+/** R02 for a subject area entry that names no entity. */
+function areaEntityIssues(context: RuleContext, areas: Iterable<SubjectArea>) {
+  for (const area of areas) {
+    for (const { index, value } of area.entities) {
+      if (!context.entities.has(value)) {
+        context.report(
+          'R02',
+          area.file,
+          `/entities/${index}`,
+          `unknown entity "${value}"`,
         );
       }
     }
