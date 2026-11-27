@@ -290,15 +290,15 @@ function comparableKey(key: unknown): unknown {
 }
 
 interface KeyScan {
-  /** Some key repeats an earlier key of its map exactly (a parser error). */
-  duplicate: boolean;
+  /** How many keys repeat an earlier key of their map exactly (parser errors). */
+  duplicates: number;
   /** Collection keys, and keys that turn into the same object key as an earlier one. */
   problems: { message: string; offset: number }[];
 }
 
 /** One pass over every map's keys, in document order. */
 function scanKeys(yaml: YamlDocument): KeyScan {
-  const scan: KeyScan = { duplicate: false, problems: [] };
+  const scan: KeyScan = { duplicates: 0, problems: [] };
   walkCollections(yaml, {
     pair(pair) {
       if (isCollection(pair.key)) {
@@ -314,7 +314,7 @@ function scanKeys(yaml: YamlDocument): KeyScan {
       for (const pair of map.items) {
         if (!isScalar(pair.key)) continue;
         const comparable = comparableKey(pair.key);
-        if (exact.has(comparable)) scan.duplicate = true;
+        if (exact.has(comparable)) scan.duplicates += 1;
         if (comparable !== INCOMPARABLE) exact.add(comparable);
         const key = keyString(pair.key.value);
         if (seen.has(key)) {
@@ -369,13 +369,15 @@ function duplicateKeyError(yaml: YamlDocument, offset: number): YAMLError {
  * `uniqueKeys` function that ends the composer's scan of earlier keys at the
  * first one, so it costs one call per key. The composer then reports an error
  * at every key after a map's first, in its own order and at its own offsets;
- * the errors at keys that are no exact duplicate are dropped.
+ * the errors at keys that are no exact duplicate are dropped. Should the kept
+ * errors not match the `duplicates` found by `scanKeys`, the parser's own
+ * check is used instead.
  */
 export function parserErrors(
   yaml: YamlDocument,
-  duplicate = scanKeys(yaml).duplicate,
+  duplicates = scanKeys(yaml).duplicates,
 ): YAMLError[] {
-  if (!duplicate) return yaml.doc.errors;
+  if (duplicates === 0) return yaml.doc.errors;
   const exact: boolean[] = [];
   // Earlier keys of each map, by the map's first key.
   const earlier = new WeakMap<object, Set<unknown>>();
@@ -390,20 +392,30 @@ export function parserErrors(
     keys.add(comparable);
     return true;
   };
-  // No line counter: the composer's errors are not formatted, which would read each key's line.
-  const checked = parseDocument(yaml.text, { ...OPTIONS, uniqueKeys });
+  // Unformatted: formatting an error copies and scans its whole line, once per key.
+  const checked = parseDocument(yaml.text, {
+    ...OPTIONS,
+    uniqueKeys,
+    prettyErrors: false,
+  });
   // The other errors are the same, in the same order, and already formatted.
   const others = yaml.doc.errors;
   const errors: YAMLError[] = [];
   let other = 0;
   let key = 0;
+  let kept = 0;
   for (const error of checked.errors) {
     if (error.code !== 'DUPLICATE_KEY') {
       const same = others[other++];
       if (same) errors.push(same);
     } else if (exact[key++]) {
       errors.push(duplicateKeyError(yaml, error.pos[0]));
+      kept += 1;
     }
+  }
+  if (kept !== duplicates) {
+    // The parser no longer calls `uniqueKeys` as above; its own check is right, if slow.
+    return parseDocument(yaml.text, { ...OPTIONS, uniqueKeys: true }).errors;
   }
   return errors;
 }
@@ -446,7 +458,7 @@ export function parseYaml(file: string, text: string): ParsedText {
   const keys = scanKeys(yaml);
   const result: ParsedText = {
     value: undefined,
-    issues: yamlErrorIssues(file, yaml, parserErrors(yaml, keys.duplicate)),
+    issues: yamlErrorIssues(file, yaml, parserErrors(yaml, keys.duplicates)),
     positions: new Map(),
   };
   if (result.issues.length > 0) return result;

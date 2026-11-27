@@ -229,18 +229,77 @@ describe('YAML duplicate keys', () => {
 });
 
 describe('YAML with many keys', () => {
-  test('a map of 50000 distinct keys is read in well under two seconds', () => {
-    const count = 50_000;
-    const text = Array.from({ length: count }, (_, i) => `k${i}: ${i}\n`).join(
-      '',
-    );
-    const start = performance.now();
-    const result = parseYaml(FILE, text);
-    const elapsed = performance.now() - start;
-    expect(result.issues).toEqual([]);
-    expect(Object.keys(result.value as object)).toHaveLength(count);
-    expect(elapsed).toBeLessThan(2000);
-  });
+  // Four times the keys take about four times as long if reading is linear,
+  // sixteen times if quadratic.
+  const SMALL = 10_000;
+  const LARGE = 40_000;
+  const MAX_RATIO = 8;
+  const BACKSTOP = 10_000;
+
+  /**
+   * Reads `text(SMALL)` and `text(LARGE)` three times each, checks the first
+   * result of each, and compares the best times. A run past the backstop is
+   * not repeated.
+   */
+  function expectLinear(
+    text: (count: number) => string,
+    check: (result: ReturnType<typeof parseYaml>, count: number) => void,
+  ) {
+    const [small, large] = [SMALL, LARGE].map((count) => {
+      const source = text(count);
+      let best = Infinity;
+      for (let run = 0; run < 3; run += 1) {
+        const start = performance.now();
+        const result = parseYaml(FILE, source);
+        const elapsed = performance.now() - start;
+        best = Math.min(best, elapsed);
+        if (run === 0) check(result, count);
+        if (elapsed > BACKSTOP) break;
+      }
+      return best;
+    });
+    expect(large / small).toBeLessThan(MAX_RATIO);
+    expect(large).toBeLessThan(BACKSTOP);
+  }
+
+  test(
+    'a block map of distinct keys is read in linear time',
+    { timeout: 60_000 },
+    () => {
+      expectLinear(
+        (count) =>
+          Array.from({ length: count }, (_, i) => `k${i}: ${i}\n`).join(''),
+        (result, count) => {
+          expect(result.issues).toEqual([]);
+          expect(Object.keys(result.value as object)).toHaveLength(count);
+        },
+      );
+    },
+  );
+
+  test(
+    'a one-line flow map with a duplicate key is read in linear time',
+    { timeout: 60_000 },
+    () => {
+      const text = (count: number) =>
+        `{${Array.from({ length: count }, (_, i) => `k${i}: ${i}`).join(', ')}, k0: x}`;
+      expectLinear(text, (result, count) => {
+        const column = text(count).lastIndexOf('k0:') + 1;
+        expect(result.issues).toEqual([
+          {
+            rule: 'syntax',
+            severity: 'error',
+            file: FILE,
+            path: '',
+            line: 1,
+            column,
+            message: `Map keys must be unique at line 1, column ${column}:`,
+          },
+        ]);
+        expect(result.value).toBeUndefined();
+      });
+    },
+  );
 });
 
 describe('YAML features', () => {
