@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { joinPath, normalizePath } from './path.js';
+import { joinPath, normalizePath, relativePath } from './path.js';
 
 describe('normalizePath', () => {
   test.each([
@@ -35,5 +35,26 @@ describe('joinPath', () => {
     [['a/b', 'c', 'd.json'], 'a/b/c/d.json'],
   ])('%j → %j', (parts, expected) => {
     expect(joinPath(...parts)).toBe(expected);
+  });
+});
+
+describe('relativePath', () => {
+  test.each([
+    ['', 'entities/a.yaml', 'entities/a.yaml'],
+    ['m', 'm/entities/a.yaml', 'entities/a.yaml'],
+    ['a/m', 'a/m/entities/a.yaml', 'entities/a.yaml'],
+    ['m', 'dictionary/standard.yaml', '../dictionary/standard.yaml'],
+    ['a/m', 'a/dict/x.yaml', '../dict/x.yaml'],
+    ['a/b', 'c/d.yaml', '../../c/d.yaml'],
+    ['', '../dictionary/x.yaml', '../dictionary/x.yaml'],
+    ['m', '../d/x.yaml', '../../d/x.yaml'],
+    ['../m', '../m/e.yaml', 'e.yaml'],
+    ['../m', '../d/x.yaml', '../d/x.yaml'],
+    ['m/./', 'm//e.yaml', 'e.yaml'],
+    // The way back into the opened folder from outside it has no name.
+    ['../m', 'e.yaml', 'e.yaml'],
+    ['entities', 'entities-old/a.yaml', '../entities-old/a.yaml'],
+  ])('from %j to %j → %j', (from, to, expected) => {
+    expect(relativePath(from, to)).toBe(expected);
   });
 });

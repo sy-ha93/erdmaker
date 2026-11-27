@@ -65,8 +65,19 @@ describe('validateModel: schema and JSON values', () => {
         ...model.entities,
       ],
       layouts: [{ file: 'layouts/new.json', data: { nodes: {} } as never }],
-      dictionaries: [{ file: 'd/a.yaml', data: { words: 1 } as never }],
+      dictionaries: [
+        { file: 'd/a.yaml', data: { words: 1 } as never },
+        ...model.dictionaries,
+      ],
     };
+    // Without the manifest no area group is known: the rule issues have no position either.
+    const unknownGroup = (area: string, group: string): Issue => ({
+      rule: 'R12',
+      severity: 'error',
+      file: `subject-areas/${area}.yaml`,
+      path: '/group',
+      message: `unknown area group "${group}"`,
+    });
     expect(validateModel(changed)).toEqual([
       schemaIssue('d/a.yaml', '/words', '/words must be array'),
       schemaIssue(
@@ -84,20 +95,27 @@ describe('validateModel: schema and JSON values', () => {
         '/notation',
         '/notation must be equal to one of the allowed values',
       ),
+      unknownGroup('catalog', 'master'),
+      unknownGroup('party', 'master'),
+      unknownGroup('sales', 'trade'),
     ]);
     expect(model.entities).toHaveLength(10);
   });
 
   test('with positions, an item from disk gets the position of its path', async () => {
     const { model, positions } = await loadModel(exampleFileSystem(), '');
-    const [first, ...rest] = model.entities;
-    if (!first) throw new Error('no entity');
+    // No file refers to subject area party, so leaving it out takes no rule issue with it.
+    const first = model.subjectAreas.find(
+      (item) => item.file === 'subject-areas/party.yaml',
+    );
+    if (!first) throw new Error('no subject area party');
     const changed: Model = {
       ...model,
-      entities: [
-        { ...first, data: { ...first.data, name: 7 as unknown as string } },
-        ...rest,
-      ],
+      subjectAreas: model.subjectAreas.map((item) =>
+        item === first
+          ? { ...first, data: { ...first.data, name: 7 as unknown as string } }
+          : item,
+      ),
     };
     expect(validateModel(changed, positions)).toEqual([
       schemaIssue(first.file, '/name', '/name must be string', {
@@ -295,8 +313,10 @@ describe('validateModel: schema and JSON values', () => {
             (sum, item) => sum + item.data.attributes.length,
             0,
           );
-        const smallTime = time(small, count(small));
-        const largeTime = time(large, count(large));
+        // A schema error per attribute; then, those entities left out, R02 for each in the area.
+        const expected = (model: Model) => count(model) + model.entities.length;
+        const smallTime = time(small, expected(small));
+        const largeTime = time(large, expected(large));
         expect(largeTime / smallTime).toBeLessThan(8);
         expect(largeTime).toBeLessThan(10_000);
       }
@@ -363,7 +383,7 @@ describe('validateModel: absolute dictionaries entries', () => {
       exampleFiles(),
       'model.yaml',
       'targets:\n',
-      'dictionaries:\n  - /abs/dict\ntargets:\n',
+      'dictionaries:\n  - /abs/dict\n  - dictionary\ntargets:\n',
     );
     const { model, positions } = await loadModel(exampleFileSystem(files), '');
     expect(validateModel(model, positions)).toEqual([

@@ -1,8 +1,10 @@
+import { normalizePath } from '../fs/path.js';
 import type { Issue, Model, ModelItem } from '../model/types.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { type FilePositions, finishIssues } from './issues.js';
 import { manifestIssues } from './manifest.js';
 import { field, listed } from './plain.js';
+import { ruleIssues, type RuleItems } from './rules/index.js';
 import { itemIssues } from './schema.js';
 
 /**
@@ -40,21 +42,50 @@ export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
  * Checks a model without touching files: every item against its schema and
  * for values that are not JSON data, and the manifest for absolute
  * `dictionaries` entries (`loadModel` does not read those folders and leaves
- * the error to this check, so loading and checking report it once). With `positions` (from `loadModel`) the
- * issues get lines and columns; without, only paths. Sorted by file, then
- * position. Does not change the model and never throws, whatever the items'
- * `data` holds or however the model itself is malformed (see `modelItems`).
+ * the error to this check, so loading and checking report it once). Then the
+ * cross-file rules R01 to R12 over the items that passed the schema and JSON
+ * value checks, as if the others were not in the model (an absolute
+ * `dictionaries` entry does not take the manifest out). With `positions`
+ * (from `loadModel`) the issues get lines and columns; without, only paths.
+ * Sorted by file, then position. Does not change the model and never throws,
+ * whatever the items' `data` holds or however the model itself is malformed
+ * (see `modelItems`).
  */
 export function validateModel(
   model: Model,
   positions?: FilePositions,
 ): Issue[] {
   const issues: Issue[] = [];
-  for (const [{ file, data }, schema] of modelItems(model)) {
-    for (const issue of itemIssues(file, schema, data)) issues.push(issue);
+  const passed: RuleItems = {
+    dictionaries: [],
+    entities: [],
+    relationships: [],
+    subtypes: [],
+    subjectAreas: [],
+    layouts: [],
+  };
+  const lists: Record<Exclude<SchemaName, 'model'>, ModelItem<unknown>[]> = {
+    dictionary: passed.dictionaries,
+    entity: passed.entities,
+    relationship: passed.relationships,
+    subtype: passed.subtypes,
+    'subject-area': passed.subjectAreas,
+    layout: passed.layouts,
+  };
+  for (const [item, schema] of modelItems(model)) {
+    const found = itemIssues(item.file, schema, item.data);
+    for (const issue of found) issues.push(issue);
     if (schema === 'model') {
-      for (const issue of manifestIssues(file, data)) issues.push(issue);
+      for (const issue of manifestIssues(item.file, item.data)) {
+        issues.push(issue);
+      }
+      if (found.length === 0) passed.manifest = item;
+    } else if (found.length === 0) {
+      lists[schema].push(item);
     }
   }
+  const dir = field(model, 'dir');
+  const modelDir = typeof dir === 'string' ? normalizePath(dir) : '';
+  for (const issue of ruleIssues(passed, modelDir)) issues.push(issue);
   return finishIssues(issues, positions);
 }
