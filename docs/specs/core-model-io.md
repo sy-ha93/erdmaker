@@ -68,8 +68,8 @@
   | `remove(path)`          | 파일을 지운다. 없으면 아무 일도 하지 않는다                                         |
 
 - 경로는 연 폴더를 기준으로 한 상대 경로이고 구분자는 `/`다. 연 폴더 자신은 `""`다. 사전이 밖에 있으면 `../dictionary/standard.yaml`처럼 `..`로 시작할 수 있다. 그런 경로를 읽을 수 있는지는 구현에 달렸다(Node와 메모리 구현은 읽는다).
-- 있을 수 없는 경로(너무 길거나 NUL이 든 경로)는 두 구현 모두 없는 것으로 다룬다.
-- Node 구현은 `ENOENT`와 `ENOTDIR`을 `FileNotFoundError`로 바꾼다. `list`는 끊어진 심볼릭 링크(`ENOENT`, `ENOTDIR`)를 건너뛰고, 폴더 링크의 실제 경로가 나열 중인 폴더, 탐색이 거쳐 온 폴더, 또는 그 위의 어느 폴더의 실제 경로와 같으면 따라가지 않으며, `ELOOP`·`EACCES` 같은 다른 실패는 거부한다. 그 밖의 실패(권한, 폴더를 파일로 읽음)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
+- Node 구현에서 "없음"은 `ENOENT`, `ENOTDIR`, `ENAMETOOLONG`, 또는 경로에 NUL이 든 경우이고 `FileNotFoundError`가 된다. 메모리 구현은 길이 제한이 없고, NUL이 든 경로는 읽으면 없음이고 쓰면 거부한다. 그 밖의 실패(`EACCES`, 폴더를 파일로 읽음)는 `FileNotFoundError`가 아닌 오류로 거부한다. 코어는 이것을 삼키지 않고 호출자에게 그대로 넘긴다.
+- `list`는 심볼릭 링크를 돌려주지 않는다. 링크인 항목은 무엇을 가리키든 오류 없이 뺀다. 직접 준 경로(연 폴더, `readText`, `writeText`, `remove`)는 운영체제가 평소대로 푼다. 브라우저 어댑터(F09)는 심볼릭 링크를 볼 수 없어 Node에서 따라가면 CLI와 앱이 다른 모델을 읽게 되고, 폴더 링크를 안전하게 따라가려면 상태가 필요하다.
 - `remove`는 이 기능에서 부르지 않는다. F03이 인터페이스를 바꾸지 않도록 지금 둔다.
 - 구현 둘: `createMemoryFileSystem(files?)`(`@erdmaker/core`), `createNodeFileSystem(rootDir)`(`@erdmaker/core/node`).
 - 계약 테스트는 `core`의 테스트 안에 있는 공유 묶음 하나이고, 메모리 구현과 Node 구현에 돌린다.
@@ -90,7 +90,7 @@
 
 ### FR-05 읽기
 
-- `loadModel(fs, modelDir)`는 `{ model, issues, positions }`를 돌려준다. `issues`는 모델에 들어가지 못한 파일의 오류, `comment` 경고, 그리고 모델에 남는 파일에서 모델을 읽는 방식에 관해 난 오류다. 절대 `dictionaries` 항목은 `validateModel`이 보고하므로 여기에 다시 넣지 않는다(읽고 검증하면 한 번만 나온다). `model.yaml`이 없으면 `FileNotFoundError`로 거부한다. 읽는 대상은 옛 도구와 같다.
+- `loadModel(fs, modelDir)`는 `{ model, issues, positions }`를 돌려준다. `issues`는 모델에 들어가지 못한 파일의 오류와 `comment` 경고다. `model.yaml`이 없으면 `FileNotFoundError`로 거부한다. 읽는 대상은 옛 도구와 같다.
   - `model.yaml`
   - `entities/`, `relationships/`, `subtypes/`, `subject-areas/` 아래의 `*.yaml`과 `layouts/` 아래의 `*.json`. 하위 폴더까지 들어가고, 폴더마다 이름순(코드 단위 비교)으로 읽는다.
   - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다. 사전 파일은 한 번씩만 읽는다: 적힌 폴더들이 정규화한 뒤 같거나 겹치면 적힌 순서에서 먼저 나온 쪽이 이긴다. 절대 경로 항목(`/`나 `\`로 시작하거나 `C:/`, `C:\`처럼 드라이브 문자로 시작)은 읽지 않는다. 있을 수 없는 경로인 항목은 없는 폴더처럼 빈 사전이다.
@@ -126,7 +126,7 @@
 ### FR-07 예제 정규화와 형식 문서 보강
 
 - 예제를 쓰기 규칙에 맞게 고친다. 바꾸는 것은 2장에 적은 네 군데뿐이다(파일 3개). 모델의 뜻과 `validate`의 요약 줄은 바뀌지 않는다.
-- `docs/format-v0.md`의 "쓰기 규칙"을 고친다. "JSON 배치 파일은 키를 정렬한다"를 FR-06의 배치 규칙(스키마 키 순서, `nodes`·`edges`의 ID 정렬, 노드 하나에 한 줄)으로 바꾸고, 빈 객체 생략, 속성 `scope`를 생략하지 않는 것, 정렬하는 목록이 `entities` 하나인 것을 적는다. 주석은 보존하지 않으며 설명은 `definition`과 `note`에 적는다는 것도 적는다.
+- `docs/format-v0.md`의 "쓰기 규칙"을 고친다. "JSON 배치 파일은 키를 정렬한다"를 FR-06의 배치 규칙(스키마 키 순서, `nodes`·`edges`의 ID 정렬, 노드 하나에 한 줄)으로 바꾸고, 빈 객체 생략, 속성 `scope`를 생략하지 않는 것, 정렬하는 목록이 `entities` 하나인 것을 적는다. 주석은 보존하지 않으며 설명은 `definition`과 `note`에 적는다는 것도 적는다. "프로젝트, 모델, 주제영역" 절에는 모델 폴더 안의 심볼릭 링크를 읽지 않는다는 한 문장을 더한다.
 - `docs/format-v0.md`의 검증 규칙에 FR-08의 내용을 적는다. 규칙 4: `parentKey`는 부모의 대체 키여야 하고, 참조하는 키에 없는 부모 속성을 가리키는 `migratedFrom`은 오류다. 규칙 5: 비식별 관계로 이주된 속성 하나가 자식 PK의 전부일 수 없다. 규칙 6: 타입은 키 순서와 상관없이 비교한다. 규칙 8: 다대다 관계에도 적용한다. 규칙 10: `physical.schema`가 적힌 엔터티만 검사하고, 없는 엔터티는 허용한다.
 - `format/v0/schema/entity.schema.json`에서 속성의 `scope`를 공통 정의 참조 대신 기본값이 없는 같은 열거형으로 바꾸고, 설명에 "없으면 엔터티의 범위를 물려받는다"를 적는다. 바뀌는 스키마 파일은 이것 하나이고 생성 모듈을 다시 만든다. 받아들이는 값은 달라지지 않는다.
 
@@ -294,6 +294,7 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 - 조용히 넘어가는 것(옛 도구와 같다): `dictionaries`에 적힌 폴더가 없을 때, `entities/foo.yml`처럼 확장자가 다른 파일, 모델 폴더의 모르는 파일.
 - YAML 파서도 받아들이는 깨진 JSON(끝 쉼표 등)은 엔진이 위치를 주지 않으면 1:1로 보고된다.
 - YAML 주석은 파일을 다시 쓸 때 사라진다. 경고로만 알린다.
+- 모델 폴더 안의 심볼릭 링크는 무시한다. 사전을 함께 쓰려면 링크 대신 `dictionaries: [../shared]`로 가리킨다.
 - 메모리 어댑터의 `list`는 저장된 경로를 모두 훑으므로 폴더가 수천 개인 모델에서 느리다. 실제 모델은 폴더가 몇 개다.
 - `ext` 안의 맵에 숫자뿐인 키가 있으면 순서가 보존되지 않는다(JavaScript 객체의 키 순서).
 
