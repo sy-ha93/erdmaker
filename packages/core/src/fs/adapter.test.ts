@@ -111,11 +111,11 @@ function adapterContract(name: string, make: MakeAdapter) {
       );
     });
 
-    test('reading a folder rejects with an error that is not FileNotFoundError', async () => {
+    test('reading a folder rejects with FileNotFoundError: it is no file', async () => {
       const fs = await make({ 'd/b.txt': '1' });
       const error = await rejection(fs.readText('d'));
-      expect(error).toBeInstanceOf(Error);
-      expect(error).not.toBeInstanceOf(FileNotFoundError);
+      expect(error).toEqual(new FileNotFoundError('d'));
+      expect((error as FileNotFoundError).path).toBe('d');
     });
 
     test('remove deletes the file', async () => {

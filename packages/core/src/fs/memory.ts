@@ -13,7 +13,8 @@ function nulError(path: string): TypeError {
 
 /**
  * An adapter over an in-memory map of `path → text`. Folders exist only as
- * prefixes of file paths. Paths may start with `..`. As on disk, no file has
+ * prefixes of file paths; reading one rejects with `FileNotFoundError`, as
+ * the Node adapter does. Paths may start with `..`. As on disk, no file has
  * a NUL character in its path: such a path is read, listed and removed as a
  * missing one, and writing it, or passing it in `files`, fails. Paths are not
  * limited in length.
@@ -46,10 +47,9 @@ export function createMemoryFileSystem(
 
   return {
     async readText(path) {
-      const key = normalizePath(path);
-      const text = store.get(key);
+      const text = store.get(normalizePath(path));
       if (text !== undefined) return text;
-      if (isDirectory(key)) throw new Error(`Is a directory: ${path}`);
+      // A folder is no file, as on disk.
       throw new FileNotFoundError(path);
     },
 
@@ -66,6 +66,7 @@ export function createMemoryFileSystem(
       store.set(key, text);
     },
 
+    // Looks at every stored path: slow for thousands of folders (spec 8).
     async list(dir) {
       const key = normalizePath(dir);
       const prefix = key === '' ? '' : `${key}/`;

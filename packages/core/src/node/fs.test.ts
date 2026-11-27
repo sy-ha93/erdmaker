@@ -1,9 +1,21 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import type { FileSystemAdapter } from '../fs/adapter.js';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { FileNotFoundError, type FileSystemAdapter } from '../fs/adapter.js';
 import { loadModel } from '../model/load.js';
+import { writeModel } from '../model/write.js';
 import { exampleFiles, type Files, replaceOnce } from '../testing/example.js';
 import { createNodeFileSystem } from './fs.js';
 
@@ -163,7 +175,7 @@ describe(
       );
     });
 
-    test('a file read by a path that is a link is read through the link', async () => {
+    test('a file read by a path that is a link is missing', async () => {
       const store = await folder();
       const root = await folder(
         {},
@@ -173,15 +185,15 @@ describe(
         },
       );
       const fs = createNodeFileSystem(root);
-      expect(await fs.readText('entities/same.yaml')).toBe(
-        exampleFiles()['entities/customer.yaml'],
+      expect(await rejection(fs.readText('entities/same.yaml'))).toEqual(
+        new FileNotFoundError('entities/same.yaml'),
       );
-      expect(await fs.readText('linked.yaml')).toBe(
-        exampleFiles()['model.yaml'],
+      expect(await rejection(fs.readText('linked.yaml'))).toEqual(
+        new FileNotFoundError('linked.yaml'),
       );
     });
 
-    test('a model.yaml that is a link is read by name', async () => {
+    test('a model.yaml that is a link is missing: loadModel rejects', async () => {
       const store = await folder();
       const root = await folder(
         {},
@@ -189,13 +201,254 @@ describe(
       );
       await rm(join(root, 'model.yaml'));
       await symlink('model.yaml.real', join(root, 'model.yaml'));
-      const { model, issues } = await loadModel(createNodeFileSystem(root), '');
-      expect(issues).toEqual([]);
-      expect(model.manifest?.file).toBe('model.yaml');
-      expect(model.entities.map((item) => item.file)).toEqual(EXAMPLE_ENTITIES);
+      expect(
+        await rejection(loadModel(createNodeFileSystem(root), '')),
+      ).toBeInstanceOf(FileNotFoundError);
     });
   },
 );
+
+async function rejection(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    () => {
+      throw new Error('expected the promise to reject');
+    },
+    (error: unknown) => error,
+  );
+}
+
+const exists = (path: string) =>
+  lstat(path).then(
+    () => true,
+    () => false,
+  );
+
+/** A case folder holding the opened folder `root` and, beside it, `outside` with one file. */
+async function besideOutside(): Promise<{ root: string; outside: string }> {
+  cases += 1;
+  const top = join(base, String(cases));
+  const root = join(top, 'root');
+  const outside = join(top, 'outside');
+  await mkdir(join(root, 'real'), { recursive: true });
+  await writeFile(join(root, 'real', 'in.yaml'), 'inside\n', 'utf8');
+  await mkdir(outside, { recursive: true });
+  await writeFile(join(outside, 'customer.yaml'), 'keep\n', 'utf8');
+  return { root, outside };
+}
+
+const onTheWay = (path: string) =>
+  new Error(`Cannot write ${path}: a folder on its way is a symbolic link`);
+
+describe.skipIf(process.platform === 'win32')(
+  'node adapter: no symbolic link below the opened folder',
+  { timeout: 5_000 },
+  () => {
+    test('a linked folder on the way: read missing, list empty, remove and write change nothing outside', async () => {
+      const { root, outside } = await besideOutside();
+      await symlink('../outside', join(root, 'entities'));
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.readText('entities/customer.yaml'))).toEqual(
+        new FileNotFoundError('entities/customer.yaml'),
+      );
+      expect(await fs.list('entities')).toEqual([]);
+      await fs.remove('entities/customer.yaml');
+      expect(
+        await rejection(fs.writeText('entities/customer.yaml', 'x')),
+      ).toEqual(onTheWay('entities/customer.yaml'));
+      expect(
+        await rejection(fs.writeText('entities/new/deep/a.yaml', 'x')),
+      ).toEqual(onTheWay('entities/new/deep/a.yaml'));
+      expect(await readFile(join(outside, 'customer.yaml'), 'utf8')).toBe(
+        'keep\n',
+      );
+      expect(await readdir(outside)).toEqual(['customer.yaml']);
+    });
+
+    test('a link deeper on the way, to a folder inside the opened one, is refused too', async () => {
+      const { root } = await besideOutside();
+      await mkdir(join(root, 'a'));
+      await symlink('../real', join(root, 'a', 'b'));
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.readText('a/b/in.yaml'))).toEqual(
+        new FileNotFoundError('a/b/in.yaml'),
+      );
+      expect(await fs.list('a/b')).toEqual([]);
+      expect(await rejection(fs.writeText('a/b/c/x.yaml', 'x'))).toEqual(
+        onTheWay('a/b/c/x.yaml'),
+      );
+      await fs.remove('a/b/in.yaml');
+      expect(await readdir(join(root, 'real'))).toEqual(['in.yaml']);
+      // The real folder is read as usual, and the link is not listed.
+      expect(await fs.readText('real/in.yaml')).toBe('inside\n');
+      expect(await fs.list('a')).toEqual([]);
+    });
+
+    test('a link as the last entry: read missing, list empty, remove leaves it, write refused', async () => {
+      const { root } = await besideOutside();
+      await symlink('real/in.yaml', join(root, 'same.yaml'));
+      await symlink('real', join(root, 'same'));
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.readText('same.yaml'))).toEqual(
+        new FileNotFoundError('same.yaml'),
+      );
+      expect(await fs.list('same')).toEqual([]);
+      await fs.remove('same.yaml');
+      expect(await exists(join(root, 'same.yaml'))).toBe(true);
+      expect(await rejection(fs.writeText('same.yaml', 'x'))).toEqual(
+        new Error('Cannot write same.yaml: it is a symbolic link'),
+      );
+      expect(await readFile(join(root, 'real', 'in.yaml'), 'utf8')).toBe(
+        'inside\n',
+      );
+    });
+
+    test('writeModel through a linked entities folder writes nothing outside', async () => {
+      const { root, outside } = await besideOutside();
+      const { model } = await loadModel(
+        createNodeFileSystem(await folder()),
+        '',
+      );
+      for (const [path, text] of Object.entries(exampleFiles())) {
+        if (path.startsWith('entities/')) continue;
+        await mkdir(dirname(join(root, path)), { recursive: true });
+        await writeFile(join(root, path), text, 'utf8');
+      }
+      await writeFile(join(outside, 'address.yaml'), 'keep\n', 'utf8');
+      await symlink('../outside', join(root, 'entities'));
+      const fs = createNodeFileSystem(root);
+      expect((await loadModel(fs, '')).model.entities).toEqual([]);
+      expect(await rejection(writeModel(fs, model))).toEqual(
+        onTheWay('entities/address.yaml'),
+      );
+      expect(await readFile(join(outside, 'customer.yaml'), 'utf8')).toBe(
+        'keep\n',
+      );
+      expect(await readFile(join(outside, 'address.yaml'), 'utf8')).toBe(
+        'keep\n',
+      );
+      expect(await readdir(outside)).toEqual(['address.yaml', 'customer.yaml']);
+    });
+
+    test('paths above the opened folder: real folders are used, linked ones are not', async () => {
+      const { root, outside } = await besideOutside();
+      await symlink('outside', join(dirname(root), 'alias'));
+      const fs = createNodeFileSystem(root);
+      expect(await fs.list('../outside')).toEqual([
+        { name: 'customer.yaml', kind: 'file' },
+      ]);
+      expect(await fs.readText('../outside/customer.yaml')).toBe('keep\n');
+      await fs.writeText('../outside/new/a.yaml', 'a\n');
+      expect(await readFile(join(outside, 'new', 'a.yaml'), 'utf8')).toBe(
+        'a\n',
+      );
+      expect(await fs.list('../alias')).toEqual([]);
+      expect(await rejection(fs.readText('../alias/customer.yaml'))).toEqual(
+        new FileNotFoundError('../alias/customer.yaml'),
+      );
+      expect(await rejection(fs.writeText('../alias/b.yaml', 'b'))).toEqual(
+        onTheWay('../alias/b.yaml'),
+      );
+      await fs.remove('../alias/customer.yaml');
+      expect((await readdir(outside)).sort()).toEqual(['customer.yaml', 'new']);
+    });
+
+    test('an opened folder that is a link, or reached through one, is read and written', async () => {
+      const { root } = await besideOutside();
+      await symlink(root, `${root}-alias`);
+      await symlink(dirname(root), `${dirname(root)}-via`);
+      for (const opened of [
+        `${root}-alias`,
+        join(`${dirname(root)}-via`, 'root'),
+      ]) {
+        const fs = createNodeFileSystem(opened);
+        expect(await fs.readText('real/in.yaml')).toBe('inside\n');
+        await fs.writeText('real/new/x.yaml', 'x\n');
+        expect(await fs.list('real/new')).toEqual([
+          { name: 'x.yaml', kind: 'file' },
+        ]);
+        await fs.remove('real/new/x.yaml');
+        expect(await fs.list('real/new')).toEqual([]);
+      }
+    });
+
+    test('a FIFO, a socket or a folder is missing, and a FIFO is not opened', async () => {
+      const { root } = await besideOutside();
+      execFileSync('mkfifo', [join(root, 'pipe.yaml')]);
+      const server = createServer();
+      await new Promise<void>((done) =>
+        server.listen(join(root, 'socket.yaml'), done),
+      );
+      try {
+        const fs = createNodeFileSystem(root);
+        expect(await rejection(fs.readText('pipe.yaml'))).toEqual(
+          new FileNotFoundError('pipe.yaml'),
+        );
+        expect(await rejection(fs.readText('socket.yaml'))).toEqual(
+          new FileNotFoundError('socket.yaml'),
+        );
+        expect(await rejection(fs.readText('real'))).toEqual(
+          new FileNotFoundError('real'),
+        );
+      } finally {
+        await new Promise((done) => server.close(done));
+      }
+    });
+  },
+);
+
+describe('node adapter: a bad name is refused before any folder is made', () => {
+  test.each([
+    ['a NUL character', 'created/a\0.yaml'],
+    ['a name longer than 255 characters', `created/${'n'.repeat(256)}/a.yaml`],
+    // Windows counts UTF-16 units, so 86 of these are a short name there.
+    ...(process.platform === 'win32'
+      ? []
+      : [
+          [
+            'a name longer than 255 bytes in UTF-8',
+            `created/${'한'.repeat(86)}`,
+          ],
+        ]),
+  ])('%s: rejected, nothing created', async (_name, path) => {
+    const { root } = await besideOutside();
+    const fs = createNodeFileSystem(root);
+    expect(await rejection(fs.writeText(path, 'x'))).toBeInstanceOf(Error);
+    expect(await exists(join(root, 'created'))).toBe(false);
+  });
+});
+
+describe('node adapter on win32: a backslash is not part of a name', () => {
+  const platform = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: platform });
+  });
+
+  // Elsewhere a backslash is an ordinary name character, so the files can be made.
+  test.skipIf(platform === 'win32')(
+    'read missing, list empty, remove no-op, write refused before any folder is made',
+    async () => {
+      const { root } = await besideOutside();
+      await writeFile(join(root, 'a\\b.yaml'), 'x', 'utf8');
+      await mkdir(join(root, 'd\\e'));
+      await writeFile(join(root, 'd\\e', 'f.yaml'), 'y', 'utf8');
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.readText('a\\b.yaml'))).toEqual(
+        new FileNotFoundError('a\\b.yaml'),
+      );
+      expect(await fs.list('d\\e')).toEqual([]);
+      await fs.remove('a\\b.yaml');
+      expect(await rejection(fs.writeText('new\\x/a.yaml', 'x'))).toEqual(
+        new TypeError(
+          'A path cannot hold a backslash on Windows: new\\x/a.yaml',
+        ),
+      );
+      Object.defineProperty(process, 'platform', { value: platform });
+      expect(await exists(join(root, 'new\\x'))).toBe(false);
+      expect(await exists(join(root, 'a\\b.yaml'))).toBe(true);
+    },
+  );
+});
 
 describe('node adapter: dictionary folders that cannot exist', () => {
   test.each([

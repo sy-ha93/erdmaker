@@ -5,7 +5,9 @@ export interface FileEntry {
 
 /**
  * File access for the core. Paths are relative to the opened folder, use `/`,
- * and may start with `..`. The opened folder itself is `""`.
+ * and may start with `..`. The opened folder itself is `""`. A leading `/`
+ * is read as relative to the opened folder too: refusing absolute paths is
+ * the calling code's part (spec 8).
  */
 export interface FileSystemAdapter {
   /** Rejects with `FileNotFoundError` when the file does not exist. */
