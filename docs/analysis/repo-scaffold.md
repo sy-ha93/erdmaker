@@ -169,10 +169,10 @@ npm/pnpm run validate:format
 
 ### 4.3 corepack 0.36과 `corepack enable pnpm`
 
-- 로컬: `corepack` 0.36.0, nvm 설치(`/home/pc/.nvm/versions/node/v22.23.3/bin`). [확인]
+- 로컬: `corepack` 0.36.0, nvm 설치(`~/.nvm/versions/node/v22.23.3/bin`). [확인]
 - `corepack enable --help`: 인자로 패키지 매니저 이름을 받고(`corepack enable yarn` 예시), 기본 설치 위치는 `which corepack`이 있는 폴더, `--install-directory`로 바꿀 수 있다. [확인] 따라서 `corepack enable pnpm`은 올바른 문법이다.
 - 쓰는 곳은 두 군데다.
-  1. shim: `/home/pc/.nvm/versions/node/v22.23.3/bin/pnpm`, `pnpx` 링크 생성. 이 폴더는 현재 사용자가 쓸 수 있다(`test -w` 확인). sudo 불필요. [확인] 다만 사용자 홈의 nvm 폴더를 바꾸는 전역 상태 변경이다.
+  1. shim: `~/.nvm/versions/node/v22.23.3/bin/pnpm`, `pnpx` 링크 생성. 이 폴더는 현재 사용자가 쓸 수 있다(`test -w` 확인). sudo 불필요. [확인] 다만 사용자 홈의 nvm 폴더를 바꾸는 전역 상태 변경이다.
   2. 캐시: 처음 `pnpm`을 부를 때 `COREPACK_HOME`(미설정, 기본 `~/.cache/node/corepack`)에 pnpm 10.34.9를 내려받는다. 지금은 그 폴더가 없다. [확인: 폴더 없음 / 기본 경로는 문서 기준]
 - `COREPACK_ENABLE_AUTO_PIN=0`이 환경에 설정돼 있다. [확인] corepack이 `package.json`에 `packageManager`를 자동으로 써넣지 않는다. CI에는 이 변수가 없지만 `packageManager`를 미리 넣으므로 영향 없다.
 - 셸 해시: shim을 만든 같은 셸에서 `pnpm`이 바로 잡히지 않으면 `hash -r`. [미확인]
