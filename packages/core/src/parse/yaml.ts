@@ -8,8 +8,11 @@ import {
   LineCounter,
   parseDocument,
   Parser,
-  visit,
+  type Pair,
   type YAMLError,
+  type YAMLMap,
+  YAMLParseError,
+  type YAMLSeq,
 } from 'yaml';
 import type { Issue, Position, PositionIndex } from '../model/types.js';
 import { escapePointerToken } from './pointer.js';
@@ -25,28 +28,108 @@ export interface ParsedText {
 export interface YamlDocument {
   doc: Document.Parsed;
   lineCounter: LineCounter;
+  /** The concrete syntax tree's top-level tokens. */
+  cst: unknown[];
+  /** The text starts with a byte order mark, which the parser counts as a column. */
+  bom: boolean;
+}
+
+/**
+ * Deepest nesting of collections the reader composes. The `yaml` composer
+ * recurses once per level: far deeper input would overflow the call stack,
+ * and Node 22 can abort the process (a fatal V8 error, not an exception) when
+ * that happens twice. No model or layout file comes near this depth.
+ */
+export const MAX_NESTING = 256;
+
+const CST_COLLECTIONS = new Set(['block-map', 'block-seq', 'flow-collection']);
+
+/**
+ * Calls `visit` on every object of the concrete syntax tree with the number of
+ * collections it is in (a collection counts itself). Walks with an explicit
+ * stack, so any nesting depth fits. The order is not file order.
+ */
+function walkCst(
+  cst: readonly unknown[],
+  visit: (record: Record<string, unknown>, depth: number) => void,
+): void {
+  const pending: [unknown, number][] = cst.map((token) => [token, 0]);
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const [node, outer] = next;
+    if (typeof node !== 'object' || node === null) continue;
+    if (Array.isArray(node)) {
+      for (const item of node as unknown[]) pending.push([item, outer]);
+      continue;
+    }
+    const record = node as Record<string, unknown>;
+    const depth =
+      typeof record.type === 'string' && CST_COLLECTIONS.has(record.type)
+        ? outer + 1
+        : outer;
+    visit(record, depth);
+    for (const value of Object.values(record)) {
+      if (typeof value === 'object') pending.push([value, depth]);
+    }
+  }
 }
 
 export function readYamlDocument(text: string): YamlDocument {
-  const lineCounter = new LineCounter();
-  const doc = parseDocument(text, {
+  const options = {
     version: '1.2',
     schema: 'core',
     uniqueKeys: true,
-    lineCounter,
     logLevel: 'error',
+  } as const;
+  const bom = text.startsWith('\uFEFF');
+  const cstLines = new LineCounter();
+  const cst = Array.from(new Parser(cstLines.addNewLine).parse(text));
+  // The earliest collection past the limit in the file.
+  let tooDeep: number | undefined;
+  walkCst(cst, (record, depth) => {
+    if (depth > MAX_NESTING && typeof record.offset === 'number') {
+      tooDeep = Math.min(tooDeep ?? record.offset, record.offset);
+    }
   });
-  return { doc, lineCounter };
+  if (tooDeep === undefined) {
+    const lineCounter = new LineCounter();
+    const doc = parseDocument(text, { ...options, lineCounter });
+    return { doc, lineCounter, cst, bom };
+  }
+  // Too deep to compose: an empty document that carries the error instead.
+  const doc = parseDocument('', options);
+  const at = cstLines.linePos(tooDeep);
+  // Worded like the parser's own errors, position included.
+  const error = new YAMLParseError(
+    [tooDeep, tooDeep + 1],
+    'RESOURCE_EXHAUSTION',
+    `Collections are nested more than ${MAX_NESTING} levels deep at line ${at.line}, column ${at.col}:`,
+  );
+  error.linePos = [at];
+  doc.errors.push(error);
+  return { doc, lineCounter: cstLines, cst, bom };
 }
 
-function positionAt(lineCounter: LineCounter, offset: number): Position {
-  const { line, col } = lineCounter.linePos(offset);
-  return { line, column: col };
+/** A parser line and column as a position; a byte order mark is not a column. */
+export function parserPosition(
+  { bom }: YamlDocument,
+  { line, col }: { line: number; col: number },
+): Position {
+  return { line, column: bom && line === 1 ? Math.max(1, col - 1) : col };
 }
 
-function syntaxIssue(file: string, message: string, at: Position): Issue {
+function positionAt(yaml: YamlDocument, offset: number): Position {
+  return parserPosition(yaml, yaml.lineCounter.linePos(offset));
+}
+
+/** A whole-file (`path` `""`) error at a position the parser or the engine gave. */
+export function fileIssue(
+  rule: 'syntax' | 'yaml-feature',
+  file: string,
+  message: string,
+  at: Position,
+): Issue {
   return {
-    rule: 'syntax',
+    rule,
     severity: 'error',
     file,
     path: '',
@@ -56,18 +139,26 @@ function syntaxIssue(file: string, message: string, at: Position): Issue {
   };
 }
 
-/** The parser's errors as `syntax` issues: first message line, parser position or 1:1. */
+/**
+ * The parser's errors as `syntax` issues: first message line, parser position
+ * or 1:1. The position the message ends with is corrected like the issue's.
+ */
 export function yamlErrorIssues(
   file: string,
-  errors: readonly YAMLError[],
+  yaml: YamlDocument,
+  errors: readonly YAMLError[] = yaml.doc.errors,
 ): Issue[] {
   return errors.map((error) => {
-    const at = error.linePos?.[0];
-    return syntaxIssue(
-      file,
-      error.message.split('\n')[0] ?? '',
-      at ? { line: at.line, column: at.col } : { line: 1, column: 1 },
-    );
+    let message = error.message.split('\n')[0] ?? '';
+    const parser = error.linePos?.[0];
+    if (!parser)
+      return fileIssue('syntax', file, message, { line: 1, column: 1 });
+    const at = parserPosition(yaml, parser);
+    const said = ` at line ${parser.line}, column ${parser.col}:`;
+    if (at.column !== parser.col && message.endsWith(said)) {
+      message = `${message.slice(0, -said.length)} at line ${at.line}, column ${at.column}:`;
+    }
+    return fileIssue('syntax', file, message, at);
   });
 }
 
@@ -85,15 +176,9 @@ interface SourceToken {
 const TRACKED = new Set(['tag', 'anchor', 'alias', 'comment']);
 
 /** Tags, anchors, aliases and comments, from the concrete syntax tree, in file order. */
-function sourceTokens(text: string): SourceToken[] {
+function sourceTokens({ cst }: YamlDocument): SourceToken[] {
   const found: SourceToken[] = [];
-  const scan = (node: unknown): void => {
-    if (typeof node !== 'object' || node === null) return;
-    if (Array.isArray(node)) {
-      for (const item of node) scan(item);
-      return;
-    }
-    const record = node as Record<string, unknown>;
+  walkCst(cst, (record) => {
     if (
       typeof record.type === 'string' &&
       TRACKED.has(record.type) &&
@@ -102,17 +187,13 @@ function sourceTokens(text: string): SourceToken[] {
     ) {
       found.push(record as unknown as SourceToken);
     }
-    for (const value of Object.values(record)) {
-      if (typeof value === 'object') scan(value);
-    }
-  };
-  for (const token of new Parser().parse(text)) scan(token);
+  });
   return found.sort((a, b) => a.offset - b.offset);
 }
 
 function featureIssues(
   file: string,
-  { doc, lineCounter }: YamlDocument,
+  yaml: YamlDocument,
   tokens: SourceToken[],
 ): Issue[] {
   const issues: Issue[] = [];
@@ -122,51 +203,100 @@ function featureIssues(
     else if (token.type === 'alias') message = 'YAML aliases are not allowed';
     else if (token.type === 'tag') {
       const tag =
-        doc.directives.tagName(token.source, () => {}) ?? token.source;
+        yaml.doc.directives.tagName(token.source, () => {}) ?? token.source;
       message = `YAML tag ${tag} is not allowed`;
     } else continue;
-    const at = positionAt(lineCounter, token.offset);
-    issues.push({
-      rule: 'yaml-feature',
-      severity: 'error',
-      file,
-      path: '',
-      line: at.line,
-      column: at.column,
-      message,
-    });
+    issues.push(
+      fileIssue('yaml-feature', file, message, positionAt(yaml, token.offset)),
+    );
   }
   return issues;
 }
 
+interface CollectionVisitor {
+  map?: (map: YAMLMap, path: string | undefined) => void;
+  pair?: (pair: Pair) => void;
+  seq?: (seq: YAMLSeq, path: string | undefined) => void;
+}
+
+/**
+ * Visits the document's collections in the order of the `yaml` package's
+ * `visit`: a map, then for each pair the pair, its key and its value; a
+ * sequence, then its items. `path` is the node's JSON Pointer, or undefined
+ * under a key that is not a scalar. Walks with an explicit stack, so any
+ * nesting depth fits.
+ */
+function walkCollections({ doc }: YamlDocument, visitor: CollectionVisitor) {
+  type Task = { pair: Pair } | { node: unknown; path: string | undefined };
+  const pending: Task[] = [{ node: doc.contents, path: '' }];
+  for (let task = pending.pop(); task; task = pending.pop()) {
+    if ('pair' in task) {
+      visitor.pair?.(task.pair);
+      continue;
+    }
+    const { node, path } = task;
+    const next: Task[] = [];
+    if (isMap(node)) {
+      visitor.map?.(node, path);
+      for (const pair of node.items) {
+        const valuePath =
+          path !== undefined && isScalar(pair.key)
+            ? `${path}/${escapePointerToken(keyString(pair.key.value))}`
+            : undefined;
+        next.push(
+          { pair },
+          { node: pair.key, path: undefined },
+          { node: pair.value, path: valuePath },
+        );
+      }
+    } else if (isSeq(node)) {
+      visitor.seq?.(node, path);
+      node.items.forEach((item, i) =>
+        next.push({
+          node: item,
+          path: path === undefined ? path : `${path}/${i}`,
+        }),
+      );
+    }
+    // Reversed onto the stack, so they come off it in document order.
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      const item = next[i];
+      if (item) pending.push(item);
+    }
+  }
+}
+
+const keyStart = (key: unknown) =>
+  isNode(key) && key.range ? key.range[0] : 0;
+
 /** Map keys that are collections, or that turn into the same object key as an earlier one. */
-function keyIssues(file: string, { doc, lineCounter }: YamlDocument): Issue[] {
+function keyIssues(file: string, yaml: YamlDocument): Issue[] {
   const issues: Issue[] = [];
-  const keyStart = (key: unknown) =>
-    isNode(key) && key.range ? key.range[0] : 0;
-  visit(doc, {
-    Pair(_, pair) {
+  walkCollections(yaml, {
+    pair(pair) {
       if (isCollection(pair.key)) {
         issues.push(
-          syntaxIssue(
+          fileIssue(
+            'syntax',
             file,
             'Map keys must be scalars',
-            positionAt(lineCounter, keyStart(pair.key)),
+            positionAt(yaml, keyStart(pair.key)),
           ),
         );
       }
     },
-    Map(_, map) {
+    map(map) {
       const seen = new Set<string>();
       for (const pair of map.items) {
         if (!isScalar(pair.key)) continue;
         const key = keyString(pair.key.value);
         if (seen.has(key)) {
           issues.push(
-            syntaxIssue(
+            fileIssue(
+              'syntax',
               file,
               `Map keys collide as "${key}"`,
-              positionAt(lineCounter, keyStart(pair.key)),
+              positionAt(yaml, keyStart(pair.key)),
             ),
           );
         }
@@ -178,56 +308,50 @@ function keyIssues(file: string, { doc, lineCounter }: YamlDocument): Issue[] {
 }
 
 /** JSON Pointer → position: a map entry points at its key, a sequence item at its value. */
-export function positionIndex({
-  doc,
-  lineCounter,
-}: YamlDocument): Map<string, Position> {
+export function positionIndex(yaml: YamlDocument): Map<string, Position> {
   const index = new Map<string, Position>();
   const add = (path: string, node: unknown) => {
     if (isNode(node) && node.range) {
-      index.set(path, positionAt(lineCounter, node.range[0]));
+      index.set(path, positionAt(yaml, node.range[0]));
     }
   };
-  const walk = (node: unknown, path: string): void => {
-    if (isMap(node)) {
-      for (const pair of node.items) {
+  walkCollections(yaml, {
+    map(map, path) {
+      if (path === undefined) return;
+      for (const pair of map.items) {
         if (!isScalar(pair.key)) continue;
-        const childPath = `${path}/${escapePointerToken(keyString(pair.key.value))}`;
-        add(childPath, pair.key);
-        walk(pair.value, childPath);
+        add(
+          `${path}/${escapePointerToken(keyString(pair.key.value))}`,
+          pair.key,
+        );
       }
-    } else if (isSeq(node)) {
-      node.items.forEach((item, i) => {
-        const childPath = `${path}/${i}`;
-        add(childPath, item);
-        walk(item, childPath);
-      });
-    }
-  };
-  walk(doc.contents, '');
+    },
+    seq(seq, path) {
+      if (path === undefined) return;
+      seq.items.forEach((item, i) => add(`${path}/${i}`, item));
+    },
+  });
   return index;
 }
 
 /**
  * Reads one YAML file. Parser errors, colliding or collection keys are
  * `syntax` issues; tags, anchors and aliases are `yaml-feature` issues. Either
- * kind leaves the file without a value.
+ * kind leaves the file without a value. `firstComment` is only looked for in
+ * a file without parser errors. Returns issues, never throws, for any text.
  */
 export function parseYaml(file: string, text: string): ParsedText {
   const yaml = readYamlDocument(text);
-  const tokens = sourceTokens(text);
-  const comment = tokens.find((token) => token.type === 'comment');
   const result: ParsedText = {
     value: undefined,
-    issues: [],
+    issues: yamlErrorIssues(file, yaml),
     positions: new Map(),
   };
-  if (comment) {
-    result.firstComment = positionAt(yaml.lineCounter, comment.offset);
-  }
-
-  result.issues = yamlErrorIssues(file, yaml.doc.errors);
   if (result.issues.length > 0) return result;
+
+  const tokens = sourceTokens(yaml);
+  const comment = tokens.find((token) => token.type === 'comment');
+  if (comment) result.firstComment = positionAt(yaml, comment.offset);
 
   // Features first: an alias that resolves to nothing would make `toJS` throw.
   result.issues = [

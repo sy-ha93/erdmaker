@@ -56,6 +56,7 @@ describe('JSON value check', () => {
     ['class instance', new (class Point {})()],
     ['RegExp', /x/],
     ['boxed string', Object('x')],
+    ['Array subclass instance', new (class List extends Array {})()],
   ])('rejects %s', (_name, value) => {
     expect(paths({ ext: { v: value } })).toEqual(['/ext/v']);
   });
@@ -146,5 +147,63 @@ describe('JSON value check', () => {
       },
     );
     expect(paths({ ext: hostile })).toEqual(['/ext']);
+  });
+
+  test.each([
+    ['arrays', (inner: unknown) => [inner]],
+    ['objects', (inner: unknown) => ({ a: inner })],
+  ])('does not throw on 10000 levels of nested %s', (_name, wrap) => {
+    let value: unknown = 'leaf';
+    for (let i = 0; i < 10000; i += 1) value = wrap(value);
+    expect(jsonValueIssues('f.yaml', value)).toEqual([]);
+
+    let bad: unknown = NaN;
+    for (let i = 0; i < 10000; i += 1) bad = wrap(bad);
+    const issues = jsonValueIssues('f.yaml', bad);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path.split('/')).toHaveLength(10001);
+  });
+
+  test('reports a cycle that closes 10000 levels down, once', () => {
+    const root: Record<string, unknown> = {};
+    let node = root;
+    for (let i = 0; i < 10000; i += 1) {
+      const child: Record<string, unknown> = {};
+      node.a = child;
+      node = child;
+    }
+    node.back = root;
+    const issues = jsonValueIssues('f.yaml', root);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path).toBe(`${'/a'.repeat(10000)}/back`);
+  });
+
+  test('reports the holes of a sparse array as one issue, in index order', () => {
+    const list: unknown[] = [NaN];
+    list[2] = 1;
+    list[4] = Infinity;
+    list.length = 6;
+    expect(paths({ list })).toEqual(['/list/0', '/list/1', '/list/4']);
+
+    const trailing: unknown[] = [1, 2];
+    trailing.length = 4;
+    expect(paths({ trailing })).toEqual(['/trailing/2']);
+  });
+
+  test('a sparse array of length 1e7 is checked without visiting every index', () => {
+    const list: unknown[] = [];
+    list.length = 1e7;
+    list[5] = NaN;
+    list[9_999_999] = 'ok';
+    const started = performance.now();
+    expect(paths({ list })).toEqual(['/list/0', '/list/5']);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  test('a non-enumerable item is still checked, extra array keys are not', () => {
+    const list: unknown[] = [1];
+    Object.defineProperty(list, 0, { value: NaN, enumerable: false });
+    Object.assign(list, { extra: NaN });
+    expect(paths({ list })).toEqual(['/list/0']);
   });
 });

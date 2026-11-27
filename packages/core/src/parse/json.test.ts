@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseJson } from './json.js';
+import { MAX_NESTING } from './yaml.js';
 
 const FILE = 'layouts/sales.json';
 
@@ -139,4 +140,88 @@ describe('layout JSON syntax', () => {
       column: 15,
     });
   });
+
+  test('source text the engine quotes is not taken for its position (FR-09)', () => {
+    expect(only('[(line 9 column 9)]')).toEqual({
+      rule: 'syntax',
+      severity: 'error',
+      file: FILE,
+      path: '',
+      line: 1,
+      column: 1,
+      message:
+        'Unexpected token \'(\', "[(line 9 column 9)]" is not valid JSON',
+    });
+  });
+});
+
+describe('deeply nested layout JSON', () => {
+  const DEPTH = 5000;
+  const arrays = '['.repeat(DEPTH) + ']'.repeat(DEPTH);
+  const objects = '{"a":'.repeat(DEPTH) + '1' + '}'.repeat(DEPTH);
+
+  /** How many containers deep the first-item chain goes, without recursion. */
+  function depthOf(value: unknown): number {
+    let depth = 0;
+    for (let node = value; typeof node === 'object' && node !== null;) {
+      depth += 1;
+      node = Array.isArray(node) ? node[0] : (node as { a: unknown }).a;
+    }
+    return depth;
+  }
+
+  test.each([
+    ['arrays', arrays],
+    ['objects', objects],
+  ])('5000 levels of %s: the value, without positions', (_name, text) => {
+    const result = parseJson(FILE, text);
+    expect(result.issues).toEqual([]);
+    // `toEqual` and `JSON.stringify` would themselves overflow the stack.
+    expect(depthOf(result.value)).toBe(DEPTH);
+    expect(result.positions.size).toBe(0);
+  });
+
+  test('5000 levels with a syntax error: one syntax issue', () => {
+    // No engine position: the YAML reader's first error, its nesting limit.
+    expect(only('['.repeat(DEPTH) + '@' + ']'.repeat(DEPTH))).toMatchObject({
+      rule: 'syntax',
+      line: 1,
+      column: MAX_NESTING + 1,
+      message: expect.stringMatching(/^Unexpected token '@'/),
+    });
+  });
+
+  test.each([3, 300, DEPTH])(
+    'duplicate keys %i levels down are found, worded the same at every depth',
+    (depth) => {
+      const text =
+        '{"x":\n'.repeat(depth) +
+        '{"b": 1, "\\u0062": 2, "c": [{"d": "\\"}", "d": 0}]}' +
+        '}'.repeat(depth);
+      const result = parseJson(FILE, text);
+      expect(result.value).toBeUndefined();
+      const line = depth + 1;
+      expect(
+        result.issues.map(({ rule, line, column, message }) => ({
+          rule,
+          line,
+          column,
+          message,
+        })),
+      ).toEqual([
+        {
+          rule: 'syntax',
+          line,
+          column: 10,
+          message: `Map keys must be unique at line ${line}, column 10:`,
+        },
+        {
+          rule: 'syntax',
+          line,
+          column: 42,
+          message: `Map keys must be unique at line ${line}, column 42:`,
+        },
+      ]);
+    },
+  );
 });

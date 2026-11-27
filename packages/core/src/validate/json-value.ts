@@ -22,11 +22,56 @@ function isJsonScalar(value: unknown): boolean {
   }
 }
 
+// A canonical array index: `0` or a decimal without leading zeros.
+const ARRAY_INDEX = /^(?:0|[1-9]\d*)$/;
+
+/** What one container holds: its entries in order, and where its first hole is. */
+interface Children {
+  entries: [string, PropertyDescriptor | undefined][];
+  hole?: number;
+}
+
+/** The entries of an array of this realm (a subclass instance is a class instance). */
+function arrayChildren(node: unknown[]): Children {
+  // Own keys, not every index, so a sparse array of any length stays cheap.
+  const indices = Object.getOwnPropertyNames(node)
+    .filter((key) => ARRAY_INDEX.test(key))
+    .map(Number)
+    .filter((index) => index < node.length)
+    .sort((a, b) => a - b);
+  const entries = indices.map(
+    (index): [string, PropertyDescriptor | undefined] => [
+      String(index),
+      Object.getOwnPropertyDescriptor(node, index),
+    ],
+  );
+  if (indices.length === node.length) return { entries };
+  const gap = indices.findIndex((index, position) => index !== position);
+  return { entries, hole: gap === -1 ? indices.length : gap };
+}
+
+function objectChildren(node: object): Children {
+  return {
+    entries: Object.keys(node).map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(node, key),
+    ]),
+  };
+}
+
+/** One container being walked: the next entry to visit is `entries[next]`. */
+interface Frame extends Children {
+  node: object;
+  path: string;
+  next: number;
+}
+
 /**
  * Finds every value that is not JSON data: anything other than null, a
  * boolean, a string, a finite number (integers within the safe range), an
  * array or a plain object. Shared references are fine; a cycle is reported
- * where it closes. Never throws, whatever `value` is.
+ * where it closes. The holes of a sparse array are one issue, at the first
+ * hole. Never throws, whatever `value` is, however deeply it nests.
  */
 export function jsonValueIssues(file: string, value: unknown): Issue[] {
   const issues: Issue[] = [];
@@ -41,25 +86,25 @@ export function jsonValueIssues(file: string, value: unknown): Issue[] {
 
   // Only the objects on the current path, so a value reached twice is not a cycle.
   const ancestors = new Set<object>();
+  // An explicit stack instead of recursion: any depth fits.
+  const stack: Frame[] = [];
 
-  const visit = (node: unknown, path: string): void => {
+  /** Reports `node` or, for a container, starts walking it. */
+  const enter = (node: unknown, path: string): void => {
     if (isJsonScalar(node)) return;
     if (typeof node !== 'object' || node === null || ancestors.has(node)) {
       report(path);
       return;
     }
-    let children: [string, PropertyDescriptor | undefined][];
+    let children: Children;
     try {
-      if (Array.isArray(node)) {
-        children = Array.from({ length: node.length }, (_, i) => [
-          String(i),
-          Object.getOwnPropertyDescriptor(node, i),
-        ]);
-      } else if (isPlainObject(node)) {
-        children = Object.keys(node).map((key) => [
-          key,
-          Object.getOwnPropertyDescriptor(node, key),
-        ]);
+      if (
+        Array.isArray(node) &&
+        Object.getPrototypeOf(node) === Array.prototype
+      ) {
+        children = arrayChildren(node as unknown[]);
+      } else if (!Array.isArray(node) && isPlainObject(node)) {
+        children = objectChildren(node);
       } else {
         report(path);
         return;
@@ -69,18 +114,34 @@ export function jsonValueIssues(file: string, value: unknown): Issue[] {
       return;
     }
     ancestors.add(node);
-    for (const [key, descriptor] of children) {
-      const childPath = `${path}/${escapePointerToken(key)}`;
-      // A missing descriptor is an array hole; an accessor is not data and is not called.
-      if (descriptor === undefined || !('value' in descriptor)) {
-        report(childPath);
-      } else {
-        visit(descriptor.value, childPath);
-      }
-    }
-    ancestors.delete(node);
+    stack.push({ node, path, next: 0, ...children });
   };
 
-  visit(value, '');
+  enter(value, '');
+  for (let frame = stack.at(-1); frame; frame = stack.at(-1)) {
+    const entry = frame.entries[frame.next];
+    // A sparse array's holes are one issue, in index order with the entries.
+    if (
+      frame.hole !== undefined &&
+      (entry === undefined || Number(entry[0]) > frame.hole)
+    ) {
+      report(`${frame.path}/${frame.hole}`);
+      frame.hole = undefined;
+    }
+    if (entry === undefined) {
+      stack.pop();
+      ancestors.delete(frame.node);
+      continue;
+    }
+    frame.next += 1;
+    const [key, descriptor] = entry;
+    const childPath = `${frame.path}/${escapePointerToken(key)}`;
+    // An accessor is not data and is not called.
+    if (descriptor === undefined || !('value' in descriptor)) {
+      report(childPath);
+    } else {
+      enter(descriptor.value, childPath);
+    }
+  }
   return issues;
 }

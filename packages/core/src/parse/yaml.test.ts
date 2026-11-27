@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseYaml } from './yaml.js';
+import { MAX_NESTING, parseYaml } from './yaml.js';
 
 const FILE = 'entities/order.yaml';
 
@@ -351,5 +351,64 @@ describe('YAML position index', () => {
       '/ext/true',
       '/ext/',
     ]);
+  });
+});
+
+describe('deeply nested YAML', () => {
+  const nested = (depth: number) => '['.repeat(depth) + ']'.repeat(depth);
+
+  test.each([
+    ['flow sequences', nested(5000)],
+    ['flow maps', '{a: '.repeat(5000) + '1' + '}'.repeat(5000)],
+    [
+      'block maps',
+      Array.from({ length: 5000 }, (_, i) => `${' '.repeat(i)}a:`).join('\n'),
+    ],
+  ])('5000 levels of %s: syntax issues, no exception', (_name, text) => {
+    // Twice: a second deep parse is what can bring the process down.
+    for (let i = 0; i < 2; i += 1) {
+      const result = parseYaml(FILE, text);
+      expect(result.value).toBeUndefined();
+      expect(result.issues.length).toBeGreaterThan(0);
+      expect(result.issues.every((issue) => issue.rule === 'syntax')).toBe(
+        true,
+      );
+    }
+  });
+
+  test('nesting up to the limit is read, one level more is a syntax issue', () => {
+    const atLimit = parseYaml(FILE, nested(MAX_NESTING));
+    expect(atLimit.issues).toEqual([]);
+    expect(JSON.stringify(atLimit.value)).toBe(nested(MAX_NESTING));
+
+    const column = MAX_NESTING + 1;
+    expect(issuesOf(nested(MAX_NESTING + 1))).toEqual([
+      {
+        rule: 'syntax',
+        line: 1,
+        column,
+        message: `Collections are nested more than ${MAX_NESTING} levels deep at line 1, column ${column}:`,
+      },
+    ]);
+  });
+});
+
+describe('YAML with a byte order mark', () => {
+  const BOM = '\uFEFF';
+
+  test('the mark is not a column of line 1', () => {
+    expect(issuesOf(`${BOM}a: !t 1\n`)).toEqual(issuesOf('a: !t 1\n'));
+    expect(issuesOf(`${BOM}a: [1\n`)).toEqual(issuesOf('a: [1\n'));
+    expect(parseYaml(FILE, `${BOM}# c\na: 1\n`).firstComment).toEqual({
+      line: 1,
+      column: 1,
+    });
+    expect(
+      Object.fromEntries(parseYaml(FILE, `${BOM}a: 1\nb:\n  c: 2\n`).positions),
+    ).toEqual({
+      '/a': { line: 1, column: 1 },
+      '/b': { line: 2, column: 1 },
+      '/b/c': { line: 3, column: 3 },
+    });
   });
 });
