@@ -1,0 +1,477 @@
+# F02 `core-model-io` 구현 계획
+
+**작성일**: 2026-11-27
+**스펙**: [docs/specs/core-model-io.md](../specs/core-model-io.md)
+**분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
+**설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
+**브랜치**: `feature/core-model-io`
+**상태**: 대기
+
+스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
+
+## 1. 요구사항 요약
+
+| 요구사항 | 내용                                                   | 단계       | 닫는 수용 기준             |
+| -------- | ------------------------------------------------------ | ---------- | -------------------------- |
+| FR-01    | 의존성, `./node` 진입점, tsconfig 둘, CLI `bin`        | 1, 6       | AC-11, AC-10, AC-17        |
+| FR-02    | 파일 어댑터 인터페이스, 메모리·Node 구현, 계약 테스트  | 2          | AC-09                      |
+| FR-03    | 스키마 생성 스크립트와 생성 모듈                       | 1          | AC-12                      |
+| FR-04    | 메모리 모델, 공개 이름                                 | 3          | (AC-01~08이 함께 확인)     |
+| FR-05    | 읽기 (YAML·JSON, 위치, 문법·기능·JSON 값 검사)         | 2, 3       | AC-06                      |
+| FR-06    | 쓰기 (`serializeModel`, `writeModel`)                  | 5          | AC-01, AC-02, AC-03, AC-04 |
+| FR-07    | 예제 정규화, 스키마 한 곳, 형식 문서 보강              | 1          | AC-01 (단계 5에서 확인)    |
+| FR-08    | 검증 (`validateModel`, `validateProject`, `Issue`)     | 3, 4, 6    | AC-05, AC-06               |
+| FR-09    | 깨진 배치 JSON                                         | 2, 4       | AC-07                      |
+| FR-10    | 프로젝트에서 모델 찾기, 프로젝트 오류의 위치           | 6          | AC-08                      |
+| FR-11    | CLI `erdmaker validate <dir>`, 프로젝트 오류의 출력    | 6          | AC-13, AC-14               |
+| FR-12    | 테스트 파일 타입 검사                                  | 1          | AC-15                      |
+| FR-13    | 옛 검사 도구 제거 (대조 테스트 → 삭제)                 | 6 (6A, 6B) | AC-16, AC-14               |
+| FR-14    | 문서 갱신                                              | 6 (6B)     | AC-19 (서식)               |
+| 제약     | `spikes/`를 건드리지 않는다                            | 0, 6       | AC-18                      |
+
+DB, API, 화면 요구사항은 없다.
+
+### 수용 기준과 단계
+
+AC 하나는 단계 하나에서만 닫는다.
+
+| 단계                    | 닫는 AC                           |
+| ----------------------- | --------------------------------- |
+| 1 패키지 틀             | AC-11, AC-12, AC-15               |
+| 2 어댑터와 파서         | AC-09                             |
+| 3 스키마 검사와 읽기    | AC-06                             |
+| 4 파일 간 규칙          | AC-05, AC-07                      |
+| 5 쓰기                  | AC-01, AC-02, AC-03, AC-04        |
+| 6A 프로젝트, CLI, 대조  | AC-08, AC-10, AC-13, AC-16        |
+| 6B 옛 도구 제거와 문서  | AC-14, AC-17, AC-18, AC-19        |
+
+AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push와 PR은 이 계획의 작업이 아니고, 사용자가 승인한 뒤 리드가 한다(단계 6의 관문 참고).
+
+## 2. 분석 보고서 반영과 모듈 나눔
+
+### 적용한 권장 사항
+
+| 분석 항목                                           | 계획에 반영한 내용                                                                                             |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 3.2절 파일 배치                                     | 그대로 쓴다. 다른 점은 아래 "계획에서 정한 것" 1, 2뿐이다                                                      |
+| 4.1절 YAML 읽기·쓰기 옵션, CST로 위치 찾기          | 단계 2(읽기), 단계 5(쓰기). 옵션 값은 스펙 FR-05와 7장을 따른다                                                |
+| 4.2절 배치 JSON은 글을 직접 찍는다                  | 단계 5. `JSON.stringify(v, null, 2)`와 "정렬한 새 객체"를 쓰지 않는다                                          |
+| 4.3절 A1 Ajv 가져오기                               | `import { Ajv2020 } from 'ajv/dist/2020.js'`                                                                   |
+| 4.4절 `properties`는 "키 → 스키마" 맵이다           | 단계 5의 스키마 따라가기. 키 이름이 `default`인 속성을 기본값 키워드로 읽지 않는 테스트를 둔다                 |
+| 4.5절 생성 스크립트는 `.ts`, `packages/core/scripts` | 단계 1. 시제품과 달리 경로를 인자로 받지 않고 `import.meta.url`에서 구한다(1.6)                               |
+| 4.6절 차단 플러그인 없이는 번들 테스트가 무의미하다 | 단계 6A. `node:fs`를 가져오는 진입점이 빌드에 실패하는 단언을 같은 테스트에 둔다                               |
+| 4.9절 옛 출력 해석의 함정                           | 단계 6A. 파일 부분이 `.yaml`·`.json`으로 끝나는 줄만 오류의 시작으로 본다                                      |
+| 2.4절 C1, C2 (커밋 경계)                            | 단계 6A까지 옛 도구와 루트 `ajv`·`yaml`을 남기고, 6B 한 커밋에서 함께 지운다                                   |
+| 2.4절 C5, C6 (`pnpm build`가 먼저)                  | 모든 단계의 관문을 `build → test → lint → validate:format` 순서로 돌린다. `.github/workflows/ci.yml`은 고치지 않는다 |
+| 7장 피할 것                                         | 6장 "구현할 때 참고"에 옮겼다                                                                                  |
+
+### 재사용하는 것
+
+| 대상                              | 위치                                                                  | 쓰임                                                                             |
+| --------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 규칙 검사 로직과 메시지 문구      | `tools/validate-format.mjs`                                           | 단계 4에서 옮긴다. 문구는 글자 그대로. 6A의 대조 기준                            |
+| Ajv 설정, YAML 읽기 옵션, 요약 줄 | 같은 파일                                                             | 단계 3, 2, 6A                                                                    |
+| 시제품 3개                        | 분석 보고서 머리말에 적힌 실험 폴더의 `writer-proto.mjs`, `layout-proto.mjs`, `bundle/bundle.test.js` | 참고로 읽는다. 그대로 복사하지 않는다(스펙이 분석 뒤에 바뀌었고, 시제품은 타입도 테스트도 없다). 폴더가 사라졌으면 분석 4.2, 4.4, 4.6절만으로 진행한다 |
+| 정규화한 예제 3개                 | 같은 폴더의 `corrected/`                                              | 단계 1에서 손으로 고친 결과와 비교하는 참고. 최종 판정은 AC-01이다               |
+| F01의 검사 절차                   | `docs/specs/repo-scaffold.md` 6.4, 6.5                                | AC-17(라이선스), AC-18(`spikes/`)                                                |
+
+### 모듈 나눔
+
+`packages/core/src/` 아래다. "공개"는 `src/index.ts`가 다시 내보내는 이름이다. 스펙 FR-04가 정한 이름 밖의 것은 이 계획이 정했다.
+
+| 파일                      | 하는 일                                                                   | 공개 이름                                                                                   | 단계 |
+| ------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---- |
+| `generated/schemas.ts`    | 스키마 8개 (생성물). 이 폴더에는 생성물만 둔다                            | 없음                                                                                        | 1    |
+| `model/types.ts`          | 타입만                                                                    | `Model`, `ModelItem`, `Issue`, `Severity`, `Position`, `PositionIndex`, 데이터 타입 `ManifestData`, `EntityData`, `RelationshipData`, `SubtypeData`, `SubjectAreaData`, `LayoutData`, `DictionaryData` | 2, 3 |
+| `fs/adapter.ts`           | 인터페이스와 오류 클래스                                                  | `FileSystemAdapter`, `FileEntry`, `FileNotFoundError`                                       | 2    |
+| `fs/path.ts`              | 경로 합치기와 정규화                                                      | 없음 (코어 안에서만 쓴다)                                                                   | 2    |
+| `fs/memory.ts`            | 메모리 구현                                                               | `createMemoryFileSystem`                                                                    | 2    |
+| `node/fs.ts`, `node/index.ts` | Node 구현 (`@erdmaker/core/node`)                                     | `createNodeFileSystem`                                                                      | 2    |
+| `validate/json-value.ts`  | JSON 값 검사 (읽기, 검증, 쓰기가 함께 쓴다)                               | 없음                                                                                        | 2    |
+| `parse/yaml.ts`           | YAML 읽기, 문법·기능·키 충돌 검사, 첫 주석, 위치 색인                     | 없음                                                                                        | 2    |
+| `parse/json.ts`           | 배치 JSON 읽기, 문법 오류 위치, 중복 키, 위치 색인                        | 없음                                                                                        | 2    |
+| `schema/ajv.ts`           | Ajv 인스턴스 (처음 쓸 때 만들어 둔다)                                     | 없음                                                                                        | 3    |
+| `validate/schema.ts`      | Ajv 오류 → `Issue`                                                        | 없음                                                                                        | 3    |
+| `validate/issues.ts`      | 위치 채우기, 정렬                                                         | 없음                                                                                        | 3    |
+| `model/load.ts`           | `loadModel`                                                               | `loadModel`, `LoadResult`                                                                   | 3    |
+| `validate/index.ts`       | `validateModel` (스키마·JSON 값 검사 뒤 규칙)                             | `validateModel`                                                                             | 3, 4 |
+| `validate/rules.ts`       | R01~R12. 길어지면 `validate/rules/` 아래로 나눈다                         | 없음                                                                                        | 4    |
+| `schema/resolve.ts`       | 값의 스키마 찾기, 키 순서, 기본값                                         | 없음                                                                                        | 5    |
+| `model/serialize.ts`      | `serializeModel`, YAML 쓰기                                               | `serializeModel`, `SerializedFile`                                                          | 5    |
+| `model/layout-json.ts`    | 배치 JSON 쓰기                                                            | 없음                                                                                        | 5    |
+| `model/write.ts`          | `writeModel`                                                              | `writeModel`                                                                                | 5    |
+| `project/find.ts`         | `findModels` (P02)                                                        | `findModels`                                                                                | 6A   |
+| `project/validate.ts`     | `validateProject` (P01, 모델별 결과와 개수)                               | `validateProject`, `ProjectResult`, `ModelResult`, `ModelCounts`                            | 6A   |
+| `testing/example.ts`      | 테스트 도우미: 예제 읽기, 치환                                            | 없음 (빌드에서 뺀다)                                                                        | 3    |
+| `testing/cases.ts`        | 부록 A 사례의 정의와 기대 `Issue`                                         | 없음 (빌드에서 뺀다)                                                                        | 4    |
+
+`packages/cli/src/`: `main.ts`(인자 해석, `validateProject` 호출, 출력, 종료 코드를 돌려주는 함수), `bin.ts`(셔뱅과 `main` 호출만). `index.ts`는 그대로 둔다.
+
+의존 방향은 한쪽이다: `parse`·`fs`·`schema` → `validate` → `model` → `project`. `src/node/`는 기본 진입점의 파일을 가져올 수 있고, 반대는 안 된다(타입 오류가 난다. 분석 3.2절).
+
+### 계획에서 정한 것
+
+스펙과 분석이 계획에 넘긴 것이다.
+
+1. **계약 테스트 묶음의 자리** (분석 S9): `packages/core/src/fs/adapter.test.ts` 한 파일에 묶음을 정의하고 메모리 구현과 Node 구현(임시 폴더)에 각각 돌린다. 테스트 파일이라 빌드에서 빠지고, 따로 내보낼 모듈이 필요 없다.
+2. **테스트 도우미의 자리**: `packages/core/src/testing/`. `packages/core/tsconfig.json`의 `exclude`에 `src/testing`을 더해 `dist`에 들어가지 않게 한다. 타입 검사는 `tsconfig.test.json`이 한다. `cli`의 테스트는 이 도우미를 쓰지 않는다. 예제를 `node:fs`로 직접 읽고 필요한 사례를 테스트 안에 적는다(패키지 경계를 넘는 상대 경로 가져오기를 만들지 않는다).
+3. **`serializeModel`의 반환 모양**: `{ file, text }`의 배열, `file`의 코드 단위 순. 타입 이름은 `SerializedFile`.
+4. **스키마에 없는 키를 가진 모델의 쓰기** (분석 4.4절, 스펙에 없음): 스키마의 키를 먼저 쓰고, 모르는 키는 모델에 든 순서로 뒤에 쓴다. 검증을 통과한 모델에서는 `ext` 안쪽 말고는 생기지 않는 경우다. 값을 버리지 않는 쪽을 골랐다.
+5. **AC-06 사례를 넣는 파일**: 파일이 모델에서 빠져도 다른 파일의 규칙 오류가 따라 나오지 않는 파일에 둔다. `subject-areas/party.yaml`은 어느 배치도 가리키지 않아 조건에 맞는다(예제에서 확인). 그래야 AC-06의 "목록 전체 비교"가 규칙이 없는 단계 3에서 닫히고 단계 4에서 바뀌지 않는다. 따라 나오는 오류는 AC-07과 대조 테스트가 본다.
+6. **`spikes/` 기준선의 자리**: `docs/handoff/core-model-io-spikes-before.sha256`. `docs/handoff/`는 `.gitignore`에 있고 린트·서식 대상이 아니다. 사흘짜리 작업이라 `/tmp`는 쓰지 않는다(재부팅하면 사라진다).
+7. **생성 스크립트의 타입 검사** (분석 4.5절, 미확인): 하지 않는다. ESLint와 Prettier는 본다. 결과가 틀리면 AC-12가 잡는다.
+8. **`clean` 스크립트** (분석 C7): 만들지 않는다. 각 단계의 관문이 `dist` 네 곳을 정확한 경로로 지우고 다시 빌드한다(5장).
+9. **`docs/stage1-backlog.md`** (분석 2.2절, FR-14 목록 밖): 6B에서 옛 도구의 경로가 나오는 세 줄(92, 103, 108행)을 고친다. 92행은 뒤 기능의 분석 단계가 읽을 파일 목록이라 지운 파일을 가리키면 안 되고, 103·108행은 F02의 범위 설명이라 경로 대신 "옛 검사 도구"로 적는다.
+10. **`core`의 `ajv`·`yaml` 버전 범위**: `^8.20.0`, `^2.9.1`(분석이 확인한 설치본). 설치 뒤 `core`와 루트가 같은 버전으로 풀렸는지 확인한다(1.1). 대조 테스트는 두 쪽이 같은 Ajv일 때만 뜻이 있다.
+11. **AC-16의 관문**: 6A 커밋 뒤에 멈춘다(단계 6). CI는 PR과 `main` push에서만 돌므로, 6A 커밋이 PR의 머리일 때 한 번 올라가야 그 커밋의 CI 기록이 생긴다. 6A와 6B를 한꺼번에 올리면 AC-16을 증명할 수 없다.
+
+### 제약
+
+- `spikes/` 아래의 어떤 파일도 만들거나 고치거나 지우지 않는다. `git clean`, 재귀 glob 삭제를 쓰지 않는다.
+- 스테이징은 경로를 지정한다. `git add -A`, `git add .`을 쓰지 않는다. `docs/.yyy-workflow-state.json`은 스테이징하지 않는다(무시 대상이다).
+- push와 PR 생성은 하지 않는다.
+- 외부 의존성은 `core`의 `ajv`, `yaml`뿐이다. 다른 것을 더하지 않는다.
+- `format/v0/schema`에서 바뀌는 파일은 `entity.schema.json` 하나, 예제에서 바뀌는 파일은 스펙 2장이 적은 셋이다.
+- `.github/workflows/ci.yml`은 고치지 않는다. 단계 순서(`build` → `test` → `lint` → `validate:format`)가 이미 새 `validate:format`의 전제(`pnpm build`가 먼저)를 만족한다.
+- 기본 진입점에서 닿는 코드에 `node:` 모듈, `process`, `Buffer`, `console`, `structuredClone`을 쓰지 않는다.
+
+## 3. 영향 분석 (Dry-Run)
+
+### 전체 위험도: 중간
+
+새 코드가 대부분이다. 기존 동작이 바뀌는 곳은 `validate:format`(6B)과 스키마 한 곳, 예제 세 파일이다. 지우는 파일은 Git 이력에서 되살릴 수 있다. DB, API, 인증 변경은 없다.
+
+### 새로 만드는 파일
+
+| 파일                                                                                 | 위험 | 내용                                              |
+| ------------------------------------------------------------------------------------ | ---- | ------------------------------------------------- |
+| `packages/core/tsconfig.node.json`, `packages/core/tsconfig.test.json`               | 중간 | `src/node` 컴파일, 테스트 포함 타입 검사          |
+| `packages/cli/tsconfig.test.json`, `packages/mcp/tsconfig.test.json`                 | 낮음 | 테스트 포함 타입 검사                             |
+| `packages/core/scripts/generate-schemas.ts`                                          | 낮음 | 생성 스크립트                                     |
+| `packages/core/src/generated/schemas.ts`                                             | 낮음 | 생성물. 커밋한다. 손으로 고치지 않는다            |
+| `packages/core/src/{fs,parse,schema,validate,model,project,node}/*.ts`               | 낮음 | 2장 "모듈 나눔"의 파일                            |
+| `packages/core/src/testing/{example,cases}.ts`                                       | 낮음 | 테스트 도우미                                     |
+| `packages/core/src/**/*.test.ts`                                                     | 낮음 | 4장 각 단계가 적은 테스트                         |
+| `packages/core/src/parity.test.ts`                                                   | 낮음 | 대조 테스트. 6A에서 만들고 6B에서 지운다          |
+| `packages/cli/src/main.ts`, `packages/cli/src/bin.ts`                                | 낮음 | CLI                                               |
+| `packages/cli/src/validate.test.ts`, `packages/cli/src/bundle.test.ts`               | 낮음 | AC-13, AC-10                                      |
+
+### 고치는 파일
+
+| 파일                                                               | 위험 | 내용                                                                                          | 단계  |
+| ------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------- | ----- |
+| `packages/core/package.json`                                       | 중간 | `dependencies`, `exports["./node"]`, 스크립트 `build`, `typecheck`, `generate:schemas`        | 1     |
+| `packages/core/tsconfig.json`                                      | 중간 | `exclude`에 `src/node`, `src/testing`. `lib`와 `types`는 그대로(AC-11)                        | 1     |
+| `packages/core/src/index.ts`                                       | 낮음 | 공개 이름 다시 내보내기                                                                       | 2~6A  |
+| `packages/cli/package.json`                                        | 중간 | `typecheck`(1), `bin.erdmaker`가 정확히 `dist/bin.js`(6A)                                     | 1, 6A |
+| `packages/mcp/package.json`                                        | 낮음 | `typecheck`                                                                                   | 1     |
+| `package.json` (루트)                                              | 중간 | `lint` 끝에 `pnpm -r typecheck`(1). `validate:format` 교체, `ajv`·`yaml` 제거(6B)             | 1, 6B |
+| `pnpm-lock.yaml`                                                   | 중간 | `pnpm install`이 고친다. `package.json`과 같은 커밋에 넣는다                                  | 1, 6B |
+| `eslint.config.js`                                                 | 낮음 | 무시 목록에 `packages/core/src/generated/**`(1). `tools/**` 블록 제거(6B)                     | 1, 6B |
+| `.prettierignore`                                                  | 낮음 | `packages/core/src/generated/`                                                                | 1     |
+| `format/v0/schema/entity.schema.json`                              | 중간 | 속성 `scope` (FR-07)                                                                          | 1     |
+| `format/v0/examples/shop/model.yaml`                               | 낮음 | FR-07                                                                                         | 1     |
+| `format/v0/examples/shop/subtypes/customer_type.yaml`              | 낮음 | FR-07                                                                                         | 1     |
+| `format/v0/examples/shop/relationships/customer_places_order.yaml` | 낮음 | FR-07                                                                                         | 1     |
+| `docs/format-v0.md`                                                | 낮음 | 쓰기 규칙과 검증 규칙(1, FR-07). 검사 도구를 가리키는 문장(6B, FR-14)                         | 1, 6B |
+| `CLAUDE.md`, `docs/planning.md`, `docs/stage1-backlog.md`          | 낮음 | FR-14와 2장의 결정 9                                                                          | 6B    |
+| `docs/plans/core-model-io.md`                                      | 낮음 | 체크박스와 7장 기록. 각 단계의 커밋에 넣는다                                                  | 전부  |
+
+### 지우는 파일
+
+| 파일                               | 위험 | 내용                                                    | 단계 |
+| ---------------------------------- | ---- | ------------------------------------------------------- | ---- |
+| `packages/core/src/index.test.ts`  | 낮음 | F01의 스모크 테스트. 실제 테스트가 대신한다             | 1    |
+| `tools/validate-format.mjs`        | 높음 | `git rm`. 남는 파일이 없어 `tools/` 폴더도 없어진다     | 6B   |
+| `packages/core/src/parity.test.ts` | 낮음 | `git rm`. 옛 도구가 없으면 돌 수 없다                   | 6B   |
+
+### 저장소 밖과 추적하지 않는 곳
+
+| 대상                                             | 변경                                                  |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| `node_modules/`, `packages/*/node_modules/`      | `pnpm install`이 고친다(단계 1, 6B)                   |
+| `packages/{core,cli,mcp,web}/dist`               | 관문마다 지우고 다시 만든다                           |
+| `docs/handoff/core-model-io-spikes-before.sha256` | 기준선. 무시 대상이라 커밋되지 않는다                 |
+| OS 임시 폴더                                     | 테스트가 `mkdtemp`로 만든 폴더. 테스트가 끝나면 지운다 |
+
+### 파괴적 작업
+
+| 작업                                  | 평가                                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `git rm tools/validate-format.mjs`    | 6A의 대조 테스트가 통과하고 그 커밋의 CI가 성공한 뒤에만 한다. Git 이력에 남는다            |
+| `validate:format`의 실행 대상 교체    | 같은 요약 줄과 종료 코드를 AC-14가 확인한다. 깨진 배치 등 일부러 바꾼 동작은 스펙 FR-13에 있다 |
+| `rm -rf packages/{core,cli,mcp,web}/dist` | 빌드 산출물. 네 경로를 그대로 적어 실행한다                                             |
+
+### 되돌리기
+
+브랜치를 지우지 않는다. 스펙, 분석, 계획이 이 브랜치에만 있다. `git clean`을 쓰지 않는다(`spikes/`가 추적하지 않는 폴더다).
+
+- **커밋하기 전의 단계**: 그 단계가 고친 추적 파일을 `git restore --staged --worktree -- <경로>`로 되돌리고, 새로 만든 파일은 경로를 하나씩 지정해 지운다. `package.json`을 되돌렸으면 `pnpm install`을 다시 한다.
+- **커밋한 뒤**: 문서 커밋(0.2)은 남기고 구현 커밋을 뒤에서부터 `git revert`한다. 6B만 되돌리면 옛 도구와 대조 테스트가 돌아온다. `package.json`이 바뀐 커밋을 되돌렸으면 `pnpm install`을 한다.
+- **산출물**: `rm -rf ./packages/core/dist ./packages/cli/dist ./packages/mcp/dist ./packages/web/dist` 뒤 `pnpm build`.
+- push한 뒤에는 이력을 고치지 않고 revert 커밋을 올린다(리드가 한다).
+
+## 4. 구현 순서
+
+요청받은 순서를 그대로 쓴다. 바꾼 곳은 없고, 다음 둘만 다르게 읽으면 된다. (1) 단계 2는 파서를 단위 테스트로만 확인하고 AC-06·AC-07은 닫지 않는다. 두 기준이 `loadModel`의 `Issue` 목록 전체와 규칙 `R02`를 요구해서 각각 단계 3, 4에서야 닫힌다. (2) 단계 6은 커밋이 둘(6A, 6B)이고 그 사이에 관문이 있다. FR-13이 순서를 정했고 AC-16이 6A 커밋의 CI 기록을 요구한다.
+
+모든 단계는 5장의 "단계 관문"을 통과하고 커밋 하나로 끝난다(단계 6은 둘). 커밋 메시지는 영어 명령형이다. 이 계획 파일의 체크박스와 7장 기록은 그 단계의 커밋에 넣는다. 테스트를 먼저 쓰는 것이 자연스러운 곳은 그렇게 적었다. 먼저 쓴 테스트는 구현 전에 한 번 돌려 실패하는 것을 본다.
+
+일정의 목표: 첫날 단계 0~3, 둘째 날 단계 4~5, 셋째 날 단계 6.
+
+### 단계 0: 준비
+
+**목표**: `spikes/` 기준선이 있고 문서 세 개가 따로 커밋돼 있다.
+**위험**: 낮음 · **상태**: 대기 · **수용 기준**: 없음 (AC-18의 "작업 전" 절반)
+
+- [x] 0.1 **(다른 어떤 명령보다 먼저)** 저장소 루트에서 `spikes/`의 "작업 전" 목록을 찍는다.
+
+  ```bash
+  (set -euo pipefail
+   mkdir -p docs/handoff
+   { find spikes -type f -print0 | sort -z | xargs -0 sha256sum
+     find spikes -type l -printf '%p -> %l\n' | sort
+   } > docs/handoff/core-model-io-spikes-before.sha256
+   test -s docs/handoff/core-model-io-spikes-before.sha256); echo "exit=$?"
+  ```
+
+  `exit=0`이 아니면 멈추고 알린다. 이어서 `git check-ignore -q docs/handoff/core-model-io-spikes-before.sha256; echo "exit=$?"`가 `exit=0`인지 본다(무시 대상이 아니면 멈춘다). 이 파일은 6.11까지 고치지도 지우지도 않는다.
+
+- [ ] 0.2 `git branch --show-current`가 `feature/core-model-io`인지 확인한다(다르면 멈추고 알린다). 문서 세 개만 커밋한다: `git add docs/specs/core-model-io.md docs/analysis/core-model-io.md docs/plans/core-model-io.md` 뒤 커밋. 해시를 7장에 적는다(그 기록은 단계 1의 커밋에 들어간다). 되돌릴 때 이 커밋은 남긴다.
+
+### 단계 1: 패키지 틀
+
+**목표**: `core`가 프로젝트 둘로 컴파일되고, 테스트 파일이 타입 검사를 받고, 스키마가 코어 안에 들어 있고, 예제·스키마·형식 문서가 쓰기 규칙과 맞는다. 기능 코드는 아직 없다.
+**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-11, AC-12, AC-15 · **요구사항**: FR-01(일부), FR-03, FR-07, FR-12
+
+- [ ] 1.1 `packages/core/package.json`을 고친다: `dependencies`에 `ajv`·`yaml`(2장 결정 10의 범위), `exports["./node"]`, 스크립트 `build`·`typecheck`(분석 3.2절의 모양)와 `generate:schemas`(`node scripts/generate-schemas.ts`, 인자 없음). `pnpm install`로 `pnpm-lock.yaml`을 고친다. 루트 devDependencies의 `ajv`·`yaml`은 그대로 둔다. 설치 뒤 `packages/core/node_modules/{ajv,yaml}/package.json`의 `version`이 루트 `node_modules`의 것과 같은지 확인한다. 다르면 같은 버전으로 풀리도록 `core`의 범위를 좁히고 7장에 적는다.
+- [ ] 1.2 `core`의 TypeScript 프로젝트를 만든다: `packages/core/tsconfig.json`의 `exclude`에 `src/node`, `src/testing` 추가, `packages/core/tsconfig.node.json`, `packages/core/tsconfig.test.json` 새로 만들기(분석 3.2절). `packages/core/src/node/index.ts`를 내용 없이 만든다(둘째 프로젝트에 입력이 있어야 한다. 단계 2에서 채운다).
+- [ ] 1.3 테스트 타입 검사를 넣는다(FR-12): `packages/cli/tsconfig.test.json`, `packages/mcp/tsconfig.test.json`, `packages/{cli,mcp}/package.json`의 `typecheck`, 루트 `package.json`의 `lint` 끝에 `&& pnpm -r typecheck`.
+- [ ] 1.4 `format/v0/schema/entity.schema.json`의 속성 `scope`를 FR-07대로 고친다.
+- [ ] 1.5 **테스트 먼저**: `packages/core/src/schema/schemas.test.ts`에 "스키마 동기화"(AC-12)를 쓴다(무시 대상인 `src/generated/`에는 생성물만 둔다). 원본 폴더의 `*.schema.json` 개수가 8이 아니어도 실패하게 한다. 이 테스트가 생기므로 `packages/core/src/index.test.ts`를 `git rm`한다.
+- [ ] 1.6 `packages/core/scripts/generate-schemas.ts`를 쓴다. 스키마 폴더(`format/v0/schema`)와 출력 파일(`packages/core/src/generated/schemas.ts`)의 경로는 `import.meta.url`에서 구한다. 인자와 현재 폴더에 기대지 않는다(시제품은 `process.argv`에서 읽으므로 이 부분을 따라 쓰지 않는다). 생성물의 모양은 분석 4.5절이다. `.prettierignore`와 `eslint.config.js`의 무시 목록에 생성물 폴더를 더한다.
+- [ ] 1.7 예제 세 파일을 FR-07대로 고친다(스펙 2장의 네 군데). 분석의 `corrected/`가 남아 있으면 `diff`로 비교한다. 최종 판정은 단계 5의 AC-01이다.
+- [ ] 1.8 `docs/format-v0.md`의 "쓰기 규칙"과 "검증 규칙"(규칙 4, 5, 6, 8, 10)을 FR-07대로 고친다. 검사 도구를 가리키는 문장(18행, 121행 근처)은 6B에서 고친다(그때까지 사실이다).
+- [ ] 1.9 **검증**: 5장의 단계 관문, `pnpm install --frozen-lockfile`, 그리고 다음을 돌린다.
+  - 생성 명령이 인자 없이 된다. 생성물을 지우고 워크스페이스 명령으로 다시 만든 뒤 AC-12를 돌린다. 이어서 다른 폴더(저장소 루트)에서 직접 실행해도 결과가 같은지 본다. `exit=0`이어야 한다.
+
+    ```bash
+    (set -euo pipefail
+     rm ./packages/core/src/generated/schemas.ts
+     pnpm --filter @erdmaker/core generate:schemas
+     test -s packages/core/src/generated/schemas.ts
+     pnpm exec vitest run packages/core/src/schema/schemas.test.ts
+     git add packages/core/src/generated/schemas.ts
+     node packages/core/scripts/generate-schemas.ts
+     git diff --exit-code -- packages/core/src/generated/schemas.ts); echo "exit=$?"
+    ```
+
+  - AC-11: 5장의 AC-11 명령.
+  - AC-12: `pnpm test`에 "스키마 동기화"가 들어 있고 통과한다(스키마 8개).
+  - AC-15: 스펙 6.3의 스크립트.
+  - 고친 예제와 스키마가 옛 도구로도 같다: `out=$(pnpm --silent validate:format) && test "$out" = "$want"`(`want`는 스펙 6.2의 줄).
+  - 두 프로젝트의 출력이 같은지는 여기서 보지 않는다. `src/node/`가 아직 비어 있어 둘째 프로젝트가 공유 파일을 내보내지 않는다. 2.7에서 본다.
+- [ ] 1.10 커밋한다. 경로를 지정해 스테이징한다.
+
+### 단계 2: 파일 어댑터와 파서
+
+**목표**: 어댑터 둘이 같은 계약을 지키고, YAML과 배치 JSON 글 하나를 "값, 오류, 위치 색인, 첫 주석"으로 바꿀 수 있다. 모델은 아직 없다.
+**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-09 · **요구사항**: FR-02, FR-05(파일 하나 단위), FR-09(위치 규칙)
+
+- [ ] 2.1 `packages/core/src/model/types.ts`에 `Issue`, `Severity`, `Position`, `PositionIndex`를, `packages/core/src/fs/adapter.ts`에 인터페이스와 `FileNotFoundError`를 쓴다. `packages/core/src/fs/path.ts`와 `path.test.ts`(합치기, `a/../b`, 앞의 `..` 유지, `""`).
+- [ ] 2.2 **테스트 먼저**: `packages/core/src/fs/adapter.test.ts`에 "어댑터 계약"(AC-09의 항목 전부)을 쓰고 두 구현에 돌린다(2장 결정 1). 이어서 `packages/core/src/fs/memory.ts`, `packages/core/src/node/fs.ts`, `packages/core/src/node/index.ts`를 구현한다. Node 쪽은 `mkdtemp`로 만든 폴더를 쓰고 끝나면 그 폴더만 지운다. `node/fs.ts`는 `FileNotFoundError`를 `../fs/adapter.js`에서 가져온다(자기 클래스를 만들지 않는다).
+- [ ] 2.3 `packages/core/src/validate/json-value.ts`와 `json-value.test.ts`: FR-05와 FR-08이 든 값 종류, 안전한 정수, 공유 참조는 통과하고 순환은 닫히는 자리에서 보고(분석 A10).
+- [ ] 2.4 `packages/core/src/parse/yaml.ts`와 `yaml.test.ts`: FR-05의 읽기 옵션, `syntax`(문법, 중복 키, 키 충돌, 컬렉션 키), `yaml-feature`(앵커, 별칭, 풀리지 않는 별칭, 태그 종류별), 첫 주석의 위치, JSON Pointer → 위치 색인. 위치는 CST 토큰에서 얻는다(분석 Y11, Y15, Y16). 테스트는 사례마다 `rule`, `line`, `column`, `message`를 단언한다.
+- [ ] 2.5 `packages/core/src/parse/json.ts`와 `json.test.ts`: FR-09의 위치 순서 세 갈래를 각각 단언하고(분석 4.2절의 표가 입력 예다), 중복 키, 유효한 파일의 위치 색인을 단언한다.
+- [ ] 2.6 `packages/core/src/index.ts`가 이 단계의 공개 이름을 내보낸다.
+- [ ] 2.7 **검증**: AC-09("어댑터 계약"이 두 구현 모두에서 통과한다. 테스트 이름에 구현 이름이 보이게 한다)와 아래 둘을 돌리고, 마지막에 5장의 단계 관문을 돌린다(아래 검사가 `dist`를 건드리므로 관문이 뒤다).
+  - 두 프로젝트가 공유 파일을 같은 내용으로 내보낸다(스펙 7장). 기본 프로젝트의 출력을 떼어 두고 `dist`에서 지운 뒤 둘째 프로젝트만 돌려 비교한다. 둘째 프로젝트가 그 파일을 내보내지 않으면 `cmp`가 파일 없음으로 실패한다. `exit=0`이어야 한다.
+
+    ```bash
+    (set -euo pipefail
+     t=$(mktemp -d)
+     rm -rf ./packages/core/dist
+     pnpm --filter @erdmaker/core exec tsc
+     cp packages/core/dist/fs/adapter.js packages/core/dist/fs/adapter.d.ts "$t"/
+     rm packages/core/dist/fs/adapter.js packages/core/dist/fs/adapter.d.ts
+     pnpm --filter @erdmaker/core exec tsc -p tsconfig.node.json
+     cmp "$t/adapter.js" packages/core/dist/fs/adapter.js
+     cmp "$t/adapter.d.ts" packages/core/dist/fs/adapter.d.ts); echo "exit=$?"
+    ```
+
+  - 빌드한 두 진입점이 `exports`를 거쳐 풀리고 같은 `FileNotFoundError`를 쓴다. `cli` 패키지 자리에서(코어에 의존하는 쪽) 가져온다. `exit=0`이어야 한다.
+
+    ```bash
+    pnpm build && pnpm --filter @erdmaker/cli exec node --input-type=module -e "
+    import { FileNotFoundError } from '@erdmaker/core';
+    import { createNodeFileSystem } from '@erdmaker/core/node';
+    const e = await createNodeFileSystem('.')
+      .readText('no-such-file.txt')
+      .then(() => null, (x) => x);
+    process.exit(e instanceof FileNotFoundError ? 0 : 1);"; echo "exit=$?"
+    ```
+
+- [ ] 2.8 커밋한다.
+
+### 단계 3: 스키마 검사와 모델 읽기
+
+**목표**: `loadModel`이 예제를 모델로 읽고, `validateModel`이 스키마와 JSON 값 오류를 위치와 함께 낸다. 파일 간 규칙은 아직 없다.
+**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-06 · **요구사항**: FR-04, FR-05, FR-08(스키마, 위치, 정렬, `comment`)
+
+- [ ] 3.1 `packages/core/src/testing/example.ts`를 쓴다: 디스크의 예제 29개를 `경로 → 글` 맵으로 읽기, "파일 하나에서 문자열 하나를 바꾸기"(바꿀 문자열이 없거나 둘 이상이면 예외. AC-05의 "치환할 문자열이 예제에 없으면 실패"가 여기서 나온다), 맵으로 메모리 어댑터 만들기.
+- [ ] 3.2 `packages/core/src/schema/ajv.ts`, `packages/core/src/validate/schema.ts`와 `schema.test.ts`: FR-03의 설정, FR-08의 `schema` 메시지와 `path`(모르는 키는 그 키를 가리킨다. 분석 A4).
+- [ ] 3.3 `packages/core/src/validate/issues.ts`와 `issues.test.ts`: FR-08의 위치 정하기 세 단계와 정렬 순서(위치 없는 것이 먼저).
+- [ ] 3.4 `packages/core/src/model/types.ts`에 `Model`, `ModelItem`, 데이터 타입을 더한다(손으로 쓴다. 스키마에서 타입을 만드는 도구는 더하지 않는다).
+- [ ] 3.5 **테스트 먼저**: `packages/core/src/model/load.test.ts`에 "문법과 스키마"(AC-06의 사례 전부)를 쓴다. 사례는 2장 결정 5의 파일에 넣는다. 이어서 `packages/core/src/model/load.ts`(`loadModel`)와 `packages/core/src/validate/index.ts`(`validateModel`: 스키마와 JSON 값 검사, 규칙 자리는 비워 둔다)를 구현한다.
+- [ ] 3.6 같은 테스트 파일에 읽기 대상의 단언을 더한다: 하위 폴더, 이름순, 모델 밖 사전 폴더, 없는 사전 폴더, 깨진 `model.yaml`로 계속하기, CRLF 파일(FR-05).
+- [ ] 3.7 `packages/core/src/index.ts`에 `loadModel`, `validateModel`과 타입을 더한다.
+- [ ] 3.8 **검증**: 5장의 단계 관문. AC-06: "문법과 스키마"가 통과한다.
+- [ ] 3.9 커밋한다.
+
+### 단계 4: 파일 간 규칙 R01~R12
+
+**목표**: `validateModel`이 부록 A의 모든 줄을 낸다. 깨진 배치가 있어도 나머지 검사가 계속된다.
+**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-05, AC-07 · **요구사항**: FR-08(규칙), FR-09
+
+- [ ] 4.1 `packages/core/src/testing/cases.ts`에 부록 A의 사례를 데이터로 쓴다: 이름, 부록 A의 줄 번호, 치환, 기대 `Issue` 목록(일곱 필드 전부), 대조에서 빼는지와 그 이유(FR-13의 목록에 있는 것만). 부록 A 머리말이 요구한 수를 채운다(1번은 종류 일곱, 26번은 메시지 셋, 33번은 둘). 기대값의 `message`와 `path`는 부록 A에서, `line`·`column`은 고친 뒤의 파일에서 정한다. 구현의 출력을 확인 없이 붙여 넣지 않는다.
+- [ ] 4.2 **테스트 먼저**: `packages/core/src/validate/rules.test.ts`에 "규칙 사례"(AC-05)를 쓴다. 사례마다 테스트 하나, 그리고 묶음 단언 둘: 사례의 `rule`을 모으면 `R01`~`R12`가 모두 있다, 부록 A의 1~38번마다 사례가 하나 이상 있다.
+- [ ] 4.3 `packages/core/src/validate/rules.ts`에 옛 도구의 파일 간 검사를 옮기고 `validate/index.ts`에 잇는다. 옛 도구와 다르게 하는 곳은 FR-08이 든 넷(부록 A의 18, 25, 26, 38)뿐이다. 규칙은 스키마와 JSON 값 검사를 통과한 항목만 받는다.
+- [ ] 4.4 같은 테스트 파일에 AC-05의 나머지 단언을 더한다: `R06`의 타입 비교 넷, 메모리에서 고친 모델(`path`는 있고 `line`·`column`은 없다), `attributes: null`, 자기 자신을 가리키는 `ext`, 위치 없는 `Issue`가 앞.
+- [ ] 4.5 `packages/core/src/model/broken-layout.test.ts`에 "깨진 배치"(AC-07)를 쓴다.
+- [ ] 4.6 **검증**: 5장의 단계 관문. `git diff --exit-code <단계 3의 커밋> -- packages/core/src/model/load.test.ts`가 종료 코드 0이다(AC-06의 테스트가 규칙이 들어온 뒤에도 그대로 통과한다. 0이 아니면 테스트를 고친 것이므로, 사례를 따라 나오는 오류가 없는 파일로 옮기는 것 말고는 되돌린다).
+- [ ] 4.7 커밋한다.
+
+### 단계 5: 쓰기
+
+**목표**: 같은 모델은 항상 같은 바이트로 나오고, 예제가 바이트 그대로 왕복하고, `writeModel`이 바뀐 파일만 쓴다.
+**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-01, AC-02, AC-03, AC-04 · **요구사항**: FR-06, FR-07(확인)
+
+- [ ] 5.1 `packages/core/src/schema/resolve.ts`와 `resolve.test.ts`: FR-06의 "값의 스키마 찾기". 단언: 다른 파일의 `$ref`, 공통 스키마 안의 같은 파일 `$ref`, `oneOf`의 객체 갈래, 맵의 값 스키마, `$ref` 대상의 `default`, 키 이름이 `default`인 속성은 기본값이 아니다(분석 4.4절).
+- [ ] 5.2 **테스트 먼저**: `packages/core/src/model/serialize.test.ts`에 "쓰기 세부"(AC-03의 단언, 5.3의 것은 빼고)를 쓴다. 이어서 `packages/core/src/model/serialize.ts`(YAML, 스펙 7장의 출력 옵션)와 `packages/core/src/model/layout-json.ts`(배치)를 구현한다. `__proto__` 키와 숫자뿐인 ID를 객체 재조립 없이 다룬다(분석 4.2절).
+- [ ] 5.3 **파일의 마지막 값이 줄바꿈으로 끝나는 글일 때** (AC-03의 "마지막 값" 경우). 줄바꿈 둘 이상으로 끝나는 여러 줄 글은 블록 표기 `|+`로 써지는데(분석 Y5), 그 값이 파일의 마지막이면 파일이 LF 둘 이상으로 끝난다. 끝을 LF 하나로 잘라 맞추면 값에서 줄바꿈이 사라진다. 그래서 블록 표기의 끝 줄바꿈 처리가 "파일 끝 줄바꿈 하나"를 깨는 값은 이스케이프한 큰따옴표 글로 쓴다. 파일 글을 뒤에서 자르는 방법은 쓰지 않는다. **테스트 먼저**: `serialize.test.ts`에 마지막 키의 값이 `"a\nb\n\n"`인 항목을 넣어 (1) 써진 글이 LF 하나로 끝나고 그 앞 글자가 LF가 아니며, (2) 그 값의 줄이 기대한 큰따옴표 표기와 글자 그대로 같고, (3) YAML 1.2 core와 1.1로 다시 읽은 값이 원래 글과 같고, (4) 같은 글이 파일의 마지막이 아닐 때는 다시 읽은 값이 같다는 것을 단언한다. 이어서 `serialize.ts`에 구현한다.
+- [ ] 5.4 `packages/core/src/model/roundtrip.test.ts`에 "예제 왕복"(AC-01, 디스크의 예제를 Node 어댑터로 읽는다)과 "비정규형 입력"(AC-02)을 쓴다. AC-01이 예제 때문에 실패하면 FR-07의 네 군데 안에서 예제를 고치고(그 밖을 고쳐야 하면 멈추고 알린다), 쓰기 코드에 예제용 예외를 두지 않는다.
+- [ ] 5.5 **테스트 먼저**: `packages/core/src/model/write.test.ts`에 "바뀐 파일만 쓰기"(AC-04의 다섯 경우)를 쓰고 `packages/core/src/model/write.ts`를 구현한다. 어댑터의 실제 내용으로 단언한다.
+- [ ] 5.6 `packages/core/src/index.ts`에 `serializeModel`, `writeModel`, `SerializedFile`을 더한다.
+- [ ] 5.7 **검증**: 5장의 단계 관문. 예제를 고쳤으면 `pnpm validate:format`의 요약 줄이 스펙 6.2의 `want`와 같은지 다시 본다.
+- [ ] 5.8 커밋한다.
+
+### 단계 6: 프로젝트, CLI, 대조, 옛 도구 제거
+
+**목표**: `erdmaker validate <dir>`가 되고, 코어가 Node 없이 도는 것과 옛 도구와 결과가 같은 것이 테스트로 확인된 뒤, 옛 도구가 없어진다.
+**위험**: 높음 (삭제와 `validate:format` 교체) · **상태**: 대기 · **수용 기준**: 6A는 AC-08, AC-10, AC-13, AC-16 / 6B는 AC-14, AC-17, AC-18, AC-19 · **요구사항**: FR-01(`bin`), FR-10, FR-11, FR-13, FR-14
+
+**커밋 경계**: 6.1~6.5가 커밋 6A, 6.7~6.12가 커밋 6B다. 6A에는 옛 도구, 루트의 `ajv`·`yaml`, `eslint.config.js`의 `tools/**` 블록, 옛 `validate:format`이 그대로 있고 대조 테스트가 그것을 쓴다. 6B는 그것들과 대조 테스트를 한 커밋에서 함께 지운다(하나만 지우면 CI의 `validate:format`이나 `--frozen-lockfile`이 깨진다. 분석 C2).
+
+#### 6A 프로젝트, CLI, 번들, 대조
+
+- [ ] 6.1 **테스트 먼저**: `packages/core/src/project/find.test.ts`에 "모델 찾기"(AC-08, 메모리 어댑터)를 쓰고, `packages/core/src/project/find.ts`(`findModels`)와 `packages/core/src/project/validate.ts`(`validateProject`)를 구현한다. `P01`과 `P02`에 디스크 위치를 준다(FR-10): `file`은 해당 모델의 `model.yaml`이고, `line`·`column`은 FR-08의 순서로 정한다(`P01`은 그 파일의 위치 색인에서 `/id`, `P02`는 `path`가 `""`라 1:1). 테스트는 두 오류의 `file`, `path`, `line`, `column`을 단언한다. `packages/core/src/index.ts`에 더한다.
+- [ ] 6.2 CLI를 만든다: `packages/cli/package.json`의 `bin`(FR-01의 문자열 그대로), `packages/cli/src/main.ts`, `packages/cli/src/bin.ts`. 프로젝트 오류는 다른 오류와 같은 줄 모양으로 내고, `file`로 해당 모델과 이어 그 모델의 `OK` 줄을 내지 않는다(FR-11). **테스트 먼저**: `packages/cli/src/validate.test.ts`에 다음 둘을 쓴다. 실행할 파일의 경로는 `package.json`의 `bin.erdmaker`에서 읽는다. 사례 폴더는 `mkdtemp`로 만들고 끝나면 그 폴더만 지운다.
+  - "validate"(AC-13의 경우 전부).
+  - 프로젝트 오류(AC-13의 프로젝트 경우): 임시 폴더에 예제 사본으로 프로젝트를 만든다. 모델 셋 중 둘은 `id`가 같고, 하나는 안에 `model.yaml`이 하나 더 있다. 빌드한 CLI를 실행해 종료 코드가 1이고, stderr에 `P01`과 `P02`가 각각 `<해당 model.yaml>:<line>:<column>: … [P01]`·`[P02]` 줄로 정확한 위치와 함께 있고, stdout에 `P01`을 받은 모델과 안쪽 `model.yaml`을 가진 모델의 `OK` 줄이 없으며, 오류가 없는 모델(`id`가 같은 둘 중 앞의 것)의 `OK` 줄은 있음을 단언한다.
+- [ ] 6.3 `packages/cli/src/bundle.test.ts`에 "브라우저 번들"(AC-10, 스펙 6.1의 세 단계)을 쓴다. 같은 파일에서 차단 플러그인이 일하는 것도 단언한다: `node:fs`를 가져오는 한 줄짜리 진입점(임시 폴더에 쓴다)의 빌드가 거부된다. 테스트별 타임아웃을 준다.
+- [ ] 6.4 `packages/core/src/parity.test.ts`에 대조 테스트(FR-13의 1단계)를 쓴다. 대상은 예제, `testing/cases.ts`에서 대조 표시가 켜진 사례 전부, 모델 밖 사전을 가진 프로젝트 모양 하나, YAML 문법 오류 사례 하나(따라 나오는 오류까지 같아야 한다. 분석 4.9절)다. 비교하는 것은 FR-13이 적은 둘(종료 코드, 줄의 다중집합)이다. 묶음 단언: 부록 A의 1~37번마다 대조한 사례가 하나 이상 있다, 대조에서 뺀 사례는 모두 이유가 적혀 있다. 사례마다 테스트를 나누고 타임아웃을 준다(옛 도구 한 번에 약 0.2초).
+- [ ] 6.5 **검증**: 5장의 단계 관문. `node packages/cli/dist/bin.js validate format/v0/examples/shop`의 stdout이 옛 `pnpm --silent validate:format`의 것과 같다. 커밋한다(6A). 해시를 7장에 적는다.
+- [ ] 6.6 **관문 (여기서 멈춘다)**: 리드에게 6A의 해시를 넘긴다. 리드는 사용자 승인 뒤 6A를 머리로 push하고 PR을 열어 CI를 돌린다. AC-16의 판정: `gh run list --commit <6A 해시> --json conclusion --jq '.[].conclusion'`의 출력이 `success` 한 줄 이상이고 다른 값이 없다. 출력이 비었거나(실행이 없다) 다른 값이 있으면 닫지 않는다. 실패면 6A를 고친 새 커밋으로 다시 판정받고, 그 해시를 쓴다. 닫히기 전에는 6.7로 가지 않는다.
+
+#### 6B 옛 도구 제거와 문서
+
+- [ ] 6.7 한꺼번에 바꾼다: `git rm tools/validate-format.mjs packages/core/src/parity.test.ts`, 루트 `package.json`의 `validate:format`을 스펙 4장의 값으로 교체하고 devDependencies에서 `ajv`·`yaml` 제거, `pnpm install`로 `pnpm-lock.yaml` 갱신, `eslint.config.js`의 `tools/**` 블록 제거. `testing/cases.ts`의 대조 표시는 지워도 되고 남겨도 된다(기대 `message`가 옛 문구를 계속 고정한다).
+- [ ] 6.8 문서를 고친다(FR-14): `CLAUDE.md`의 "지금 상태"와 "명령" 절(`validate:format`과 `pnpm test`의 일부, `pnpm lint`의 타입 검사가 `pnpm build` 뒤에 된다는 것, `pnpm lint`에 테스트 타입 검사가 들어간 것), `docs/format-v0.md`와 `docs/planning.md`의 옛 도구 문장, `docs/stage1-backlog.md`의 세 줄(2장 결정 9: 92행의 파일 목록에서 옛 경로를 `packages/core`로 바꾸고, 103행과 108행은 경로 대신 "옛 검사 도구"로 적는다. 뜻은 바꾸지 않는다). `CLAUDE.md`는 `pnpm exec prettier --write CLAUDE.md`로 서식을 맞춘다(`docs/`는 서식 대상이 아니다).
+- [ ] 6.9 남은 참조가 없는지 본다. 종료 코드 1(일치 없음, 오류 없음)이어야 통과다.
+
+  ```bash
+  grep -n 'validate-format' package.json eslint.config.js CLAUDE.md \
+    docs/format-v0.md docs/planning.md docs/stage1-backlog.md; test $? -eq 1; echo "exit=$?"
+  ```
+
+- [ ] 6.10 **검증**: `pnpm install --frozen-lockfile`, 5장의 단계 관문(이제 `validate:format`은 새 CLI다), AC-14(스펙 6.2의 스크립트 전체), AC-17(스펙 6.4의 스크립트와 `docs/specs/repo-scaffold.md` 6.4의 라이선스 스크립트), AC-19의 로컬 절반(`pnpm build && pnpm test && pnpm lint`).
+- [ ] 6.11 **AC-18**: "작업 후" 목록을 0.1과 같은 두 `find`로 만들어 기준선과 비교한다. `exit=0`이고 출력이 없어야 한다. 아니면 커밋하지 않고 멈춰 알린다.
+
+  ```bash
+  (set -euo pipefail
+   test -s docs/handoff/core-model-io-spikes-before.sha256
+   { find spikes -type f -print0 | sort -z | xargs -0 sha256sum
+     find spikes -type l -printf '%p -> %l\n' | sort
+   } | diff docs/handoff/core-model-io-spikes-before.sha256 -); echo "exit=$?"
+  ```
+
+- [ ] 6.12 커밋한다(6B). 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다. 리드에게 넘긴다: 6B의 push, PR 설명에 6A의 해시 적기(AC-16), `gh pr checks`(AC-19의 나머지)는 사용자 승인 뒤 리드가 한다.
+
+## 5. 품질 관문
+
+모두 저장소 루트에서 실행한다.
+
+### 단계 관문 (모든 단계의 "검증"에서)
+
+```bash
+rm -rf ./packages/core/dist ./packages/cli/dist ./packages/mcp/dist ./packages/web/dist &&
+pnpm build && pnpm test && pnpm lint && pnpm validate:format &&
+out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
+  \( -name '*.test.*' -o -path '*/testing/*' \)) && test -z "$out"; echo "exit=$?"
+```
+
+- `exit=0`이어야 한다. 순서를 바꾸지 않는다. `test`의 일부(6A부터), `lint`의 타입 검사, 새 `validate:format`이 `dist`를 읽는다.
+- `dist`를 지우고 시작하므로 지난 빌드의 파일이 결과를 가리지 않는다. 지우는 경로는 이 넷뿐이다.
+- 마지막 줄은 테스트와 테스트 도우미가 `dist`에 없음을 본다(스펙 7장).
+- `package.json`을 고친 단계(1, 6B)는 `pnpm install --frozen-lockfile`도 통과해야 한다.
+
+### AC별 확인
+
+- [ ] AC-11 (단계 1). 설정을 읽지 못하면 `JSON.parse`가 던져 실패한다.
+
+  ```bash
+  pnpm --filter @erdmaker/core exec tsc --showConfig | node -e "
+  const c = JSON.parse(require('node:fs').readFileSync(0, 'utf8')).compilerOptions;
+  process.exit(JSON.stringify(c.lib) === '[\"es2022\"]' && JSON.stringify(c.types) === '[]' ? 0 : 1)"; echo "exit=$?"
+  ```
+
+- [ ] AC-12, AC-09, AC-06, AC-05, AC-07, AC-01~04, AC-08, AC-13, AC-10: 스펙 6장이 이름 붙인 테스트가 `pnpm test`에 있고 통과한다. 테스트의 `describe`나 `test` 이름에 스펙의 이름("예제 왕복" 등)을 그대로 쓴다. 닫을 때 `pnpm exec vitest run -t '<이름>'`의 출력에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
+- [ ] AC-15 (단계 1): 스펙 6.3.
+- [ ] AC-16 (6A 뒤, 리드): 6.6의 판정.
+- [ ] AC-14, AC-17 (6B): 스펙 6.2, 6.4.
+- [ ] AC-18 (6B): 6.11.
+- [ ] AC-19 (6B와 PR 뒤): 로컬 세 명령, 리드의 `gh pr checks`.
+
+스펙 6장의 스크립트는 구현 전에 쓴 것이다. 틀리면 같은 조건을 검사하도록 고치고 7장에 적는다. 조건을 낮추지 않는다.
+
+## 6. 위험과 참고
+
+### 위험
+
+| 위험                                                                                      | 가능성 | 대응                                                                                                              |
+| ----------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| `yaml`의 출력이 버전에 따라 달라진다 (스펙 7장)                                           | 낮음   | 1.1에서 버전을 확인한다. AC-01과 AC-03이 잡는다                                                                   |
+| 손으로 고친 예제가 쓰기 규칙과 다르다 (단계 1과 5 사이)                                   | 중간   | 1.7에서 `corrected/`와 비교하고 5.4에서 AC-01로 판정한다. 고칠 범위는 FR-07의 네 군데다                           |
+| 블록 표기의 끝 줄바꿈이 "파일 끝 줄바꿈 하나"와 부딪친다                                  | 중간   | 5.3. 큰따옴표 표기로 바꾸는 조건은 테스트가 고정한다                                                              |
+| 문법 오류의 줄·열이 엔진 메시지의 형식에 기댄다 (AC-07의 2:1)                             | 낮음   | 로컬과 CI가 모두 Node 22다. 메시지에 위치가 없을 때의 두 갈래를 2.5가 따로 단언한다                               |
+| `core`의 두 번 컴파일이 공유 파일을 다르게 내보내거나, 두 진입점이 다른 클래스를 쓴다 (스펙 7장) | 낮음 | 2.7의 `cmp`와 가져오기 검사                                                                                  |
+| 부록 A 사례의 기대값(약 50개, 줄·열 포함)을 쓰는 데 시간이 든다                           | 중간   | 단계 4에 반나절을 잡는다. 기대값을 줄이지 않는다. 사흘을 넘길 것 같으면 범위를 줄이지 말고 알린다                 |
+| 대조 테스트가 옛 출력의 코드 프레임 줄을 오류로 오인한다 (분석 4.9절)                     | 중간   | 6.4의 줄 고르기 규칙. YAML 문법 오류 사례를 대조에 넣어 확인한다                                                  |
+| 대조 테스트가 느려 타임아웃이 난다                                                        | 중간   | 사례마다 테스트를 나누고 타임아웃을 준다                                                                          |
+| 6A와 6B를 함께 올려 AC-16의 CI 기록이 없다                                                | 중간   | 6.6에서 멈춘다                                                                                                    |
+| 빌드 없이 `pnpm lint`나 `pnpm test`를 돌려 `TS2307`이나 파일 없음으로 실패한다 (분석 C5)  | 중간   | 관문의 순서를 지킨다. 6.8에서 `CLAUDE.md`에 적는다. 빌드가 없을 때 건너뛰는 분기를 테스트에 넣지 않는다(실패가 맞다) |
+| 분석이 실행해 보지 않은 것: `mcp`의 `typecheck`(입력이 빈 파일 하나), Vite의 `publicDir: false`, 스펙 6장의 스크립트 | 중간 | 1.9, 6.3, 6.10에서 실행으로 확인한다. 다르면 같은 조건을 지키게 고치고 7장에 적는다       |
+| Ajv가 `new Function`을 쓴다 (스펙 7장)                                                    | 해당 없음 | 이 기능은 CSP가 없는 환경(AC-10)까지만 본다. F09에서 정한다                                                    |
+| 임시 폴더를 지우는 코드가 다른 경로에 닿는다                                              | 낮음   | 테스트는 `mkdtemp`가 돌려준 경로만 지운다. 저장소 안에 임시 폴더를 만들지 않는다                                  |
+
+### 알려진 한계 (이 기능에서 고치지 않는다)
+
+스펙 8장 그대로다: 조용히 넘어가는 경우 셋, 엔진이 위치를 주지 않는 깨진 JSON의 1:1, 주석 유실(경고만), `ext` 안 숫자뿐인 키의 순서.
+
+### 구현할 때 참고
+
+- 피할 것(분석 7장): `JSON.stringify(v, null, 2)`로 배치 쓰기, 정렬한 새 객체로 키 순서 만들기, Ajv의 기본 내보내기, 차단 플러그인 없는 번들 테스트, 코어 안의 `structuredClone`·`console`, `properties` 아래를 키워드로 훑는 스키마 탐색.
+- `core`·`cli`·`mcp`는 NodeNext라 상대 경로 가져오기에 `.js` 확장자를 쓴다.
+- 생성물을 다시 만드는 자동 단계는 없다. 스키마를 고치면 `pnpm --filter @erdmaker/core generate:schemas`를 돌린다. 잊으면 AC-12가 실패한다.
+- 테스트 도우미를 `src/testing/` 밖에 `*.test.ts`가 아닌 이름으로 두면 `dist`에 들어가고 관문의 마지막 줄이 놓친다. 도우미는 `src/testing/`에만 둔다.
+- `vm` 컨텍스트의 결과는 다른 realm의 객체다. 번들 테스트는 컨텍스트 안에서 `JSON.stringify`해 꺼낸다(분석 4.6절).
+- `syntax` 메시지 첫 줄에 `at line N, column M:`이 이미 들어 있다. 옛 문구를 지키려고 그대로 둔다(분석 S7).
+
+## 7. 구현 기록
+
+(구현하면서 적는다: 문서 커밋 해시(0.2), 풀린 `ajv`·`yaml` 버전(1.1), 고친 검사 스크립트, 6A의 해시와 AC-16의 판정, 계획과 달라진 점. 이 절의 변경은 각 단계의 커밋에 넣는다)
+
+---
+
+마지막 수정: 2026-11-27 (계획 리뷰 1차 반영)
+상태: 대기
