@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
 **설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
 **브랜치**: `feature/core-model-io`
-**상태**: 진행 중 (단계 2/6 완료)
+**상태**: 진행 중 (단계 3/6 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
 
@@ -316,17 +316,17 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 ### 단계 3: 스키마 검사와 모델 읽기
 
 **목표**: `loadModel`이 예제를 모델로 읽고, `validateModel`이 스키마와 JSON 값 오류를 위치와 함께 낸다. 파일 간 규칙은 아직 없다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-06 · **요구사항**: FR-04, FR-05, FR-08(스키마, 위치, 정렬, `comment`)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-06 · **요구사항**: FR-04, FR-05, FR-08(스키마, 위치, 정렬, `comment`)
 
-- [ ] 3.1 `packages/core/src/testing/example.ts`를 쓴다: 디스크의 예제 29개를 `경로 → 글` 맵으로 읽기, "파일 하나에서 문자열 하나를 바꾸기"(바꿀 문자열이 없거나 둘 이상이면 예외. AC-05의 "치환할 문자열이 예제에 없으면 실패"가 여기서 나온다), 맵으로 메모리 어댑터 만들기.
-- [ ] 3.2 `packages/core/src/schema/ajv.ts`, `packages/core/src/validate/schema.ts`와 `schema.test.ts`: FR-03의 설정, FR-08의 `schema` 메시지와 `path`(모르는 키는 그 키를 가리킨다. 분석 A4).
-- [ ] 3.3 `packages/core/src/validate/issues.ts`와 `issues.test.ts`: FR-08의 위치 정하기 세 단계와 정렬 순서(위치 없는 것이 먼저).
-- [ ] 3.4 `packages/core/src/model/types.ts`에 `Model`, `ModelItem`, 데이터 타입을 더한다(손으로 쓴다. 스키마에서 타입을 만드는 도구는 더하지 않는다).
-- [ ] 3.5 **테스트 먼저**: `packages/core/src/model/load.test.ts`에 "문법과 스키마"(AC-06의 사례 전부)를 쓴다. 사례는 2장 결정 5의 파일에 넣는다. 이어서 `packages/core/src/model/load.ts`(`loadModel`)와 `packages/core/src/validate/index.ts`(`validateModel`: 스키마와 JSON 값 검사, 규칙 자리는 비워 둔다)를 구현한다.
-- [ ] 3.6 같은 테스트 파일에 읽기 대상의 단언을 더한다: 하위 폴더, 이름순, 모델 밖 사전 폴더, 없는 사전 폴더, 깨진 `model.yaml`로 계속하기, CRLF 파일(FR-05).
-- [ ] 3.7 `packages/core/src/index.ts`에 `loadModel`, `validateModel`과 타입을 더한다.
-- [ ] 3.8 **검증**: 5장의 단계 관문. AC-06: "문법과 스키마"가 통과한다.
-- [ ] 3.9 커밋한다.
+- [x] 3.1 `packages/core/src/testing/example.ts`를 쓴다: 디스크의 예제 29개를 `경로 → 글` 맵으로 읽기, "파일 하나에서 문자열 하나를 바꾸기"(바꿀 문자열이 없거나 둘 이상이면 예외. AC-05의 "치환할 문자열이 예제에 없으면 실패"가 여기서 나온다), 맵으로 메모리 어댑터 만들기.
+- [x] 3.2 `packages/core/src/schema/ajv.ts`, `packages/core/src/validate/schema.ts`와 `schema.test.ts`: FR-03의 설정, FR-08의 `schema` 메시지와 `path`(모르는 키는 그 키를 가리킨다. 분석 A4).
+- [x] 3.3 `packages/core/src/validate/issues.ts`와 `issues.test.ts`: FR-08의 위치 정하기 세 단계와 정렬 순서(위치 없는 것이 먼저).
+- [x] 3.4 `packages/core/src/model/types.ts`에 `Model`, `ModelItem`, 데이터 타입을 더한다(손으로 쓴다. 스키마에서 타입을 만드는 도구는 더하지 않는다).
+- [x] 3.5 **테스트 먼저**: `packages/core/src/model/load.test.ts`에 "문법과 스키마"(AC-06의 사례 전부)를 쓴다. 사례는 2장 결정 5의 파일에 넣는다. 이어서 `packages/core/src/model/load.ts`(`loadModel`)와 `packages/core/src/validate/index.ts`(`validateModel`: 스키마와 JSON 값 검사, 규칙 자리는 비워 둔다)를 구현한다.
+- [x] 3.6 같은 테스트 파일에 읽기 대상의 단언을 더한다: 하위 폴더, 이름순, 모델 밖 사전 폴더, 없는 사전 폴더, 깨진 `model.yaml`로 계속하기, CRLF 파일(FR-05).
+- [x] 3.7 `packages/core/src/index.ts`에 `loadModel`, `validateModel`과 타입을 더한다.
+- [x] 3.8 **검증**: 5장의 단계 관문. AC-06: "문법과 스키마"가 통과한다.
+- [x] 3.9 커밋한다.
 
 ### 단계 4: 파일 간 규칙 R01~R12
 
@@ -501,7 +501,21 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - 리뷰 수정 2차 (2026-11-27): (1) `yaml`의 `uniqueKeys: true`는 키마다 같은 맵의 앞 키를 모두 비교해 키 수의 제곱 시간이 들었다(키 20000개 3.5초, 50000개 15~24초). 옵션을 끄고 키 검사(`scanKeys`, 충돌 검사와 같은 한 번 훑기)가 `Set`으로 정확한 중복(스칼라 값이 `===`로 같음, NaN은 무엇과도 다름)을 찾는다. 중복이 있는 글만 `uniqueKeys` 함수로 한 번 더 합성한다. 함수가 첫 비교에서 참을 돌려 키마다 한 번만 불리고, 합성기가 맵의 둘째 키부터 자기 순서·자리로 낸 오류 가운데 정확한 중복이 아닌 것을 버린다. 그래서 문구 `Map keys must be unique at line L, column C:`, 자리(뒤 키, 빈 키는 합성기의 자리), 다른 파서 오류와의 순서, 태그·앵커 검사 전의 조기 반환이 전과 같다. 키 50000개: YAML 약 1.0초, JSON 약 0.8초(전 24초, 15초). (2) `parseJson`은 YAML 리더와 같은 중첩 한도를 쓴다: `MAX_NESTING`을 넘는 유효 JSON은 YAML과 같은 문구·자리의 `syntax` 오류 하나이고 값이 없다(전에는 위치 색인 없이 값을 돌려줬다). 유효 JSON의 중복 키는 늘 한 번 훑기로 찾고, 값 안의 중복 뒤에 그 키를 내 합성기 순서와 같다. 엔진 위치가 없는 깨진 JSON의 위치는 중복을 포함한 YAML 첫 오류 그대로다. 1024자 넘는 키는 `yaml` 2.9.1의 흐름 맵에서 오류가 아니어서 위치 색인이 그대로 나온다. 유효 JSON인데 YAML이 오류를 내는 경우는 퍼즈 3만 건에서 탭 뒤 최상위 스칼라뿐이었고, 위치 색인이 원래 비므로 그대로 빈 색인이다. 옛 빌드와 새 빌드를 무작위 YAML·JSON 6만 건에 비교해 의도한 깊이 변경 외에는 차이가 없다.
 - 리뷰 수정 3차 (2026-11-27, 마지막 리뷰 뒤에 고쳤고 리뷰받지 않았다): (1) `parserErrors`의 두 번째 합성에 `prettyErrors: false`를 넣었다. 없으면 `yaml`이 자기 줄 세기로 맵의 둘째 키부터 오류마다 그 줄 전체를 복사·검사해, 키가 한 줄에 있으면 제곱 시간이었다(한 줄 흐름 맵 키 40000개와 중복 하나 약 25초). 이슈는 이 모듈이 자리로 만들므로 문구·자리·순서가 같다(중복 입력 32개의 이슈가 고치기 전과 같다). 정확한 중복 수(`scanKeys`)와 다시 읽어 남긴 중복 오류 수가 다르면 `uniqueKeys: true`로 한 번 읽은 결과를 쓴다(`yaml`이 비교 함수를 부르는 방식이 바뀔 때의 대비; 라이브러리를 고치지 않고는 시험할 수 없어 시험은 없다). (2) 키 50000개의 2초 시간 테스트 둘을 비율 테스트 넷으로 바꿨다: 키 10000개와 40000개를 세 번씩 읽어 가장 빠른 시간의 비가 8 미만, 40000개가 10초 미만. YAML 블록 맵(고유 키), 압축 JSON(고유 키), 중복 하나인 한 줄 YAML 흐름 맵, 엔진 위치 없이 잘린 중복 있는 압축 JSON. 뒤의 둘은 (1) 전에 비 15.2, 15.5로 실패하고 뒤에 약 4로 통과한다.
 
+### 단계 3 (2026-11-27)
+
+- 3.1: `testing/example.ts`는 `exampleFiles()`(디스크의 29개, 경로순), `replaceOnce(files, file, search, replacement)`(새 맵을 돌려준다. 파일이 없거나 문자열이 없거나 둘 이상이면, 겹치는 경우도 포함해 던진다), `exampleFileSystem(files?)`. 도우미 자체의 테스트 `testing/example.test.ts`를 더했다(폴더가 빌드에서 빠지므로 `dist`에 들어가지 않는다).
+- 3.2: `schema/ajv.ts`의 `schemaValidator(name)`. Ajv 설정은 FR-03 그대로이고 테스트가 `opts`로 확인한다. Ajv에 넣는 스키마는 원본의 복사본이며 두 가지를 바꾼다(검사 결과는 같고 시간만 다르다). (1) **`$ref`를 대상의 복사본으로 바꾼다.** Ajv는 참조한 스키마를 함수로 부르고 실패할 때마다 지금까지의 오류 배열을 `concat`으로 복사해, 오류 있는 항목 수의 제곱 시간이 들었다(속성 4만 개에 모르는 키 하나씩: 2.1초, 1만 개의 47배). 형식 스키마에 재귀 `$ref`는 없다(있으면 던진다). `$ref` 옆 키워드는 지금 `description`뿐이고, 다른 키워드가 생기면 `allOf`로 함께 둔다. (2) **`uniqueItems`**: `items`가 스칼라 `type`을 적지 않은 곳(주제영역 `entities`, 키 `attributes`)에서 Ajv는 모든 쌍을 비교한다(4만 개 4.7초). 그 자리만 같은 문구·같은 쌍(`i`는 앞 항목과 같은 마지막 항목, `j`는 그 앞의 가장 가까운 같은 항목)을 내는 키워드 `erdmakerUniqueItems`로 바꾸고, 항목마다 정규화한 JSON 글(키 정렬, 명시적 스택)로 한 번에 찾는다. 오류를 목록에 붙이도록 Ajv의 코드 생성 키워드(`CodeKeywordDefinition`, `gen.scopeValue`)로 만들었다(함수 키워드는 다시 `concat`이다). `items`가 스칼라 타입인 곳(`synonyms` 등)은 Ajv가 이미 해시로 하므로 그대로 둔다. Ajv의 문구와 쌍 고르기는 문서에 없는 동작이라, 원본 스키마의 Ajv(옛 도구와 같은 설정)와 메시지 목록을 비교하는 테스트 셋을 두었다: 정한 사례 6개, 무작위 배열 3000개, 예제 29개 파일마다 무작위로 고친 데이터 300개. Ajv가 바뀌면 이 테스트가 실패한다. `validate/schema.ts`: `schemaIssues`(FR-08의 문구와 `path`, 모르는 키는 `params.additionalProperty`를 이스케이프해 붙인다)와 `itemIssues`(JSON 값 검사 뒤 스키마 검사).
+- 3.3: `validate/issues.ts`의 `placeIssue`, `compareIssues`, `finishIssues`(위치를 채우고 정렬한 새 배열). 위치의 (3) "`path`가 `""`이면 1:1"은 그 파일의 색인이 있을 때만이다. 색인이 없는 파일(메모리에서 만든 모델)은 `""`도 위치를 뺀다(AC-05의 "메모리에서 고친 모델은 `line`·`column`이 없다"). `line`과 `column` 중 하나만 있는 `Issue`는 위치가 없는 것으로 보고 다시 정한다.
+- 3.4: 데이터 타입은 스키마를 손으로 옮겼다. 스펙 밖의 공개 타입 이름(계획 모듈 표의 "데이터 타입"): `AttributeData`, `KeyData`, `DataType`, `DefaultValue`, `ValidValue`, `PhysicalTypes`, `Scope`, `NameSource`, `ReferentialAction`, `Side`, `Ext`, `JsonValue`. `Model`은 `{ dir, manifest?, entities, relationships, subtypes, subjectAreas, layouts, dictionaries }`이고 항목의 `file`은 연 폴더 기준 경로다(`Issue.file`과 같다). `model.yaml`이 모델에 못 들어가면 `manifest` 키 자체가 없다.
+- 3.5: `loadModel(fs, modelDir)` → `{ model, issues, positions }`. `positions`는 `ReadonlyMap<file, PositionIndex>`이고 모델에 들어간 파일만 담는다. 읽는 순서는 옛 도구와 같다(`model.yaml`, 사전, 엔터티, 관계, 서브타입, 주제영역, 배치). 파일은 하나씩 차례로 읽는다(동시에 열지 않는다). 모델에 못 들어간 파일의 `schema` 오류는 그 파일의 색인으로 위치를 받는다. `comment` 경고의 문구는 스펙이 정하지 않아 `YAML comments are not kept when erdmaker rewrites this file`로 정했다(`COMMENT_MESSAGE`). `validateModel(model, positions?)`은 모든 항목에 `itemIssues`를 하고 위치·정렬을 한다. 규칙은 단계 4에서 여기에 잇는다. AC-06 테스트는 `loadModel`의 `issues`와 `validateModel`의 결과를 합쳐 정렬한 목록 전체를 비교한다(`validateProject`가 모델마다 낼 목록). 기대값은 고친 `party.yaml`의 줄·열을 손으로 세어 먼저 적었고, 구현 뒤 처음 실행에 그대로 통과했다. `validate/index.test.ts`를 더했다: 메모리 모델(위치 없음, 목록 일곱 모두 검사), 위치 색인이 있을 때의 위치, JSON 값이 아닌 것(순환, `Date`, `undefined`, 함수), 10만 단 중첩 데이터, 모델 불변, 시간 비율 둘(엔터티 2500/1만 개, 한 엔터티의 속성 1만/4만 개, 모두 오류가 있는 데이터. (1) 전에는 이 테스트가 비 34로 실패했다).
+- 3.6: 읽기 대상 테스트 8개: 하위 폴더와 이름순(목록을 거꾸로 주는 어댑터로 읽는 쪽이 정렬하는 것을 본다. `Zeta.yaml`이 `address.yaml` 앞, 폴더 `b/`가 `b.yaml` 앞, `.yml`·`.txt`와 `layouts/` 안의 `.yaml`은 읽지 않는다), 하위 폴더의 모델(경로가 연 폴더 기준), 29개 파일 모두와 위치 색인, 모델 밖 사전(`../shared`), 없는 사전 폴더, 깨진 `model.yaml`(매니페스트 없음, 기본 `dictionary` 폴더), CRLF, 어댑터 실패의 전달.
+- 3.8: 단계 관문 `exit=0`(테스트 11개 파일 257개). `vitest run -t '문법과 스키마'`: 16개 통과, `exit=0`. `npm run --silent validate:format`도 `want`와 같다. 새 테스트는 구현을 한 군데씩 일부러 깨뜨려 실패하는 것을 봤다(예제 도우미, `schemaIssues`, `ajv.ts`의 `$ref` 인라인·`uniqueItems`·쌍·문구, `issues.ts`의 정렬 키 각각과 위치 단계 각각, `loadModel`의 제외·위치·주석·정렬·사전 경로·폴더 따라가기·`modelDir`). `$ref` 옆 키워드를 `allOf`로 두는 갈래는 지금 스키마에서 결과를 바꾸지 않아(옆 키워드가 `description`뿐) 깨뜨려도 테스트가 실패하지 않는다.
+- 검사 명령: 고치지 않았다.
+- 스펙이 정하지 않아 정한 것: (1) 데이터가 JSON 값이 아니면 그 항목에는 Ajv를 부르지 않고 `must be a JSON value`만 낸다(분석 S6을 모든 비JSON 값으로 넓혔다. 순환·접근자·Proxy가 Ajv를 멈추거나 던지게 하지 않으려는 것이다). (2) JSON 값 검사를 통과했는데 Ajv가 읽다가 던지는 데이터(`get` 트랩이 던지는 Proxy)는 `path` `""`, `/ must be a JSON value` 하나로 낸다. (3) 어댑터의 거부는 `FileNotFoundError`를 포함해 모두 그대로 넘긴다(`model.yaml`이 없는 폴더, 목록에 있었는데 읽을 때 없어진 파일). (4) `propertyNames` 오류의 `path`는 스펙 문구대로 `instancePath`(맵)다. 키를 가리키는 것은 `additionalProperties`뿐이다. (5) 같은 사전 폴더가 `dictionaries`에 두 번 적히면 옛 도구처럼 두 번 읽는다.
+- 계획과 달라진 점: (1) 모듈 표에 없는 `validate/index.test.ts`, `testing/example.test.ts`를 더했다. (2) `validate/issues.ts`가 타입 `FilePositions`를, `validate/index.ts`가 `modelItems`를 내보낸다(코어 안에서만 쓴다). (3) `schema/ajv.ts`가 위의 이유로 스키마를 변환해 넣는다(계획은 Ajv 인스턴스만 적었다).
+- 알려진 한계(고치지 않았다): (1) 메모리 어댑터의 `list`는 저장된 경로 전체를 훑어, 폴더가 아주 많은 메모리 모델을 읽으면 폴더 수 × 파일 수의 시간이 든다(단계 2의 코드. 한 폴더에 파일이 많은 보통의 모델은 선형이다). (2) Node 어댑터의 `list`는 폴더를 가리키는 심볼릭 링크를 따라가므로, 갈래가 둘 이상인 링크 순환이 있는 폴더는 경로 해석의 한도(`ELOOP`)에 닿을 때까지 지수적으로 많은 경로를 읽는다. 옛 도구도 같다. 어댑터가 실제 경로를 알려 주지 않아 읽는 쪽에서 막을 수 없다.
+
 ---
 
-마지막 수정: 2026-11-27 (단계 2 구현)
-상태: 진행 중 (단계 2/6 완료)
+마지막 수정: 2026-11-27 (단계 3 구현)
+상태: 진행 중 (단계 3/6 완료)
