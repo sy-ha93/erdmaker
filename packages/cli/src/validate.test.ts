@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import {
+  chmod,
   copyFile,
   cp,
   mkdir,
@@ -240,9 +241,73 @@ describe('validate', () => {
     [
       'an unknown command',
       ['check', 'a'],
-      `Unknown command: check\n${USAGE}\n`,
+      `Unknown command: check. ${USAGE}\n`,
     ],
   ])('%s: 2 and the usage', async (_name, args, stderr) => {
     expect(await run(...args)).toEqual({ code: 2, stdout: '', stderr });
+  });
+
+  test('a model folder whose name holds a newline: one OK line, the newline escaped', async () => {
+    const project = await folder();
+    await example(join(project, 'a\nb'));
+    expect(await run('validate', project)).toEqual({
+      code: 0,
+      stdout: `a\\nb: ${WANT}\n`,
+      stderr: '',
+    });
+  });
+
+  test('an issue of a file whose name holds a newline and a tab: one line, both escaped', async () => {
+    const dir = await example(await folder());
+    await copyFile(
+      join(dir, 'entities/tag.yaml'),
+      join(dir, 'entities/x\ny\tz.yaml'),
+    );
+    expect(await run('validate', dir)).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        'entities/x\\ny\\tz.yaml:1:1: duplicate entity id "tag" (also in entities/tag.yaml) [R01]\n' +
+        '\n' +
+        '1 error(s)\n',
+    });
+  });
+});
+
+// Root reads through any permission, so the cases cannot happen there.
+describe.skipIf(process.getuid?.() === 0)('validate: unreadable', () => {
+  /** Runs `validate <dir>` with `locked` unreadable, then makes it readable again. */
+  async function runLocked(dir: string, locked: string): Promise<Run> {
+    await chmod(locked, 0o000);
+    try {
+      return await run('validate', dir);
+    } finally {
+      await chmod(locked, 0o755);
+    }
+  }
+
+  /** Exit 2, nothing on stdout, and exactly one stderr line: `Cannot read <dir>: <the EACCES message>`. */
+  function expectCannotRead(result: Run, dir: string): void {
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.startsWith(`Cannot read ${dir}: EACCES: `)).toBe(true);
+    expect(result.stderr.split('\n')).toEqual([result.stderr.slice(0, -1), '']);
+  }
+
+  test('an entity file: 2 and one line', async () => {
+    const dir = await example(await folder());
+    expectCannotRead(await runLocked(dir, join(dir, 'entities/tag.yaml')), dir);
+  });
+
+  test('the model folder: 2 and one line', async () => {
+    const dir = await example(await folder());
+    expectCannotRead(await runLocked(dir, dir), dir);
+  });
+
+  test('a folder without a model in a project: 2 and one line', async () => {
+    const project = await folder();
+    await example(join(project, 'a'));
+    await mkdir(join(project, 'notes'));
+    expectCannotRead(await runLocked(project, join(project, 'notes')), project);
   });
 });

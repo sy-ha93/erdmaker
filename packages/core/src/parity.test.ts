@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createNodeFileSystem } from './node/fs.js';
 import { validateProject } from './project/validate.js';
-import { caseFiles, RULE_CASES } from './testing/cases.js';
+import { caseFiles, RULE_CASES, type RuleCase } from './testing/cases.js';
 import { exampleFiles, type Files, replaceOnce } from './testing/example.js';
 
 /**
@@ -115,15 +115,18 @@ function outsideDictionary(): Files {
 
 const TAG = 'entities/tag.yaml';
 
+const COMPARED_RULES = RULE_CASES.filter(
+  (rule) => rule.parityExcluded === undefined,
+);
+const ruleCaseName = (rule: RuleCase) => `rule case: ${rule.name}`;
+
 const CASES: ParityCase[] = [
   { name: 'the example', files: exampleFiles(), model: '' },
-  ...RULE_CASES.filter((rule) => rule.parityExcluded === undefined).map(
-    (rule): ParityCase => ({
-      name: `rule case: ${rule.name}`,
-      files: caseFiles(rule),
-      model: '',
-    }),
-  ),
+  ...COMPARED_RULES.map((rule): ParityCase => ({
+    name: ruleCaseName(rule),
+    files: caseFiles(rule),
+    model: '',
+  })),
   {
     name: 'a project whose dictionary is outside the model, with an error in it',
     files: outsideDictionary(),
@@ -151,13 +154,33 @@ const CASES: ParityCase[] = [
   },
 ];
 
+const CASE_BY_NAME = new Map(CASES.map((parity) => [parity.name, parity]));
+const prepared = new Map<
+  string,
+  Promise<{ dir: string; old: Outcome & { stderr: string } }>
+>();
+
+/** The case on disk and the old tool's outcome on it; once per case, shared by the tests. */
+function prepare(
+  parity: ParityCase,
+): Promise<{ dir: string; old: Outcome & { stderr: string } }> {
+  let pending = prepared.get(parity.name);
+  if (pending === undefined) {
+    pending = writeCase(parity).then(async (dir) => ({
+      dir,
+      old: await runOldTool(dir),
+    }));
+    prepared.set(parity.name, pending);
+  }
+  return pending;
+}
+
 describe('대조', () => {
   test.concurrent.each(CASES.map((parity) => [parity.name, parity] as const))(
     '%s',
     { timeout: 30_000 },
     async (_name, parity) => {
-      const dir = await writeCase(parity);
-      const old = await runOldTool(dir);
+      const { dir, old } = await prepare(parity);
       // The old tool ran: it ends with a count or a summary, not a crash.
       expect(old.code === 0 || /\n\d+ error\(s\)\n$/.test(old.stderr)).toBe(
         true,
@@ -167,17 +190,22 @@ describe('대조', () => {
     },
   );
 
-  test('every row 1 to 37 of Appendix A has a compared case', () => {
-    const rows = new Set(
-      RULE_CASES.filter((rule) => rule.parityExcluded === undefined).flatMap(
-        (rule) => rule.rows,
-      ),
-    );
-    const missing = Array.from({ length: 37 }, (_, i) => i + 1).filter(
-      (row) => !rows.has(row),
-    );
-    expect(missing).toEqual([]);
-  });
+  test(
+    'every row 1 to 37 of Appendix A has a compared case on which the old tool reports an error',
+    { timeout: 120_000 },
+    async () => {
+      // A case without errors would compare nothing of its row's rule.
+      const rows = new Set<number>();
+      for (const rule of COMPARED_RULES) {
+        const { old } = await prepare(CASE_BY_NAME.get(ruleCaseName(rule))!);
+        if (old.lines.length > 0) for (const row of rule.rows) rows.add(row);
+      }
+      const missing = Array.from({ length: 37 }, (_, i) => i + 1).filter(
+        (row) => !rows.has(row),
+      );
+      expect(missing).toEqual([]);
+    },
+  );
 
   test('every case left out says why', () => {
     const left = RULE_CASES.filter((rule) => rule.parityExcluded !== undefined);

@@ -80,19 +80,23 @@ describe('모델 찾기: time', () => {
     'model ids %s: four times the models takes about four times as long',
     { timeout: 120_000 },
     async (name, id) => {
-      await expectLinearTime({
-        sizes: [50_000, 200_000],
-        input: (n): ModelId[] =>
-          Array.from({ length: n }, (_, i) => ({
-            file: `m${i}/model.yaml`,
-            id: id(i),
-          })),
-        run: modelIdIssues,
-        check: (issues, n) =>
-          expect(issues).toHaveLength(name === 'all alike' ? n : 0),
-        maxRatio: 8,
-        backstop: 10_000,
-      });
+      const measure = (sizes: readonly [number, number]) =>
+        expectLinearTime({
+          sizes,
+          input: (n): ModelId[] =>
+            Array.from({ length: n }, (_, i) => ({
+              file: `m${i}/model.yaml`,
+              id: id(i),
+            })),
+          run: modelIdIssues,
+          check: (issues, n) =>
+            expect(issues).toHaveLength(name === 'all alike' ? n : 0),
+          maxRatio: 8,
+          backstop: 10_000,
+        });
+      // Quadratic code would not end at 200k (sync code, no timeout stops it); fail it here in about a second.
+      await measure([2_000, 8_000]);
+      await measure([50_000, 200_000]);
     },
   );
 });
