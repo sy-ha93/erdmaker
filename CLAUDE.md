@@ -14,9 +14,11 @@
 
 ## 바꾸지 않는 결정
 
-- **설치형**: `npx erdmaker serve <모델 폴더>`가 로컬에서 뜬다. 로그인, DB, 서버가 없다.
+- **브라우저에 설치하는 웹앱(PWA)이다.** 사용자가 고른 모델 폴더를 화면이 직접 읽고 쓴다(File System Access API). 로그인, DB, 서버가 없다. 편집은 Chrome과 Edge에서만 된다.
+- **파일 접근은 어댑터 하나로 모은다.** 화면은 브라우저용, CLI와 MCP는 Node용 구현을 쓴다. 코어와 화면 코드에서 파일 API를 직접 부르지 않는다.
+- 브라우저의 폴더 접근이 막히면 같은 화면을 `npx erdmaker serve`(Node 로컬 프로그램)로 낸다. 그 전에는 `serve`를 만들지 않는다.
 - **원본은 모델 폴더의 파일이다.** 편집하면 바뀐 파일만 바로 쓰고, 파일이 밖에서 바뀌면 다시 읽는다.
-- **앱은 Git을 조작하지 않는다.** 기준 버전과 비교할 때 시스템의 `git`으로 읽기만 한다.
+- **앱은 Git을 조작하지 않는다.** 기준 버전과 비교할 때 읽기만 한다.
 - **모든 변경은 코어의 명령 API를 거친다.** 화면, CLI, MCP가 같은 명령을 쓴다.
 - **논리와 물리는 1:1**로 한 객체에 함께 둔다. 한쪽 전용 객체는 `scope`로 표시한다.
 - **ID는 처음 이름에서 만들고 바꾸지 않는다.**
@@ -24,16 +26,17 @@
 
 ## 기술 스택
 
-| 영역          | 선택                                                                                |
-| ------------- | ----------------------------------------------------------------------------------- |
-| 언어          | TypeScript, pnpm 워크스페이스                                                       |
-| 패키지        | `core`(모델·명령·검증), `cli`, `mcp`, `web`                                         |
-| 캔버스        | React Flow (xyflow). 채택 여부는 `spikes/canvas-perf` 판정(백로그 P4) 뒤에 확정한다 |
-| 자동 배치     | elkjs                                                                               |
-| 로컬 프로그램 | Node (HTTP + WebSocket), 파일 감시                                                  |
-| SQL 파서      | node-sql-parser                                                                     |
-| MCP           | 공식 TypeScript SDK, stdio                                                          |
-| 테스트·린트   | Vitest, ESLint, Prettier                                                            |
+| 영역        | 선택                                                                                |
+| ----------- | ----------------------------------------------------------------------------------- |
+| 언어        | TypeScript, pnpm 워크스페이스                                                       |
+| 패키지      | `core`(모델·명령·검증), `cli`, `mcp`, `web`                                         |
+| 캔버스      | React Flow (xyflow). 채택 여부는 `spikes/canvas-perf` 판정(백로그 P4) 뒤에 확정한다 |
+| 자동 배치   | elkjs                                                                               |
+| 실행 방식   | PWA. 폴더 접근은 File System Access API, 변경 감지는 FileSystemObserver             |
+| Git 읽기    | 화면은 isomorphic-git, CLI는 시스템의 `git`                                         |
+| SQL 파서    | node-sql-parser                                                                     |
+| MCP         | 공식 TypeScript SDK, stdio                                                          |
+| 테스트·린트 | Vitest, ESLint, Prettier                                                            |
 
 코어는 브라우저와 Node 양쪽에서 돈다. 파일 접근은 어댑터로 분리한다.
 
@@ -92,16 +95,16 @@ pnpm lint
 ## Test Environment
 
 - **로그인**: 없다. 계정과 비밀번호가 필요 없다.
-- **실행**: `serve`는 F09에서 만든다. 그 전의 기능은 E2E를 건너뛴다.
+- **실행**: 화면은 F09에서 만든다. 그 전의 기능은 E2E를 건너뛴다.
 - **F09 뒤의 실행 방법**:
 
   ```bash
-  pnpm build
-  node packages/cli/dist/index.js serve format/v0/examples/shop --port 4310 --no-open
+  pnpm --filter web dev --port 4310
   ```
 
-- **주소**: `http://localhost:4310`
-- **시험 모델**: `format/v0/examples/shop` (엔터티 10개, 관계 11개). E2E는 이 폴더를 임시 폴더로 복사해 쓰고 원본을 고치지 않는다.
+- **주소**: `http://localhost:4310`. 폴더 접근 기능은 `localhost`와 HTTPS에서만 동작한다.
+- **모델 여는 법**: 폴더 선택 창은 자동화로 누를 수 없다. E2E는 첫 화면의 "예제 모델 열기"로 들어간다. 예제가 브라우저 내부 저장소(OPFS)에 복사되고, 실제 폴더와 같은 어댑터를 거친다.
+- **시험 모델**: `format/v0/examples/shop` (엔터티 10개, 관계 11개). 저장소의 원본은 고치지 않는다.
 - **브라우저**: `agent-browser`. 이 개발 컴퓨터는 `libasound.so.2`가 없어 Chrome이 뜨지 않으므로 `sudo apt install libasound2t64`가 먼저 필요하다(백로그 P3).
 
-포트 4310과 `--no-open` 옵션은 F09 스펙에서 확정한다. 바뀌면 이 절을 고친다.
+포트 4310과 "예제 모델 열기"의 `data-testid`는 F09 스펙에서 확정한다. 바뀌면 이 절을 고친다.
