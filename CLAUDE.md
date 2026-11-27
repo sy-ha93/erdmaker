@@ -10,7 +10,7 @@
 
 ## 지금 상태
 
-기능 코드는 아직 없다. 있는 것은 모델 파일 형식 초안(`format/v0/`)과 검사 도구(`tools/validate-format.mjs`)뿐이다. 모노레포 골격은 F01에서 만든다.
+모노레포 골격이 있다: pnpm 워크스페이스, 빈 패키지 `core`·`cli`·`mcp`·`web`, CI(`.github/workflows/ci.yml`). 기능 코드는 아직 없다. 그 밖에 있는 것은 모델 파일 형식 초안(`format/v0/`)과 검사 도구(`tools/validate-format.mjs`)다.
 
 ## 바꾸지 않는 결정
 
@@ -22,7 +22,7 @@
 - **모든 변경은 코어의 명령 API를 거친다.** 화면, CLI, MCP가 같은 명령을 쓴다.
 - **논리와 물리는 1:1**로 한 객체에 함께 둔다. 한쪽 전용 객체는 `scope`로 표시한다.
 - **ID는 처음 이름에서 만들고 바꾸지 않는다.**
-- 의존성은 MIT, Apache-2.0 같은 허용적 라이선스만 쓴다. GPL, AGPL은 쓰지 않는다. elkjs(EPL-2.0)는 수정 없이 의존성으로만 쓴다.
+- 의존성은 MIT, Apache-2.0 같은 허용적 라이선스를 쓴다. MPL-2.0, EPL-2.0 같은 약한 카피레프트는 수정 없이 의존성으로만 쓰는 한 허용한다(예: elkjs, EPL-2.0). GPL, AGPL은 쓰지 않는다.
 
 ## 기술 스택
 
@@ -42,21 +42,21 @@
 
 ## 명령
 
-지금 되는 것:
+다음 명령이 모두 된다(`build`, `test`, `lint`, `format`은 F01에서 생겼다).
 
 ```bash
-npm install
-npm run validate:format   # 예제 모델(format/v0/examples/shop)을 형식 v0로 검사
-```
-
-F01 뒤에 생기는 것(그 전에는 없다):
-
-```bash
+corepack enable pnpm     # 한 번만. package.json의 packageManager에 적힌 pnpm을 쓴다
 pnpm install
 pnpm build
 pnpm test
-pnpm lint
+pnpm lint                # ESLint와 prettier --check
+pnpm format              # prettier --write
+pnpm validate:format     # 예제 모델(format/v0/examples/shop)을 형식 v0로 검사
 ```
+
+- 설치는 `pnpm install`로 한다. 루트에서 `npm install`을 쓰지 않는다. 워크스페이스 패키지를 연결하지 않고 `package-lock.json`을 다시 만든다.
+- `npm run validate:format`은 `pnpm install` 뒤에도 계속 된다.
+- CI는 같은 명령을 `install --frozen-lockfile`, `build`, `test`, `lint`, `validate:format` 순서로 돌린다.
 
 ## 문서 위치
 

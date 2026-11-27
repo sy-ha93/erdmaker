@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/repo-scaffold.md](../analysis/repo-scaffold.md)
 **설계 문서**: 없음 (설정과 도구 구성만 다루므로 설계 단계를 건너뛰었다)
 **브랜치**: `feature/repo-scaffold`
-**상태**: 진행 중 (단계 2 완료)
+**상태**: 진행 중 (단계 3의 3.8 대기)
 
 스펙과 분석이 다르면 분석을 따른다. 분석은 스펙을 쓴 뒤에 레지스트리로 확인한 내용이다.
 
@@ -241,22 +241,22 @@ DB, API, 인증 변경은 없다.
 ### 단계 3: CI, 문서, 마지막 검사
 
 **목표**: CI가 같은 명령을 돌리고 문서가 pnpm 기준이다. 로컬 관문(AC-12까지)을 모두 통과한다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-10, AC-11, AC-12, AC-13
+**위험**: 중간 · **상태**: 진행 중 (3.1~3.7 완료, 3.8 대기) · **수용 기준**: AC-10, AC-11, AC-12, AC-13
 
-- [ ] 3.1 `actions/checkout`과 `actions/setup-node`의 현재 메이저 버전을 공식 저장소에서 확인한다(`gh api repos/actions/checkout/releases/latest --jq .tag_name`, `setup-node`도 같게). 분석에서 확인하지 못한 값이다. 확인한 태그를 7장에 적는다.
-- [ ] 3.2 `.github/workflows/ci.yml`을 만든다.
+- [x] 3.1 `actions/checkout`과 `actions/setup-node`의 현재 메이저 버전을 공식 저장소에서 확인한다(`gh api repos/actions/checkout/releases/latest --jq .tag_name`, `setup-node`도 같게). 분석에서 확인하지 못한 값이다. 확인한 태그를 7장에 적는다.
+- [x] 3.2 `.github/workflows/ci.yml`을 만든다.
   - `on`: `pull_request`와 `push`(`branches: [main]`)를 키로 갖는 매핑.
   - 워크플로 수준 `permissions: contents: read`. 작업에는 `permissions`를 두지 않는다. `continue-on-error` 없음.
   - 작업 하나, `ubuntu-latest`. 단계: checkout → setup-node(`node-version: 22`, `cache` 없음) → `run` 단계 7개를 이 순서로, 단계 하나에 명령 하나: `corepack enable pnpm`, `pnpm --version`, `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm validate:format`.
-- [ ] 3.3 `CLAUDE.md`를 고친다.
+- [x] 3.3 `CLAUDE.md`를 고친다.
   - "지금 상태": 모노레포 골격(pnpm 워크스페이스, 빈 패키지 `core`·`cli`·`mcp`·`web`, CI)이 있고 기능 코드는 아직 없다고 쓴다.
   - "명령": `corepack enable pnpm` 뒤 `pnpm install`, `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm format`, `pnpm validate:format`. "F01 뒤에 생기는 것" 구분을 없앤다. 다음을 적는다: 설치는 `pnpm install`로 한다. 루트에서 `npm install`을 쓰지 않는다(워크스페이스 패키지를 연결하지 않고 `package-lock.json`을 다시 만든다). `npm run validate:format`은 계속 된다. `npm install`이 "실패한다"고 쓰지 않는다(확인하지 않은 동작이다).
   - "바꾸지 않는 결정"의 라이선스 항목: MPL-2.0, EPL-2.0 같은 약한 카피레프트는 수정 없이 의존성으로만 쓰는 한 허용하고, GPL과 AGPL은 쓰지 않는다고 쓴다.
   - 다른 절은 고치지 않는다.
-- [ ] 3.4 `pnpm exec prettier --write CLAUDE.md .github/workflows/ci.yml`로 두 파일만 서식을 맞춘다.
-- [ ] 3.5 **검증 (로컬 전체)**: CI와 같은 순서로 돌린다: `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm test` → `pnpm lint` → `pnpm validate:format`. 이어서 AC-10(스펙 6.4), AC-12(스펙 6.6), AC-02, AC-03을 돌린다.
-- [ ] 3.6 **AC-11**: 1.1과 같은 명령으로 출력 파일만 `/tmp/spikes-after.sha256`으로 바꿔 "작업 후" 목록을 찍는다. `exit=0`이어야 한다. 이어서 `diff /tmp/spikes-before.sha256 /tmp/spikes-after.sha256; echo "exit=$?"`가 출력 없이 `exit=0`이어야 한다. 두 목록 중 하나라도 실패했거나 `diff`가 0이 아니면 커밋하지 않고 멈춘 뒤 사용자에게 알린다.
-- [ ] 3.7 구현 변경과 이 계획 파일의 변경(체크박스, 7장)을 커밋한다. 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다(추적 중인 파일에 남은 변경이 없다). `git status --short`의 추적하지 않는 항목은 `spikes/`와 `docs/.yyy-workflow-state.json`뿐이어야 한다.
+- [x] 3.4 `pnpm exec prettier --write CLAUDE.md .github/workflows/ci.yml`로 두 파일만 서식을 맞춘다.
+- [x] 3.5 **검증 (로컬 전체)**: CI와 같은 순서로 돌린다: `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm test` → `pnpm lint` → `pnpm validate:format`. 이어서 AC-10(스펙 6.4), AC-12(스펙 6.6), AC-02, AC-03을 돌린다.
+- [x] 3.6 **AC-11**: 1.1과 같은 명령으로 출력 파일만 `/tmp/spikes-after.sha256`으로 바꿔 "작업 후" 목록을 찍는다. `exit=0`이어야 한다. 이어서 `diff /tmp/spikes-before.sha256 /tmp/spikes-after.sha256; echo "exit=$?"`가 출력 없이 `exit=0`이어야 한다. 두 목록 중 하나라도 실패했거나 `diff`가 0이 아니면 커밋하지 않고 멈춘 뒤 사용자에게 알린다.
+- [x] 3.7 구현 변경과 이 계획 파일의 변경(체크박스, 7장)을 커밋한다. 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다(추적 중인 파일에 남은 변경이 없다). `git status --short`의 추적하지 않는 항목은 `spikes/`와 `docs/.yyy-workflow-state.json`뿐이어야 한다.
 - [ ] 3.8 push하고 PR을 연 뒤 AC-13을 확인한다. push와 PR 생성은 사용자가 승인한 뒤에 한다. `gh pr checks --watch`는 보고된 검사가 아직 없으면 바로 끝나므로, 검사가 나타날 때까지 최대 2분 기다린 뒤에 지켜본다.
 
   ```bash
@@ -274,13 +274,13 @@ DB, API, 인증 변경은 없다.
 
 모두 저장소 루트에서 실행한다.
 
-- [ ] 설치: `pnpm install --frozen-lockfile`
-- [ ] 빌드: `pnpm build`
-- [ ] 테스트: `pnpm test`
-- [ ] 린트와 서식: `pnpm lint`
-- [ ] 형식 검사: `pnpm validate:format`, `npm run validate:format`
-- [ ] 스펙 6.1, 6.3, 6.4, 6.6의 검사 스크립트(AC-03, 08, 10, 12)
-- [ ] AC-04: 스펙 6.2의 마지막 줄(`! find ... | grep -q .`)은 `find`가 실패해도 통과하므로 아래 명령으로 바꿔 실행한다. `find`가 종료 코드 0으로 끝나고 출력이 비어야 한다.
+- [x] 설치: `pnpm install --frozen-lockfile`
+- [x] 빌드: `pnpm build`
+- [x] 테스트: `pnpm test`
+- [x] 린트와 서식: `pnpm lint`
+- [x] 형식 검사: `pnpm validate:format`, `npm run validate:format`
+- [x] 스펙 6.1, 6.3, 6.4, 6.6의 검사 스크립트(AC-03, 08, 10, 12)
+- [x] AC-04: 스펙 6.2의 마지막 줄(`! find ... | grep -q .`)은 `find`가 실패해도 통과하므로 아래 명령으로 바꿔 실행한다. `find`가 종료 코드 0으로 끝나고 출력이 비어야 한다.
 
   ```bash
   rm -rf packages/*/dist && pnpm build &&
@@ -290,7 +290,7 @@ DB, API, 인증 변경은 없다.
   test -z "$out"; echo "exit=$?"
   ```
 
-- [ ] AC-11: 3.6의 방식으로 실행한다
+- [x] AC-11: 3.6의 방식으로 실행한다
 - [ ] PR 뒤 AC-13: 3.8의 명령이 `exit=0`이고 CI 작업이 성공이다
 
 스펙 6장의 스크립트는 도구를 설치하기 전에 쓴 것이다. 도구의 API나 출력 형식이 달라 스크립트가 틀리면 같은 조건을 검사하도록 스크립트를 고치고 7장에 적는다. 조건을 낮추지 않는다.
@@ -351,7 +351,19 @@ DB, API, 인증 변경은 없다.
 - 2.11: `pnpm exec eslint .`이 위반 없이 통과했다. 끈 규칙은 없다.
 - 검사 스크립트: 스펙 6.3(AC-08)은 고치지 않고 통과했다(`isPathIgnored`, `getFileInfo`가 분석이 가정한 대로 동작한다). AC-04는 5장의 명령을 그대로 썼다.
 
+### 단계 3 (2026-11-27 12:29, 3.1~3.7)
+
+- 만든 파일 1개(`.github/workflows/ci.yml`), 고친 파일 2개(`CLAUDE.md`, 이 계획).
+- 액션 버전(3.1): `gh api repos/actions/<저장소>/releases/latest`로 확인했다. `actions/checkout`은 `v7.0.1`(2026-07-20), `actions/setup-node`는 `v7.1.0`(2026-10-08). 두 저장소 모두 `refs/tags/v7` 태그가 있음을 `gh api .../git/ref/tags/v7`로 확인하고 워크플로에 `@v7`로 적었다. setup-node v7의 `action.yml`에서 자동 캐시가 `packageManager`가 npm일 때만 켜진다는 설명(`package-manager-cache`)을 확인했다. 이 저장소는 pnpm이라 `cache`를 생략하면 캐시가 꺼진다.
+- 작업 이름은 `check`.
+- `CLAUDE.md`: "지금 상태", "명령" 절과 "바꾸지 않는 결정"의 라이선스 항목만 고쳤다. `## Design System`, `## Test Environment` 절은 그대로다(FR-10이 요구하는 변경이 없다).
+- 3.4: `prettier --write`가 두 파일을 바꾸지 않았다(`unchanged`).
+- 3.5: CI 순서 다섯 명령, `npm run validate:format`, AC-10, AC-12, AC-02, AC-03이 모두 종료 코드 0. 5장 관문을 채우려고 AC-04(5장 명령)와 AC-08(스펙 6.3)도 다시 돌렸고 둘 다 `exit=0`. `prettier --file-info`로 `ci.yml`이 `pnpm lint`의 서식 검사 대상(`ignored: false`)임을 확인했다.
+- AC-11(3.6): "작업 후" 목록 `exit=0`, 866줄. `diff` 출력 없음, `exit=0`.
+- 고친 검사 스크립트: 없다. 스펙 6.4, 6.6은 그대로 통과했다.
+- 3.8(push, PR, AC-13)은 사용자 승인을 기다린다.
+
 ---
 
-마지막 수정: 2026-11-27
-상태: 진행 중 (단계 2/3 완료)
+마지막 수정: 2026-11-27 12:29
+상태: 진행 중 (단계 3, 3.8 대기)
