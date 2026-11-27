@@ -430,7 +430,7 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - [x] AC-16 (6A 뒤, 리드): 6.6의 판정.
 - [x] AC-14, AC-17 (6B): 스펙 6.2, 6.4.
 - [x] AC-18 (6B): 6.11.
-- [ ] AC-19 (6B와 PR 뒤): 로컬 세 명령, 리드의 `gh pr checks`.
+- [x] AC-19 (6B와 PR 뒤): 로컬 세 명령, 리드의 `gh pr checks`.
 
 스펙 6장의 스크립트는 구현 전에 쓴 것이다. 틀리면 같은 조건을 검사하도록 고치고 7장에 적는다. 조건을 낮추지 않는다.
 
