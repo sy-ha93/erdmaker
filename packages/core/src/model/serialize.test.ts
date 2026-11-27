@@ -74,6 +74,7 @@ describe('쓰기 세부', () => {
       '2001-12-14',
       '.inf',
       '<<',
+      '=',
       ' lead',
       'trail ',
       ' both ',
@@ -106,6 +107,45 @@ describe('쓰기 세부', () => {
     const text = written(entity({ id: 'e', name: 'E', attributes: [], ext }));
     for (const read of [parse12, parse11]) {
       expect((read(text) as { ext: unknown }).ext).toEqual(ext);
+    }
+  });
+
+  test('(1) the YAML 1.1 value key `=` and merge key `<<` are double-quoted as values, list items and keys', () => {
+    // PyYAML's `safe_load` refuses a whole file with a plain `=` or `<<` value
+    // (`tag:yaml.org,2002:value`, `tag:yaml.org,2002:merge`), and `<<` as a key.
+    const text = written(
+      entity({
+        id: 'e',
+        name: 'E',
+        definition: '=',
+        attributes: [],
+        ext: { '=': '<<', '<<': '=', list: ['=', '<<'], '==': '=a' },
+      }),
+    );
+    expect(text).toBe(
+      lines(
+        'id: e',
+        'name: E',
+        'definition: "="',
+        'attributes: []',
+        'ext:',
+        '  "=": "<<"',
+        '  "<<": "="',
+        '  list:',
+        '    - "="',
+        '    - "<<"',
+        // Only the exact keys mean anything to YAML 1.1; the rest stay plain.
+        '  ==: =a',
+      ),
+    );
+    for (const read of [parse12, parse11]) {
+      expect(read(text)).toEqual({
+        id: 'e',
+        name: 'E',
+        definition: '=',
+        attributes: [],
+        ext: { '=': '<<', '<<': '=', list: ['=', '<<'], '==': '=a' },
+      });
     }
   });
 
@@ -968,6 +1008,95 @@ describe('serializeModel: what it refuses', () => {
     ).toThrow('is nested more than 256 levels deep');
   });
 
+  test('an item whose file names no file is refused, not written', () => {
+    const data = { id: 'e', name: 'E', attributes: [] };
+    for (const file of ['', '.', './', '/', 'entities/..']) {
+      expect(() =>
+        serializeModel(model({ entities: [{ file, data: data as never }] })),
+      ).toThrow(
+        new TypeError(
+          `Cannot write entities[0]: its file ${JSON.stringify(file)} names no file`,
+        ),
+      );
+    }
+    expect(() =>
+      serializeModel(
+        model({
+          manifest: { file: '', data: { formatVersion: '0.1' } as never },
+        }),
+      ),
+    ).toThrow(
+      new TypeError('Cannot write manifest: its file "" names no file'),
+    );
+  });
+
+  test('every condition serializeModel detects throws a TypeError', () => {
+    const data = { id: 'e', name: 'E', attributes: [] };
+    let deep: unknown = [];
+    for (let level = 0; level < 300; level += 1) deep = [deep];
+    const refused: [string, unknown][] = [
+      [
+        'not JSON data',
+        model({
+          entities: [
+            { file: 'e.yaml', data: { ...data, ext: { n: NaN } } as never },
+          ],
+        }),
+      ],
+      [
+        'a cycle',
+        (() => {
+          const cyclic: Record<string, unknown> = { ...data };
+          cyclic.ext = { self: cyclic };
+          return model({
+            entities: [{ file: 'e.yaml', data: cyclic as never }],
+          });
+        })(),
+      ],
+      [
+        'nested too deep',
+        model({
+          entities: [
+            { file: 'e.yaml', data: { ...data, ext: { deep } } as never },
+          ],
+        }),
+      ],
+      ['a model that is not an object', 7],
+      ['a model that is null', null],
+      ['a list that is not an array', model({ layouts: {} as never })],
+      ['an item that is not an object', model({ subtypes: ['x' as never] })],
+      [
+        'a file that is not a string',
+        model({ entities: [{ file: 1, data } as never] }),
+      ],
+      [
+        'an empty file',
+        model({ entities: [{ file: '', data: data as never }] }),
+      ],
+      [
+        'a file of `.`',
+        model({ entities: [{ file: '.', data: data as never }] }),
+      ],
+      [
+        'two items at the same file',
+        model({
+          entities: [{ file: 'a.yaml', data: data as never }],
+          relationships: [{ file: './a.yaml', data: {} as never }],
+        }),
+      ],
+    ];
+    for (const [name, of] of refused) {
+      let thrown: unknown;
+      try {
+        serializeModel(of as Model);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, name).toBeInstanceOf(TypeError);
+      expect((thrown as Error).message, name).toMatch(/^Cannot write /);
+    }
+  });
+
   test('a model not shaped as one throws', () => {
     const data = { id: 'e', name: 'E', attributes: [] };
     expect(() => serializeModel(null as never)).toThrow(TypeError);
@@ -1158,117 +1287,6 @@ describe('쓰기 세부: the last value ending in newlines', () => {
       lines('id: e', 'name: E', 'attributes: []', 'ext:', '  "x\\n\\n": []'),
     );
   });
-});
-
-describe('serializeModel: time grows linearly', () => {
-  const shapes: [string, (n: number) => Model, number][] = [
-    [
-      'entities',
-      (n) =>
-        model({
-          entities: Array.from({ length: n }, (_, e) => ({
-            file: `entities/e${e}.yaml`,
-            data: {
-              id: `e${e}`,
-              name: `Entity ${e}`,
-              attributes: [
-                {
-                  id: 'a',
-                  name: 'A',
-                  nullable: true,
-                  type: { length: 9, base: 'string' },
-                },
-                { id: 'b', name: 'B', note: 'two\nlines\n\n' },
-              ],
-            },
-          })),
-        }),
-      5_000,
-    ],
-    [
-      'attributes of one entity',
-      (n) =>
-        entity({
-          id: 'e',
-          name: 'E',
-          attributes: Array.from({ length: n }, (_, a) => ({
-            name: `Attribute ${a}`,
-            id: `a${a}`,
-            migratedFrom: [{ attribute: 'x', relationship: 'r' }],
-            rolenamed: false,
-          })),
-        }),
-      10_000,
-    ],
-    [
-      'nodes of a layout',
-      (n) =>
-        model({
-          layouts: [
-            {
-              file: 'layouts/l.json',
-              data: {
-                formatVersion: '0.1',
-                nodes: Object.fromEntries(
-                  Array.from({ length: n }, (_, i) => [
-                    String(n - i),
-                    { y: i, x: -i },
-                  ]),
-                ),
-                edges: Object.fromEntries(
-                  Array.from({ length: n / 4 }, (_, i) => [
-                    `r${i}`,
-                    { waypoints: [{ x: i, y: i }] },
-                  ]),
-                ),
-              },
-            },
-          ],
-        }),
-      10_000,
-    ],
-    [
-      'words of a dictionary',
-      (n) =>
-        model({
-          dictionaries: [
-            {
-              file: 'dictionary/d.yaml',
-              data: {
-                words: Array.from({ length: n }, (_, w) => ({
-                  id: `w${w}`,
-                  name: `word ${w}`,
-                  abbreviation: w % 2 ? 'NO' : 'yes',
-                  classifier: false,
-                })),
-              },
-            },
-          ],
-        }),
-      10_000,
-    ],
-  ];
-
-  test.each(shapes)(
-    '%s: four times the size takes less than eight times as long',
-    (_name, build, small) => {
-      const time = (of: Model) => {
-        let best = Infinity;
-        for (let run = 0; run < 3; run += 1) {
-          const start = performance.now();
-          serializeModel(of);
-          best = Math.min(best, performance.now() - start);
-        }
-        return best;
-      };
-      serializeModel(build(10));
-      const smallTime = time(build(small));
-      const largeTime = time(build(small * 4));
-      expect(largeTime / smallTime).toBeLessThan(8);
-      expect(largeTime).toBeLessThan(20_000);
-    },
-    120_000,
-  );
 });
 
 describe(

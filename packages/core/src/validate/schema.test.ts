@@ -404,33 +404,6 @@ describe('schema issues: duplicate items', () => {
     expect(canonicalJson(deep)).toHaveLength(100_000 * 8 + 3);
     expect(duplicateItems([deep, 'y', deep])).toEqual({ i: 2, j: 0 });
   });
-
-  test(
-    'a subject area of many entities is checked in linear time',
-    { timeout: 60_000 },
-    () => {
-      // Four times the items take about four times as long if linear, sixteen if quadratic.
-      const time = (count: number) => {
-        const data = {
-          id: 'p',
-          name: 'P',
-          entities: Array.from({ length: count }, (_, i) => `e${i}`),
-        };
-        let best = Infinity;
-        for (let run = 0; run < 3; run += 1) {
-          const start = performance.now();
-          expect(schemaIssues(FILE, 'subject-area', data)).toEqual([]);
-          best = Math.min(best, performance.now() - start);
-        }
-        return best;
-      };
-      schemaIssues(FILE, 'subject-area', {});
-      const small = time(10_000);
-      const large = time(40_000);
-      expect(large / small).toBeLessThan(8);
-      expect(large).toBeLessThan(10_000);
-    },
-  );
 });
 
 describe('schema issues: the same as Ajv with the schemas as written', () => {

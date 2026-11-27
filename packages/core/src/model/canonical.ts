@@ -106,8 +106,11 @@ const own = (object: object, key: string): unknown =>
  * empty (an object that was empty already stays, so does `ext`); a subject
  * area's `entities` and a layout's `nodes` and `edges` keys sorted by code
  * unit. Shared objects are expanded at each place. `data` must be JSON data
- * (no cycles); throws a `TypeError` when its collections nest deeper than a
- * file may (`MAX_NESTING`), since such a file would not load back.
+ * (no cycles), as `serializeModel` checks first. Throws a `TypeError`, and
+ * only that, when its collections nest more than `MAX_NESTING` levels deep
+ * (`data` itself is level 1, as the readers count a file's root), since such
+ * a file would not load back. (`serializeModel` refuses such data earlier,
+ * through `checkJsonValue`; this check keeps the recursion bounded.)
  */
 export function canonical(
   file: string,

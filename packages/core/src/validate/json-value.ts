@@ -1,5 +1,6 @@
 import type { Issue } from '../model/types.js';
 import { escapePointerToken } from '../parse/pointer.js';
+import { MAX_NESTING } from '../parse/yaml.js';
 
 function isPlainObject(value: object): boolean {
   const proto: unknown = Object.getPrototypeOf(value);
@@ -78,6 +79,14 @@ export interface JsonValueCheck {
    * from a file is always readable.
    */
   readable: boolean;
+  /**
+   * JSON data a file cannot hold: the first collection, in key order, more
+   * than `MAX_NESTING` levels deep, counting the data itself as level 1 as
+   * the readers count a file's root and `serializeModel` counts what it
+   * writes. Worded `<path> is nested more than 256 levels deep`. One per
+   * data however many collections are that deep; not in `issues`.
+   */
+  tooDeep?: Issue;
 }
 
 /**
@@ -91,10 +100,15 @@ export function jsonValueIssues(file: string, value: unknown): Issue[] {
   return checkJsonValue(file, value).issues;
 }
 
-/** `jsonValueIssues`, and whether the data is safe to give to code that reads it as data. */
+/**
+ * `jsonValueIssues`, whether the data is safe to give to code that reads it
+ * as data, and whether it nests deeper than a file may hold. One walk with an
+ * explicit stack: linear in the data, without recursion.
+ */
 export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
   const issues: Issue[] = [];
   let readable = true;
+  let tooDeep: Issue | undefined;
   const report = (path: string, unreadable = false) => {
     if (unreadable) readable = false;
     issues.push({
@@ -139,6 +153,16 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
       report(path, true);
       return;
     }
+    // `node` is at level `stack.length + 1`: the frames above it, then itself.
+    if (!tooDeep && stack.length >= MAX_NESTING) {
+      tooDeep = {
+        rule: 'schema',
+        severity: 'error',
+        file,
+        path,
+        message: `${path} is nested more than ${MAX_NESTING} levels deep`,
+      };
+    }
     ancestors.add(node);
     stack.push({ node, path, next: 0, ...children });
   };
@@ -169,5 +193,5 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
       enter(descriptor.value, childPath);
     }
   }
-  return { issues, readable };
+  return tooDeep ? { issues, readable, tooDeep } : { issues, readable };
 }

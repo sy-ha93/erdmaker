@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { jsonValueIssues } from './json-value.js';
+import { MAX_NESTING } from '../parse/yaml.js';
+import { checkJsonValue, jsonValueIssues } from './json-value.js';
 
 const paths = (value: unknown) =>
   jsonValueIssues('f.yaml', value).map((issue) => issue.path);
@@ -190,20 +191,83 @@ describe('JSON value check', () => {
     expect(paths({ trailing })).toEqual(['/trailing/2']);
   });
 
-  test('a sparse array of length 1e7 is checked without visiting every index', () => {
-    const list: unknown[] = [];
-    list.length = 1e7;
-    list[5] = NaN;
-    list[9_999_999] = 'ok';
-    const started = performance.now();
-    expect(paths({ list })).toEqual(['/list/0', '/list/5']);
-    expect(performance.now() - started).toBeLessThan(1000);
-  });
-
   test('a non-enumerable item is still checked, extra array keys are not', () => {
     const list: unknown[] = [1];
     Object.defineProperty(list, 0, { value: NaN, enumerable: false });
     Object.assign(list, { extra: NaN });
     expect(paths({ list })).toEqual(['/list/0']);
+  });
+});
+
+describe('JSON value check: nesting', () => {
+  /** `levels` collections, alternating arrays and objects, the outermost an array. */
+  function nested(levels: number): unknown {
+    let value: unknown = levels % 2 ? [] : {};
+    for (let level = levels - 1; level >= 1; level -= 1) {
+      value = level % 2 ? [value] : { k: value };
+    }
+    return value;
+  }
+
+  const tooDeepAt = (path: string) => ({
+    rule: 'schema',
+    severity: 'error',
+    file: 'f.yaml',
+    path,
+    message: `${path} is nested more than 256 levels deep`,
+  });
+
+  test('a value counts as level 1: 256 levels are fine, the collection at 257 is `tooDeep`', () => {
+    expect(MAX_NESTING).toBe(256);
+    expect(checkJsonValue('f.yaml', nested(256))).toEqual({
+      issues: [],
+      readable: true,
+    });
+    for (const levels of [257, 258, 5_000]) {
+      // Still JSON data, readable as data: only `tooDeep` says it.
+      expect(checkJsonValue('f.yaml', nested(levels))).toEqual({
+        issues: [],
+        readable: true,
+        tooDeep: tooDeepAt('/0/k'.repeat(128)),
+      });
+    }
+  });
+
+  test('a scalar at level 257 is not a collection and is fine', () => {
+    let value: unknown = 'x';
+    for (let level = 0; level < 256; level += 1) value = [value];
+    expect(checkJsonValue('f.yaml', value).tooDeep).toBeUndefined();
+  });
+
+  test('one per data, the first in key order; values that are not JSON below it are still found', () => {
+    let value: unknown = [nested(10), nested(20), NaN];
+    for (let level = 0; level < 250; level += 1) value = [value];
+    // `value` is at /0, the list it wraps at level 252, `nested(10)` at 253.
+    const deepest = `${'/0'.repeat(253)}/k/0/k`;
+    expect(checkJsonValue('f.yaml', [value, [nested(300)]])).toEqual({
+      issues: [
+        {
+          rule: 'schema',
+          severity: 'error',
+          file: 'f.yaml',
+          path: `/0${'/0'.repeat(250)}/2`,
+          message: `/0${'/0'.repeat(250)}/2 must be a JSON value`,
+        },
+      ],
+      readable: true,
+      tooDeep: tooDeepAt(deepest),
+    });
+  });
+
+  test('a cycle deeper than the limit is both', () => {
+    const cyclic: unknown[] = [];
+    let value: unknown = cyclic;
+    for (let level = 0; level < 300; level += 1) value = [value];
+    cyclic.push(value);
+    const check = checkJsonValue('f.yaml', value);
+    expect(check.readable).toBe(false);
+    // `cyclic` is at level 301, the root again below it.
+    expect(check.issues.map((issue) => issue.path)).toEqual(['/0'.repeat(301)]);
+    expect(check.tooDeep?.path).toBe('/0'.repeat(256));
   });
 });

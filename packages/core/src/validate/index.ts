@@ -39,12 +39,14 @@ export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
 }
 
 /**
- * Checks a model without touching files: every item against its schema and
- * for values that are not JSON data, and the manifest for absolute
+ * Checks a model without touching files: every item against its schema, for
+ * values that are not JSON data and for collections nested deeper than a
+ * file may hold (`MAX_NESTING`, as the readers and `serializeModel` count
+ * it: one issue per item, see `checkJsonValue`), and the manifest for absolute
  * `dictionaries` entries (`loadModel` does not read those folders and leaves
  * the error to this check, so loading and checking report it once). Then the
  * cross-file rules R01 to R12 over the items that passed the schema and JSON
- * value checks, as if the others were not in the model (an absolute
+ * value checks (nesting included), as if the others were not in the model (an absolute
  * `dictionaries` entry does not take the manifest out). With `positions`
  * (from `loadModel`) the issues get lines and columns; without, only paths.
  * Sorted by file, then position. Does not change the model and never throws,

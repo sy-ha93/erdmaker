@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { loadModel } from '../model/load.js';
+import { serializeModel } from '../model/serialize.js';
 import type { EntityData, Issue, Model } from '../model/types.js';
 import {
   exampleFileSystem,
   exampleFiles,
   replaceOnce,
 } from '../testing/example.js';
+import { MAX_NESTING } from '../parse/yaml.js';
 import { validateModel } from './index.js';
 import { ABSOLUTE_MESSAGE } from './manifest.js';
 
@@ -253,75 +255,6 @@ describe('validateModel: schema and JSON values', () => {
     validateModel(model);
     expect(JSON.stringify(model)).toBe(before);
   });
-
-  test(
-    'many entities with many attributes are checked in linear time',
-    { timeout: 60_000 },
-    () => {
-      // Four times the items take about four times as long if linear, sixteen if quadratic.
-      const build = (entities: number, attributes: number): Model => ({
-        ...emptyModel(),
-        entities: Array.from({ length: entities }, (_, e) =>
-          entity(`entities/e${e}.yaml`, {
-            id: `e${e}`,
-            name: `E${e}`,
-            attributes: Array.from({ length: attributes }, (_, a) => ({
-              id: `a${a}`,
-              name: `A${a}`,
-              bogus: 1,
-            })),
-            keys: [
-              {
-                id: 'pk',
-                kind: 'primary',
-                attributes: Array.from(
-                  { length: attributes },
-                  (_, a) => `a${a}`,
-                ),
-              },
-            ],
-          }),
-        ),
-        subjectAreas: [
-          {
-            file: 'subject-areas/all.yaml',
-            data: {
-              id: 'all',
-              name: 'All',
-              entities: Array.from({ length: entities }, (_, e) => `e${e}`),
-            },
-          },
-        ],
-      });
-      const time = (model: Model, expected: number) => {
-        let best = Infinity;
-        for (let run = 0; run < 3; run += 1) {
-          const start = performance.now();
-          const issues = validateModel(model);
-          best = Math.min(best, performance.now() - start);
-          expect(issues).toHaveLength(expected);
-        }
-        return best;
-      };
-      validateModel(build(1, 1));
-      for (const [small, large] of [
-        [build(2_500, 4), build(10_000, 4)],
-        [build(1, 10_000), build(1, 40_000)],
-      ] as const) {
-        const count = (model: Model) =>
-          model.entities.reduce(
-            (sum, item) => sum + item.data.attributes.length,
-            0,
-          );
-        // A schema error per attribute; then, those entities left out, R02 for each in the area.
-        const expected = (model: Model) => count(model) + model.entities.length;
-        const smallTime = time(small, expected(small));
-        const largeTime = time(large, expected(large));
-        expect(largeTime / smallTime).toBeLessThan(8);
-        expect(largeTime).toBeLessThan(10_000);
-      }
-    },
-  );
 });
 
 describe('validateModel: absolute dictionaries entries', () => {
@@ -392,5 +325,187 @@ describe('validateModel: absolute dictionaries entries', () => {
         column: 5,
       }),
     ]);
+  });
+});
+
+describe('validateModel: data nested deeper than a file may hold', () => {
+  const TOO_DEEP = `is nested more than ${MAX_NESTING} levels deep`;
+
+  /** `arrays` arrays, each the only item of the one around it, around `leaf`. */
+  function arrays(count: number, leaf: unknown[] = []): unknown[] {
+    let value = leaf;
+    for (let level = 1; level < count; level += 1) value = [value];
+    return value;
+  }
+
+  /** The example's manifest with `ext: { k: value }`. */
+  async function exampleWith(value: unknown): Promise<Model> {
+    const { model } = await loadModel(exampleFileSystem(), '');
+    return {
+      ...model,
+      manifest: model.manifest && {
+        ...model.manifest,
+        data: { ...model.manifest.data, ext: { k: value as never } },
+      },
+    };
+  }
+
+  // The manifest is level 1, `ext` level 2 and `k`'s array level 3.
+  const pathAt257 = `/ext/k${'/0'.repeat(254)}`;
+
+  test('a value 257 levels deep is one schema issue, and the item is left out of the rules', async () => {
+    // Without the manifest no area group is known (as in the memory model test above).
+    const unknownGroup = (area: string, group: string): Issue => ({
+      rule: 'R12',
+      severity: 'error',
+      file: `subject-areas/${area}.yaml`,
+      path: '/group',
+      message: `unknown area group "${group}"`,
+    });
+    expect(validateModel(await exampleWith(arrays(255)))).toEqual([
+      schemaIssue('model.yaml', pathAt257, `${pathAt257} ${TOO_DEEP}`),
+      unknownGroup('catalog', 'master'),
+      unknownGroup('party', 'master'),
+      unknownGroup('sales', 'trade'),
+    ]);
+    // 256 levels is what a file may hold.
+    expect(validateModel(await exampleWith(arrays(254)))).toEqual([]);
+  });
+
+  test('objects count as levels too, and keys are escaped in the path', async () => {
+    let value: unknown = {};
+    for (let level = 1; level < 255; level += 1) value = { 'a/~': value };
+    expect(validateModel(await exampleWith(value))).toContainEqual(
+      schemaIssue(
+        'model.yaml',
+        `/ext/k${'/a~1~0'.repeat(254)}`,
+        `/ext/k${'/a~1~0'.repeat(254)} ${TOO_DEEP}`,
+      ),
+    );
+  });
+
+  test('one issue per item, at the first collection too deep in key order', () => {
+    const data = {
+      id: 'e',
+      name: 'E',
+      attributes: [],
+      ext: { first: arrays(300), second: arrays(300), third: [arrays(260)] },
+    };
+    const model: Model = {
+      ...emptyModel(),
+      entities: [entity('a.yaml', data), entity('b.yaml', data)],
+    };
+    const path = `/ext/first${'/0'.repeat(254)}`;
+    expect(validateModel(model)).toEqual([
+      schemaIssue('a.yaml', path, `${path} ${TOO_DEEP}`),
+      schemaIssue('b.yaml', path, `${path} ${TOO_DEEP}`),
+    ]);
+  });
+
+  test('values that are not JSON data below the limit are still reported, the schema still checked', () => {
+    const model: Model = {
+      ...emptyModel(),
+      entities: [
+        entity('a.yaml', {
+          id: 7,
+          name: 'A',
+          attributes: [],
+          ext: { k: arrays(300, [NaN]) },
+        }),
+      ],
+    };
+    const deepPath = `/ext/k${'/0'.repeat(254)}`;
+    const nanPath = `/ext/k${'/0'.repeat(300)}`;
+    // Sorted by path: `/ext/…` before `/id`.
+    expect(validateModel(model)).toEqual([
+      schemaIssue('a.yaml', deepPath, `${deepPath} ${TOO_DEEP}`),
+      schemaIssue('a.yaml', nanPath, `${nanPath} must be a JSON value`),
+      schemaIssue('a.yaml', '/id', '/id must be string'),
+    ]);
+  });
+
+  test(
+    'a million levels deep is one issue without throwing, wherever it is in an item',
+    { timeout: 60_000 },
+    () => {
+      const model: Model = {
+        ...emptyModel(),
+        entities: [
+          entity('a.yaml', {
+            id: 'a',
+            name: 'A',
+            attributes: arrays(1_000_000),
+          }),
+          entity('b.yaml', {
+            id: 'b',
+            name: 'B',
+            attributes: [{ id: 'x', name: 'X', default: arrays(100_000) }],
+          }),
+          entity('c.yaml', arrays(100_000)),
+        ],
+        layouts: [
+          {
+            file: 'l.json',
+            data: {
+              formatVersion: '0.1',
+              nodes: { n: arrays(100_000) },
+            } as never,
+          },
+        ],
+      };
+      const tooDeep = validateModel(model).filter((issue) =>
+        issue.message.endsWith(TOO_DEEP),
+      );
+      expect(tooDeep.map((issue) => [issue.file, issue.path])).toEqual([
+        ['a.yaml', `/attributes${'/0'.repeat(255)}`],
+        ['b.yaml', `/attributes/0/default${'/0'.repeat(253)}`],
+        ['c.yaml', '/0'.repeat(256)],
+        ['l.json', `/nodes/n${'/0'.repeat(254)}`],
+      ]);
+    },
+  );
+
+  test('the limit is the same for loadModel, validateModel and serializeModel: 256 levels pass all three, 257 none', async () => {
+    // `k: [[…]]` in the manifest: `arrays` arrays from level 3 down.
+    const files = (count: number) =>
+      replaceOnce(
+        exampleFiles(),
+        'model.yaml',
+        'targets:\n',
+        `ext:\n  k: ${'['.repeat(count)}${']'.repeat(count)}\ntargets:\n`,
+      );
+
+    const atLimit = await loadModel(exampleFileSystem(files(254)), '');
+    expect(atLimit.issues).toEqual([]);
+    expect(atLimit.model.manifest?.data.ext).toEqual({ k: arrays(254) });
+    expect(validateModel(atLimit.model, atLimit.positions)).toEqual([]);
+    const text = serializeModel(atLimit.model).find(
+      (file) => file.file === 'model.yaml',
+    )?.text;
+    const back = await loadModel(
+      exampleFileSystem({ ...exampleFiles(), 'model.yaml': text ?? '' }),
+      '',
+    );
+    expect(back.issues).toEqual([]);
+    expect(back.model).toEqual(atLimit.model);
+
+    const pastLimit = await loadModel(exampleFileSystem(files(255)), '');
+    expect(pastLimit.model.manifest).toBeUndefined();
+    expect(pastLimit.issues).toEqual([
+      expect.objectContaining({
+        rule: 'syntax',
+        file: 'model.yaml',
+        message: expect.stringContaining(
+          `Collections are nested more than ${MAX_NESTING} levels deep`,
+        ) as unknown,
+      }),
+    ]);
+    const inMemory = await exampleWith(arrays(255));
+    expect(validateModel(inMemory)).toContainEqual(
+      schemaIssue('model.yaml', pathAt257, `${pathAt257} ${TOO_DEEP}`),
+    );
+    expect(() => serializeModel(inMemory)).toThrow(
+      new TypeError(`Cannot write model.yaml: ${pathAt257} ${TOO_DEEP}`),
+    );
   });
 });

@@ -12,7 +12,7 @@ import {
 import { normalizePath } from '../fs/path.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { rootSchema } from '../schema/resolve.js';
-import { jsonValueIssues } from '../validate/json-value.js';
+import { checkJsonValue } from '../validate/json-value.js';
 import {
   type Canon,
   canonical,
@@ -53,11 +53,29 @@ const YAML_OPTIONS = {
  */
 const BLANK_LINES = /^[ \t\n]*\n[ \t\n]*$/;
 
+/**
+ * The YAML 1.1 value key `=` (`tag:yaml.org,2002:value`). `compat:
+ * 'yaml-1.1'` quotes the other YAML 1.1 types (the merge key `<<` included)
+ * but not this one, and PyYAML's `safe_load` refuses a file with a plain `=`
+ * as a value. Written double-quoted, as a value and as a key.
+ */
+const YAML11_VALUE = '=';
+
+/** The YAML node of a key. */
+function keyNode(doc: Document, key: string): YamlNode {
+  const node = doc.createNode(key);
+  if (key === YAML11_VALUE) node.type = Scalar.QUOTE_DOUBLE;
+  return node;
+}
+
 /** The YAML node of a written value (recursion bounded, as `canonical` is). */
 function yamlNode(doc: Document, value: Canon): YamlNode {
   if (!isCanonContainer(value)) {
     const node = doc.createNode(value);
-    if (typeof value === 'string' && BLANK_LINES.test(value)) {
+    if (
+      typeof value === 'string' &&
+      (value === YAML11_VALUE || BLANK_LINES.test(value))
+    ) {
       node.type = Scalar.QUOTE_DOUBLE;
     }
     return node;
@@ -69,7 +87,7 @@ function yamlNode(doc: Document, value: Canon): YamlNode {
   }
   const map = new YAMLMap(doc.schema);
   for (const [key, item] of value.entries) {
-    map.items.push(new Pair(doc.createNode(key), yamlNode(doc, item)));
+    map.items.push(new Pair(keyNode(doc, key), yamlNode(doc, item)));
   }
   return map;
 }
@@ -114,7 +132,12 @@ const LISTS: readonly (readonly [keyof Model, SchemaName])[] = [
   ['layouts', 'layout'],
 ];
 
-/** Every item of the model with its schema. Throws a `TypeError` when the model is not shaped as one. */
+/**
+ * Every item of the model with its schema. Throws a `TypeError` when the
+ * model is not shaped as one: not an object, a list that is not an array, an
+ * item that is not an object, a `file` that is not a string or that names no
+ * file (`''`, `.`, or anything else that normalizes to the opened folder).
+ */
 function modelFiles(
   model: Model,
 ): { file: string; data: unknown; schema: SchemaName }[] {
@@ -129,6 +152,11 @@ function modelFiles(
     const { file, data } = item as { file?: unknown; data?: unknown };
     if (typeof file !== 'string') {
       throw new TypeError(`Cannot write ${where}: its file is not a path`);
+    }
+    if (normalizePath(file) === '') {
+      throw new TypeError(
+        `Cannot write ${where}: its file ${JSON.stringify(file)} names no file`,
+      );
     }
     out.push({ file, data, schema });
   };
@@ -152,12 +180,19 @@ function modelFiles(
  * `file`; a layout as JSON, every other item as YAML. The same model always
  * gives the same text. Does not change the model.
  *
- * Throws a `TypeError`, writing nothing, when an item's data is not JSON data
- * (the values `validateModel` reports as `must be a JSON value`) or nests
- * collections deeper than a file may hold (`MAX_NESTING`, which reading would
- * refuse), and when the model is not shaped as one (a list that is not an
- * array, an item without a `file` path, two items with the same file). Any
- * other data is written as it is, valid against the schemas or not.
+ * Throws a `TypeError`, writing nothing, for every condition it detects:
+ * - an item's data is not JSON data (the values `validateModel` reports as
+ *   `must be a JSON value`): `Cannot write <file>: <path> must be a JSON value`;
+ * - an item's data nests collections more than `MAX_NESTING` levels deep,
+ *   which reading would refuse (`validateModel` reports it too):
+ *   `Cannot write <file>: <path> is nested more than 256 levels deep`;
+ * - the model is not shaped as one: it is not an object, a list is not an
+ *   array, an item is not an object, an item's `file` is not a string or
+ *   names no file (`''` or `.`);
+ * - two items' `file` normalize to the same path.
+ * The `TypeError` is the only error it throws itself; an exception thrown by
+ * a getter of the model object (not of its data) passes through unchanged.
+ * Any other data is written as it is, valid against the schemas or not.
  */
 export function serializeModel(model: Model): SerializedFile[] {
   const items = modelFiles(model);
@@ -171,7 +206,9 @@ export function serializeModel(model: Model): SerializedFile[] {
     paths.set(path, file);
   }
   for (const { file, data } of items) {
-    const [issue] = jsonValueIssues(file, data);
+    // The same checks and the same first path as `validateModel` reports.
+    const { issues, tooDeep } = checkJsonValue(file, data);
+    const issue = issues[0] ?? tooDeep;
     if (issue) throw new TypeError(`Cannot write ${file}: ${issue.message}`);
   }
   return items
