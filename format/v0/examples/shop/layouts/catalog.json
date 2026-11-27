@@ -1,0 +1,10 @@
+{
+  "formatVersion": "0.1",
+  "subjectArea": "catalog",
+  "nodes": {
+    "category": { "x": 40, "y": 40 },
+    "product": { "x": 380, "y": 40 },
+    "product_tag": { "x": 720, "y": 40 },
+    "tag": { "x": 1060, "y": 40 }
+  }
+}

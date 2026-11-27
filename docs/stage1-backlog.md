@@ -62,7 +62,7 @@ Git에서 읽기만 하는 기능(기준 버전과 비교)은 F14에 있다. 병
 워크플로 실행이 아니라 직접 하는 작업이다. 근거는 2026-11-26 yyy-workflow 점검이다.
 
 - [x] **P1 저장소 분리**: 독립 저장소 github.com/sy-ha93/erdmaker로 분리했다(2026-11-27). `main`이 기본 브랜치다.
-- [ ] **P2 `CLAUDE.md`**: 기술 스택(기획 5.3절), 스펙 위치(`docs/specs/`), 빌드·테스트·린트 명령, `## Design System`(기획 6장의 배치·색·글꼴), `## Test Environment`(로그인 없음, `serve` 실행 방법과 포트).
+- [x] **P2 `CLAUDE.md`**: 기술 스택(기획 5.3절), 스펙 위치(`docs/specs/`), 빌드·테스트·린트 명령, `## Design System`(기획 6장의 배치·색·글꼴), `## Test Environment`(로그인 없음, `serve` 실행 방법과 포트).
 - [ ] **P3 브라우저 실행 환경**: `agent-browser`가 `libasound.so.2`가 없어 Chrome을 띄우지 못한다. `sudo apt install libasound2t64`로 해결하고 `agent-browser open about:blank`로 확인한다.
 - [ ] **P4 캔버스 스파이크 판정** (1일): 중단한 `spikes/canvas-perf`를 마친다. 점선 관계선의 비용(프레임당 93 ms)을 피할 방법과 전체 보기 성능을 재고, React Flow를 쓸지 판정한다. F09 전에 끝나야 한다.
 - [ ] **P5 시험 스키마**: 완료 기준의 363개 테이블 스키마를 공개 저장소에 넣을 수 있는지 확인한다. 못 넣으면 비공개 경로에 두고, 공개용으로 `src/gen.js` 생성기의 스키마를 쓴다. (결정 D3)

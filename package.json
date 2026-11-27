@@ -1,0 +1,12 @@
+{
+  "name": "erdmaker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "validate:format": "node tools/validate-format.mjs format/v0/examples/shop"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "yaml": "^2.6.0"
+  }
+}

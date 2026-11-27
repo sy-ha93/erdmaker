@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:subject-area",
+  "title": "Subject area (subject-areas/*.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "entities"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "definition": {
+      "type": "string"
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+      },
+      "uniqueItems": true,
+      "description": "Member entity ids, sorted."
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  }
+}

@@ -1,0 +1,75 @@
+id: order
+name: 주문
+definition: 고객이 한 번에 결제하는 상품 묶음.
+physical:
+  name: ORDERS
+attributes:
+  - id: ord_no
+    name: 주문번호
+    term: ord_no
+    domain: number
+    nullable: false
+    physical:
+      name: ORD_NO
+  - id: cust_no
+    name: 고객번호
+    term: cust_no
+    domain: number
+    nullable: false
+    physical:
+      name: CUST_NO
+    migratedFrom:
+      - relationship: customer_places_order
+        attribute: cust_no
+  - id: ship_addr_no
+    name: 배송주소번호
+    domain: number
+    nullable: false
+    physical:
+      name: SHIP_ADDR_NO
+    migratedFrom:
+      - relationship: order_ships_to
+        attribute: addr_no
+    rolenamed: true
+  - id: bill_addr_no
+    name: 청구주소번호
+    domain: number
+    physical:
+      name: BILL_ADDR_NO
+    migratedFrom:
+      - relationship: order_bills_to
+        attribute: addr_no
+    rolenamed: true
+  - id: ord_dtm
+    name: 주문일시
+    term: ord_dtm
+    domain: datetime
+    nullable: false
+    physical:
+      name: ORD_DTM
+  - id: total_amt
+    name: 주문총액
+    definition: 주문항목 금액의 합. 논리 모델에만 두는 파생 속성.
+    scope: logical
+    domain: amount
+  - id: created_at
+    name: 생성일시
+    scope: physical
+    domain: datetime
+    nullable: false
+    default:
+      expression: CURRENT_TIMESTAMP
+    physical:
+      name: CREATED_AT
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - ord_no
+  - id: ie_ord_dtm
+    kind: inversion
+    attributes:
+      - cust_no
+      - ord_dtm
+    physical:
+      name: IX_ORDERS_CUST_DTM

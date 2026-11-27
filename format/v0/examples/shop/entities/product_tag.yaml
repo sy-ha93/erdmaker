@@ -1,0 +1,31 @@
+id: product_tag
+name: 상품태그
+definition: 상품과 태그의 다대다 관계를 물리 모델에서 푸는 연관 테이블.
+scope: physical
+physical:
+  name: PRODUCT_TAG
+attributes:
+  - id: prod_no
+    name: 상품번호
+    domain: number
+    nullable: false
+    physical:
+      name: PROD_NO
+    migratedFrom:
+      - relationship: product_tag_product
+        attribute: prod_no
+  - id: tag_no
+    name: 태그번호
+    domain: number
+    nullable: false
+    physical:
+      name: TAG_NO
+    migratedFrom:
+      - relationship: product_tag_tag
+        attribute: tag_no
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - prod_no
+      - tag_no

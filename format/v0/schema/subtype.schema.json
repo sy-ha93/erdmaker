@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:subtype",
+  "title": "Subtype cluster (subtypes/*.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "supertype",
+    "members"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "supertype": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "discriminator": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+      "description": "Attribute id in the supertype."
+    },
+    "completeness": {
+      "enum": [
+        "complete",
+        "incomplete"
+      ],
+      "default": "incomplete"
+    },
+    "exclusivity": {
+      "enum": [
+        "exclusive",
+        "inclusive"
+      ],
+      "default": "exclusive"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "entity"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+            "description": "Shares the id namespace of relationships; migratedFrom.relationship points here."
+          },
+          "entity": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "discriminatorValue": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "definition": {
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  }
+}

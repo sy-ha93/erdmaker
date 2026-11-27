@@ -1,0 +1,25 @@
+id: personal_customer
+name: 개인고객
+physical:
+  name: PERSONAL_CUSTOMER
+attributes:
+  - id: cust_no
+    name: 고객번호
+    term: cust_no
+    domain: number
+    nullable: false
+    physical:
+      name: CUST_NO
+    migratedFrom:
+      - relationship: customer_is_personal
+        attribute: cust_no
+  - id: birth_dt
+    name: 생년월일
+    domain: date
+    physical:
+      name: BIRTH_DT
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - cust_no

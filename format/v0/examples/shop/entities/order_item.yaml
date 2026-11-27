@@ -1,0 +1,50 @@
+id: order_item
+name: 주문항목
+physical:
+  name: ORDER_ITEM
+attributes:
+  - id: ord_no
+    name: 주문번호
+    term: ord_no
+    domain: number
+    nullable: false
+    physical:
+      name: ORD_NO
+    migratedFrom:
+      - relationship: order_contains_item
+        attribute: ord_no
+  - id: line_no
+    name: 항목순번
+    type:
+      base: integer
+    nullable: false
+    physical:
+      name: LINE_NO
+  - id: prod_no
+    name: 상품번호
+    domain: number
+    nullable: false
+    physical:
+      name: PROD_NO
+    migratedFrom:
+      - relationship: product_ordered_as_item
+        attribute: prod_no
+  - id: qty
+    name: 수량
+    domain: quantity
+    nullable: false
+    default: 1
+    physical:
+      name: QTY
+  - id: unit_price
+    name: 단가
+    domain: amount
+    nullable: false
+    physical:
+      name: UNIT_PRICE
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - ord_no
+      - line_no

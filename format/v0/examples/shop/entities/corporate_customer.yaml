@@ -1,0 +1,32 @@
+id: corporate_customer
+name: 법인고객
+physical:
+  name: CORPORATE_CUSTOMER
+attributes:
+  - id: cust_no
+    name: 고객번호
+    term: cust_no
+    domain: number
+    nullable: false
+    physical:
+      name: CUST_NO
+    migratedFrom:
+      - relationship: customer_is_corporate
+        attribute: cust_no
+  - id: biz_reg_no
+    name: 사업자등록번호
+    type:
+      base: string
+      length: 10
+    nullable: false
+    physical:
+      name: BIZ_REG_NO
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - cust_no
+  - id: ak_biz_reg_no
+    kind: alternate
+    attributes:
+      - biz_reg_no

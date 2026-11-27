@@ -1,0 +1,7 @@
+id: order_ships_to
+kind: non-identifying
+parent: address
+child: order
+verbPhrase:
+  parentToChild: 배송지로 쓰인다
+  childToParent: 배송된다

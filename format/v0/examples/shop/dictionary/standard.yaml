@@ -1,0 +1,111 @@
+words:
+  - id: cust
+    name: 고객
+    englishName: customer
+    abbreviation: CUST
+    synonyms:
+      - 손님
+    forbiddenWords:
+      - 회원
+  - id: ord
+    name: 주문
+    englishName: order
+    abbreviation: ORD
+  - id: "no"
+    name: 번호
+    englishName: number
+    abbreviation: "NO"
+    classifier: true
+  - id: nm
+    name: 명
+    englishName: name
+    abbreviation: NM
+    classifier: true
+  - id: dtm
+    name: 일시
+    englishName: datetime
+    abbreviation: DTM
+    classifier: true
+terms:
+  - id: cust_no
+    name: 고객번호
+    words:
+      - cust
+      - "no"
+    physicalName: CUST_NO
+    domain: number
+  - id: cust_nm
+    name: 고객명
+    words:
+      - cust
+      - nm
+    physicalName: CUST_NM
+    domain: name
+  - id: ord_no
+    name: 주문번호
+    words:
+      - ord
+      - "no"
+    physicalName: ORD_NO
+    domain: number
+  - id: ord_dtm
+    name: 주문일시
+    words:
+      - ord
+      - dtm
+    physicalName: ORD_DTM
+    domain: datetime
+domains:
+  - id: number
+    name: 번호
+    category: 번호
+    type:
+      base: integer
+    physicalTypes:
+      postgresql: bigint
+      mysql: bigint
+  - id: name
+    name: 명
+    category: 명
+    type:
+      base: string
+      length: 100
+  - id: code
+    name: 코드
+    category: 코드
+    type:
+      base: string
+      length: 10
+  - id: amount
+    name: 금액
+    category: 금액
+    type:
+      base: decimal
+      precision: 15
+      scale: 2
+  - id: quantity
+    name: 수량
+    category: 수량
+    type:
+      base: integer
+  - id: datetime
+    name: 일시
+    category: 일시
+    type:
+      base: datetime
+  - id: date
+    name: 일자
+    category: 일자
+    type:
+      base: date
+  - id: customer_type
+    name: 고객유형코드
+    category: 코드
+    type:
+      base: string
+      length: 1
+    validValues:
+      - value: P
+        meaning: 개인
+      - value: C
+        meaning: 법인

@@ -1,0 +1,46 @@
+id: customer
+name: 고객
+definition: 상품을 주문할 수 있는 개인 또는 법인.
+physical:
+  name: CUSTOMER
+attributes:
+  - id: cust_no
+    name: 고객번호
+    term: cust_no
+    domain: number
+    nullable: false
+    physical:
+      name: CUST_NO
+  - id: cust_nm
+    name: 고객명
+    term: cust_nm
+    domain: name
+    nullable: false
+    physical:
+      name: CUST_NM
+  - id: cust_type_cd
+    name: 고객유형코드
+    domain: customer_type
+    nullable: false
+    physical:
+      name: CUST_TYPE_CD
+  - id: email
+    name: 이메일
+    type:
+      base: string
+      length: 320
+    physical:
+      name: EMAIL
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - cust_no
+    physical:
+      name: PK_CUSTOMER
+  - id: ak_email
+    kind: alternate
+    attributes:
+      - email
+    physical:
+      name: UK_CUSTOMER_EMAIL
