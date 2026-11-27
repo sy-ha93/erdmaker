@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
 **설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
 **브랜치**: `feature/core-model-io`
-**상태**: 진행 중 (단계 5/6 완료)
+**상태**: 진행 중 (단계 6A 완료, 6.6 관문 대기)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
 
@@ -358,19 +358,19 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 ### 단계 6: 프로젝트, CLI, 대조, 옛 도구 제거
 
 **목표**: `erdmaker validate <dir>`가 되고, 코어가 Node 없이 도는 것과 옛 도구와 결과가 같은 것이 테스트로 확인된 뒤, 옛 도구가 없어진다.
-**위험**: 높음 (삭제와 `validate:format` 교체) · **상태**: 대기 · **수용 기준**: 6A는 AC-08, AC-10, AC-13, AC-16 / 6B는 AC-14, AC-17, AC-18, AC-19 · **요구사항**: FR-01(`bin`), FR-10, FR-11, FR-13, FR-14
+**위험**: 높음 (삭제와 `validate:format` 교체) · **상태**: 진행 중 (6A 완료, 6.6 관문 대기) · **수용 기준**: 6A는 AC-08, AC-10, AC-13, AC-16 / 6B는 AC-14, AC-17, AC-18, AC-19 · **요구사항**: FR-01(`bin`), FR-10, FR-11, FR-13, FR-14
 
 **커밋 경계**: 6.1~6.5가 커밋 6A, 6.7~6.12가 커밋 6B다. 6A에는 옛 도구, 루트의 `ajv`·`yaml`, `eslint.config.js`의 `tools/**` 블록, 옛 `validate:format`이 그대로 있고 대조 테스트가 그것을 쓴다. 6B는 그것들과 대조 테스트를 한 커밋에서 함께 지운다(하나만 지우면 CI의 `validate:format`이나 `--frozen-lockfile`이 깨진다. 분석 C2).
 
 #### 6A 프로젝트, CLI, 번들, 대조
 
-- [ ] 6.1 **테스트 먼저**: `packages/core/src/project/find.test.ts`에 "모델 찾기"(AC-08, 메모리 어댑터)를 쓰고, `packages/core/src/project/find.ts`(`findModels`)와 `packages/core/src/project/validate.ts`(`validateProject`)를 구현한다. `P01`과 `P02`에 디스크 위치를 준다(FR-10): `file`은 해당 모델의 `model.yaml`이고, `line`·`column`은 FR-08의 순서로 정한다(`P01`은 그 파일의 위치 색인에서 `/id`, `P02`는 `path`가 `""`라 1:1). 테스트는 두 오류의 `file`, `path`, `line`, `column`을 단언한다. `packages/core/src/index.ts`에 더한다.
-- [ ] 6.2 CLI를 만든다: `packages/cli/package.json`의 `bin`(FR-01의 문자열 그대로), `packages/cli/src/main.ts`, `packages/cli/src/bin.ts`. 프로젝트 오류는 다른 오류와 같은 줄 모양으로 내고, `file`로 해당 모델과 이어 그 모델의 `OK` 줄을 내지 않는다(FR-11). **테스트 먼저**: `packages/cli/src/validate.test.ts`에 다음 둘을 쓴다. 실행할 파일의 경로는 `package.json`의 `bin.erdmaker`에서 읽는다. 사례 폴더는 `mkdtemp`로 만들고 끝나면 그 폴더만 지운다.
+- [x] 6.1 **테스트 먼저**: `packages/core/src/project/find.test.ts`에 "모델 찾기"(AC-08, 메모리 어댑터)를 쓰고, `packages/core/src/project/find.ts`(`findModels`)와 `packages/core/src/project/validate.ts`(`validateProject`)를 구현한다. `P01`과 `P02`에 디스크 위치를 준다(FR-10): `file`은 해당 모델의 `model.yaml`이고, `line`·`column`은 FR-08의 순서로 정한다(`P01`은 그 파일의 위치 색인에서 `/id`, `P02`는 `path`가 `""`라 1:1). 테스트는 두 오류의 `file`, `path`, `line`, `column`을 단언한다. `packages/core/src/index.ts`에 더한다.
+- [x] 6.2 CLI를 만든다: `packages/cli/package.json`의 `bin`(FR-01의 문자열 그대로), `packages/cli/src/main.ts`, `packages/cli/src/bin.ts`. 프로젝트 오류는 다른 오류와 같은 줄 모양으로 내고, `file`로 해당 모델과 이어 그 모델의 `OK` 줄을 내지 않는다(FR-11). **테스트 먼저**: `packages/cli/src/validate.test.ts`에 다음 둘을 쓴다. 실행할 파일의 경로는 `package.json`의 `bin.erdmaker`에서 읽는다. 사례 폴더는 `mkdtemp`로 만들고 끝나면 그 폴더만 지운다.
   - "validate"(AC-13의 경우 전부).
   - 프로젝트 오류(AC-13의 프로젝트 경우): 임시 폴더에 예제 사본으로 프로젝트를 만든다. 모델 셋 중 둘은 `id`가 같고, 하나는 안에 `model.yaml`이 하나 더 있다. 빌드한 CLI를 실행해 종료 코드가 1이고, stderr에 `P01`과 `P02`가 각각 `<해당 model.yaml>:<line>:<column>: … [P01]`·`[P02]` 줄로 정확한 위치와 함께 있고, stdout에 `P01`을 받은 모델과 안쪽 `model.yaml`을 가진 모델의 `OK` 줄이 없으며, 오류가 없는 모델(`id`가 같은 둘 중 앞의 것)의 `OK` 줄은 있음을 단언한다.
-- [ ] 6.3 `packages/cli/src/bundle.test.ts`에 "브라우저 번들"(AC-10, 스펙 6.1의 세 단계)을 쓴다. 같은 파일에서 차단 플러그인이 일하는 것도 단언한다: `node:fs`를 가져오는 한 줄짜리 진입점(임시 폴더에 쓴다)의 빌드가 거부된다. 테스트별 타임아웃을 준다.
-- [ ] 6.4 `packages/core/src/parity.test.ts`에 대조 테스트(FR-13의 1단계)를 쓴다. 대상은 예제, `testing/cases.ts`에서 대조 표시가 켜진 사례 전부, 모델 밖 사전을 가진 프로젝트 모양 하나, YAML 문법 오류 사례 하나(따라 나오는 오류까지 같아야 한다. 분석 4.9절)다. 비교하는 것은 FR-13이 적은 둘(종료 코드, 줄의 다중집합)이다. 묶음 단언: 부록 A의 1~37번마다 대조한 사례가 하나 이상 있다, 대조에서 뺀 사례는 모두 이유가 적혀 있다. 사례마다 테스트를 나누고 타임아웃을 준다(옛 도구 한 번에 약 0.2초).
-- [ ] 6.5 **검증**: 5장의 단계 관문. `node packages/cli/dist/bin.js validate format/v0/examples/shop`의 stdout이 옛 `pnpm --silent validate:format`의 것과 같다. 커밋한다(6A). 해시를 7장에 적는다.
+- [x] 6.3 `packages/cli/src/bundle.test.ts`에 "브라우저 번들"(AC-10, 스펙 6.1의 세 단계)을 쓴다. 같은 파일에서 차단 플러그인이 일하는 것도 단언한다: `node:fs`를 가져오는 한 줄짜리 진입점(임시 폴더에 쓴다)의 빌드가 거부된다. 테스트별 타임아웃을 준다.
+- [x] 6.4 `packages/core/src/parity.test.ts`에 대조 테스트(FR-13의 1단계)를 쓴다. 대상은 예제, `testing/cases.ts`에서 대조 표시가 켜진 사례 전부, 모델 밖 사전을 가진 프로젝트 모양 하나, YAML 문법 오류 사례 하나(따라 나오는 오류까지 같아야 한다. 분석 4.9절)다. 비교하는 것은 FR-13이 적은 둘(종료 코드, 줄의 다중집합)이다. 묶음 단언: 부록 A의 1~37번마다 대조한 사례가 하나 이상 있다, 대조에서 뺀 사례는 모두 이유가 적혀 있다. 사례마다 테스트를 나누고 타임아웃을 준다(옛 도구 한 번에 약 0.2초).
+- [x] 6.5 **검증**: 5장의 단계 관문. `node packages/cli/dist/bin.js validate format/v0/examples/shop`의 stdout이 옛 `pnpm --silent validate:format`의 것과 같다. 커밋한다(6A). 해시를 7장에 적는다.
 - [ ] 6.6 **관문 (여기서 멈춘다)**: 리드에게 6A의 해시를 넘긴다. 리드는 사용자 승인 뒤 6A를 머리로 push하고 PR을 열어 CI를 돌린다. AC-16의 판정: `gh run list --commit <6A 해시> --json conclusion --jq '.[].conclusion'`의 출력이 `success` 한 줄 이상이고 다른 값이 없다. 출력이 비었거나(실행이 없다) 다른 값이 있으면 닫지 않는다. 실패면 6A를 고친 새 커밋으로 다시 판정받고, 그 해시를 쓴다. 닫히기 전에는 6.7로 가지 않는다.
 
 #### 6B 옛 도구 제거와 문서
@@ -554,7 +554,20 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - 재리뷰 마무리 (2026-11-28, 라이브러리 동작 변경 없음): (1) 스펙 FR-08의 "오류 없이 검증을 통과한 모델은 직렬화된다"에 둘째 예외를 적었다: 정규화하면 같은 경로가 되는 `file`의 두 항목과, 글이 아니거나 파일을 가리키지 않는 `file`. `file`은 부르는 코드가 만드는 값이라 `validateModel`은 보고하지 않고 `serializeModel`이 `TypeError`로 거부한다. (2) FR-06과 `serializeModel` JSDoc의 거부 목록을 "글이 아니거나 정규화하면 연 폴더 자신(`''`, `.`, `./`, `a/..`, `/`)"으로 넓혔다(`modelFiles`의 JSDoc과 같다). (3) 스펙 8장에 한 줄: `get` 트랩이 던지는 Proxy는 `validateModel`이 `/ must be a JSON value`로 보고하지만 `serializeModel`은 속성 서술자로 읽어 그대로 쓴다(빌드한 `dist`로 확인했다). (4) `expectLinearTime`의 준비 실행을 작은 크기 하나로 줄였다(크기, 한도, 라운드, 측정 횟수, 백스톱은 그대로). (5) 깊은 데이터 비율 테스트가 5000/20000 단을 먼저 잰다. 제곱 걷기는 여기서 몇 초 안에 실패하고, 큰 크기에서 Vitest 시간 제한이 끊지 못해 멈추는 일이 없다. (6) 백만 단 테스트가 메시지 끝으로 거르지 않고 `validateModel`의 `Issue` 목록 전체(깊이 이슈 넷과 스키마 이슈 일곱)를 `toEqual`로 비교한다. 검증: `pnpm test` 다섯 번 이어 모두 통과(487개, 한 번에 54.5~55.5초. 전에는 64.3~66.4초).
 - 남은 것: 메모리 어댑터에 새 파일이 많으면 `writeModel`의 읽기 실패마다 저장소 전체를 훑는다(스펙 8장의 알려진 한계).
 
+### 단계 6A (2026-11-28)
+
+- 6.1: `project/find.ts`(`findModels`, `MAX_MODEL_DEPTH` 3), `project/validate.ts`(`validateProject`, 내부용 `modelIdIssues`). 찾기는 명시적 스택으로 폴더마다 `list`를 한 번 하고, 이름이 `.`으로 시작하는 폴더와 `node_modules`에 들어가지 않는다. 모델 폴더 아래(깊이 3까지)의 `model.yaml`은 모두 `P02`(`path` `""`, 1:1)이고, 모델 안의 모델 안에 있어도 바깥 모델을 가리킨다. `P01`은 `model.yaml`이 모델에 들어간 모델끼리만 비교하고, 위치는 그 파일의 위치 색인에서 `/id`(예제에서 2:1)다. `models`의 `issues`는 `loadModel`과 `validateModel`의 것을 합쳐 정렬한 것이다. 공개 이름 `findModels`, `validateProject`, 타입 `FoundModels`, `ProjectResult`, `ModelResult`, `ModelCounts`. `find.test.ts`의 `describe('모델 찾기')` 16개(깊이 3·4, 연 폴더가 깊이 0, 준 폴더 기준 깊이, 숨김·`node_modules`, 경로순과 `model.yaml` 폴더, `P02` 둘, 깊이 한도 밖의 안쪽 `model.yaml`, 모델 없음, 예제 하나의 개수, `P01` 둘, 셋이 같은 `id`, 읽지 못한 `model.yaml`, `P02`와 모델 검사, `../dictionary` 공유 0개, 공유 사전의 오류가 모델마다, 모델 없는 `validateProject`). 시간(`find.perf.test.ts`): 모델 폴더 5000/20000개 나란히, 한 모델 안의 모델 5000/20000개(`list`가 답만 돌려주는 어댑터로 잰다. 메모리 어댑터의 `list`는 저장소 전체를 훑는다), `modelIdIssues` 5만/20만 개(모두 같은 `id`, 모두 다른 `id`). 비 8 미만. 깨뜨려 확인한 것(모두 실패): 깊이 4, 숨김·`node_modules` 조건, 안쪽 모델 표시, 정렬, 파일 종류, 다른 모델 고르기, 겹침 조건, 단어 개수, 찾기마다 모델 목록 훑기(비 10.5~16.5), 첫 모델을 목록에서 찾기(비 16.6~16.9). `id`마다 모든 앞 `id`를 훑는 변이는 끝나지 않아 끊었다(동기 코드라 Vitest 시간 제한이 끊지 못한다. 단계 5와 같다).
+- 6.1 시간 테스트의 크기: `modelIdIssues`는 처음 1만/4만, 2만/8만 개로 쟀으나 할당과 GC 때문에 비가 8~16으로 흔들렸다(한 번에 1ms 안팎). 5만/20만 개에서 측정마다 가장 낮은 비가 3.0~5.0이라 그 크기를 쓴다. 같은 이유로 `id`마다 배열을 만들던 첫 구현을 "첫째·둘째 모델" 맵 둘로 바꿨다(결과는 같다).
+- 6.2: `packages/cli/package.json`의 `bin`은 `{ "erdmaker": "dist/bin.js" }`. `main.ts`의 `main(args, output?)`가 종료 코드를 돌려주고 `bin.ts`는 셔뱅과 `process.exitCode = await main(process.argv.slice(2))`뿐이다. 출력 순서: stderr에 프로젝트 오류, 이어 모델 순서대로 각 모델의 `Issue`(경고 포함), 오류가 있으면 빈 줄과 `<n> error(s)`. stdout의 OK 줄은 그 모델에 오류가 없고, 프로젝트 오류의 `file`이 그 모델 폴더 안에 없을 때만 낸다(연 폴더가 모델이면 모든 프로젝트 오류가 그 모델의 것이다). `validate.test.ts`의 `describe('validate')` 14개: 예제, `format/v0/examples`(`shop: `), 규칙 사례(`entities/tag.yaml:14:5: … [R02]`), 주석 경고(`subject-areas/party.yaml:3:15: warning: … [comment]`), 프로젝트(`P01` 둘, `P02` 하나, `3 error(s)`, 깨끗한 넷째 모델의 OK 줄만), 안쪽 `model.yaml`이 있는 모델 폴더(OK 줄 없음), 여러 모델의 오류와 다른 모델의 OK 줄(`model.yaml`의 중복 키 `syntax` 4:1과 따라 나오는 R12 셋), 종료 2의 일곱(모델 없는 폴더, 없는 경로, 파일, 인자 없음, 폴더 없는 `validate`, 폴더 둘, 모르는 명령). 모두 stdout·stderr·종료 코드를 글자 그대로 비교한다. 깨뜨려 확인한 것: OK 줄 막기, 연 폴더 모델의 연결(처음에는 살아남아 안쪽 `model.yaml` 사례를 더했다), 경고를 오류로 세기, 남는 인자.
+- 6.3: `bundle.test.ts`의 `describe('브라우저 번들')` 4개. Vite `build`(설정 파일 없음, `publicDir: false`, `write: false`, 축소 없음, IIFE `erdcore`)로 `packages/core/dist/index.js`를 묶고, `console`만 넣은 `vm` 컨텍스트에서 `process`·`require`·`Buffer`가 `undefined`인 것, 예제 29개를 메모리 어댑터에 넣은 `validateProject`의 결과 전체(오류 0개, 엔터티 10개를 포함한 개수)를 컨텍스트 안에서 `JSON.stringify`해 비교한다. 차단 플러그인은 `node:`로 시작하거나 `builtinModules`에 있는(첫 경로 조각 기준) 모듈을 거부한다. 한 줄짜리 진입점 셋(`node:fs`, `path`, `fs/promises`)의 빌드가 `Node built-in imported: <모듈>`로 거부된다. 플러그인을 빼면 그 셋이 실패하고, `dist/index.js`에 `import 'node:fs'`를 붙이면 첫 테스트가 실패하는 것을 봤다. `vite`는 루트 devDependency(8.4.0)를 쓴다. 테스트별 타임아웃 60초.
+- 6.4: `parity.test.ts`의 `describe('대조')` 71개: 사례 68개(예제, 대조 표시가 켜진 규칙 사례 64개, 모델 밖 사전 `proj/m` + `proj/dictionary`에 모르는 단어, YAML 중복 키, 닫히지 않은 흐름 배열)와 묶음 단언 셋(부록 A 1~37번마다 대조한 사례, 뺀 사례 7개 모두 `FR-13: `으로 시작하는 이유, 코드 프레임 줄 고르기). 사례마다 임시 폴더에 파일을 쓰고 옛 도구와 새 검증기(`createNodeFileSystem(모델 폴더)` + `validateProject(fs, '')`, CLI와 같다)를 같은 폴더에 돌린다. 옛 출력은 파일 부분이 `.yaml`·`.json`으로 끝나는 줄만 쓴다. 새 쪽은 오류만, `P01`·`P02` 빼고, 메시지 첫 줄. 종료 코드와 정렬한 줄 목록을 비교한다. 옛 도구가 죽지 않았는지(종료 0이거나 stderr가 `<n> error(s)`로 끝남)와, 마지막 세 사례는 이름대로의 줄(`../dictionary/standard.yaml: …`, `Map keys must be unique at line 3, column 1:`, `Flow sequence … at line 2, column 1:`)이 옛 출력에 있는지도 단언한다. `test.concurrent`로 돌려 파일 하나가 약 6초다. 주제영역 `unknown entity` 문구를 바꾸면 5개가 실패한다.
+- 6.5: 5장의 단계 관문 `exit=0`(테스트 33개 파일 596개, 단계 5 끝의 487개에서 109개 늘었다. `pnpm test` 59.1초). `npm run --silent validate:format`의 요약 줄이 `want`와 같다. `node packages/cli/dist/bin.js validate format/v0/examples/shop`과 `pnpm --silent validate:format`(옛 도구)의 stdout이 같고 둘 다 종료 0. `node packages/cli/dist/bin.js validate docs`는 종료 2. `pnpm install --frozen-lockfile` 성공(`bin`은 lockfile을 바꾸지 않는다). `vitest run -t`: `모델 찾기` 20개, `validate` 41개(이름에 `validate`가 든 다른 테스트 포함), `브라우저 번들` 4개, `대조` 71개 통과.
+- 6A 커밋의 해시: 커밋은 자기 해시를 담을 수 없어 리드에게 넘기고, 6B 커밋에서 이 줄에 적는다(6.6의 AC-16 판정도 그때 적는다).
+- 검사 명령: 고치지 않았다.
+- 스펙이 정하지 않아 정한 것: (1) **`P01` 메시지**: `duplicate model id "<id>" (also in <다른 model.yaml>)`. 같은 `id`가 셋 이상이면 첫 모델은 둘째를, 나머지는 첫 모델을 가리킨다(메시지 길이가 모델 수에 선형이다. R01과 같은 모양). (2) **`P02` 메시지**: `model.yaml inside another model (<바깥 model.yaml>)`, 위치 1:1. (3) **`ModelCounts`**: 모델에 들어간 항목 수(`entities`, `relationships`, `subtypes`, `subjectAreas`, `layouts`)와 사전 파일들의 `words`·`terms`·`domains` 항목 수의 합. 옛 도구는 겹치지 않은 `id` 수를 셌지만, OK 줄이 나오는 모델은 R01이 없어 두 값이 같다. (4) **CLI 사용법 오류의 문구**: `Usage: erdmaker validate <dir>`, `Unknown command: <명령>` 다음 줄에 사용법, `Not a folder: <dir>`, `No model found in <dir>`. 인자가 셋 이상이어도 사용법 오류(2)다. (5) **CLI 출력 순서**: 프로젝트 오류 먼저, 그다음 모델 순서대로. 여러 모델이 함께 쓰는 사전의 오류는 모델마다 한 줄씩 나오고 그만큼 센다. (6) 어댑터가 던진 예외(`EACCES` 등)는 `main`이 잡지 않는다. Node가 스택을 찍고 종료 1로 끝난다.
+- 계획과 달라진 점: (1) 6.2의 프로젝트 사례는 계획의 "모델 셋"과 "`id`가 같은 둘 중 앞의 것의 OK 줄"이 서로 맞지 않는다(그 둘은 모두 `P01`을 받는다. AC-08, FR-11). 스펙을 따라 `id`가 같은 둘, 안쪽 `model.yaml`을 가진 하나, 오류 없는 넷째 모델로 만들고 넷째의 OK 줄만 있음을 단언했다. (2) `findModels`의 시간 테스트(`find.perf.test.ts`)를 더했다(계획에 없다. 사용자 데이터 크기를 걷는 코드라서). (3) 6.1은 테스트를 먼저 썼지만 구현 전에 돌려 실패하는 것을 보지 않았다(구현을 바로 이어 썼다). 대신 위의 변이로 테스트가 일하는 것을 확인했다. 6.2의 CLI 테스트도 같다.
+
 ---
 
-마지막 수정: 2026-11-28 (단계 5 완료)
-상태: 진행 중 (단계 5/6 완료)
+마지막 수정: 2026-11-28 (단계 6A 완료)
+상태: 진행 중 (단계 6A 완료, 6.6 관문 대기)

@@ -33,5 +33,12 @@ export type {
   SubtypeData,
   ValidValue,
 } from './model/types.js';
+export { findModels, type FoundModels } from './project/find.js';
+export {
+  type ModelCounts,
+  type ModelResult,
+  type ProjectResult,
+  validateProject,
+} from './project/validate.js';
 export { validateModel } from './validate/index.js';
 export { writeModel } from './model/write.js';
