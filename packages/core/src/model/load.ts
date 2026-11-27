@@ -44,11 +44,14 @@ const byName = (a: { name: string }, b: { name: string }) =>
  * The files under `dir` whose names end with `extension`, subfolders
  * included: each folder's entries by name (code units), a folder's files
  * where its name sorts. Walks with an explicit stack, so any depth fits.
+ * A folder in `walked` (normalized paths) is left out with what it holds,
+ * and each folder listed is added to it.
  */
 async function filesUnder(
   fs: FileSystemAdapter,
   dir: string,
   extension: string,
+  walked = new Set<string>(),
 ): Promise<string[]> {
   const found: string[] = [];
   const pending: { path: string; folder: boolean }[] = [
@@ -59,6 +62,8 @@ async function filesUnder(
       found.push(next.path);
       continue;
     }
+    if (walked.has(next.path)) continue;
+    walked.add(next.path);
     const entries = (await fs.list(next.path)).sort(byName);
     for (let i = entries.length - 1; i >= 0; i -= 1) {
       const entry = entries[i];
@@ -143,13 +148,15 @@ export async function loadModel(
   );
   // Each dictionary file once, where its first listed folder finds it, so
   // folders that are the same or nest give one item and one warning per file.
+  // Each folder is listed once too: a folder named again (`a/../dictionary`)
+  // or inside one walked already is not walked again.
   const dictionaryFiles = new Set<string>();
+  const walked = new Set<string>();
   const folders = manifest?.data.dictionaries ?? ['dictionary'];
   for (const folder of folders) {
     if (isAbsoluteEntry(folder)) continue;
-    for (const file of await filesUnder(fs, joinPath(dir, folder), '.yaml')) {
-      dictionaryFiles.add(file);
-    }
+    const under = await filesUnder(fs, joinPath(dir, folder), '.yaml', walked);
+    for (const file of under) dictionaryFiles.add(file);
   }
   const dictionaries: ModelItem<DictionaryData>[] = [];
   for (const file of dictionaryFiles) {

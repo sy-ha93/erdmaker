@@ -43,11 +43,21 @@ const YAML_OPTIONS = {
 } as const;
 
 /**
- * A text of line ends, spaces and tabs only. As a block scalar no line of it
- * sets the indentation, so a reader drops its spaces (`yaml` writes `" \n\n"`
- * as `|+` and reads it back as `"\n\n"`); it is written double-quoted.
+ * Whether the text has a line end and nothing but line ends, spaces and
+ * tabs. As a block scalar no line of it sets the indentation, so a reader
+ * drops its spaces (`yaml` writes `" \n\n"` as `|+` and reads it back as
+ * `"\n\n"`); it is written double-quoted. One scan, so linear in the text (a
+ * regular expression with a repetition on each side of `\n` backtracks).
  */
-const BLANK_LINES = /^[ \t\n]*\n[ \t\n]*$/;
+function isBlankLines(text: string): boolean {
+  let lineEnd = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (char === '\n') lineEnd = true;
+    else if (char !== ' ' && char !== '\t') return false;
+  }
+  return lineEnd;
+}
 
 /**
  * The YAML 1.1 value key `=` (`tag:yaml.org,2002:value`). `compat:
@@ -70,7 +80,7 @@ function yamlNode(doc: Document, value: Canon): YamlNode {
     const node = doc.createNode(value);
     if (
       typeof value === 'string' &&
-      (value === YAML11_VALUE || BLANK_LINES.test(value))
+      (value === YAML11_VALUE || isBlankLines(value))
     ) {
       node.type = Scalar.QUOTE_DOUBLE;
     }
@@ -182,6 +192,10 @@ function modelFiles(
  * - an item's data nests collections more than `MAX_NESTING` levels deep,
  *   which reading would refuse (`validateModel` reports it too):
  *   `Cannot write <file>: <path> is nested more than 256 levels deep`;
+ * - an item's shared objects would be copied, one copy per place, into more
+ *   than `MAX_COPIED_VALUES` values (`validateModel` reports it too):
+ *   `Cannot write <file>: / has shared objects whose copies would hold more
+ *   than 100000 values`;
  * - the model is not shaped as one: it is not an object, a list is not an
  *   array, an item is not an object, an item's `file` is not a string or
  *   normalizes to the opened folder itself (`''`, `.`, `./`, `a/..`, `/`);
@@ -203,8 +217,8 @@ export function serializeModel(model: Model): SerializedFile[] {
   }
   for (const { file, data } of items) {
     // The same checks and the same first path as `validateModel` reports.
-    const { issues, tooDeep } = checkJsonValue(file, data);
-    const issue = issues[0] ?? tooDeep;
+    const { issues, tooDeep, tooLarge } = checkJsonValue(file, data);
+    const issue = issues[0] ?? tooDeep ?? tooLarge;
     if (issue) throw new TypeError(`Cannot write ${file}: ${issue.message}`);
   }
   return items

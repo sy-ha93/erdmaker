@@ -5,6 +5,7 @@ import {
   isNode,
   isScalar,
   isSeq,
+  Lexer,
   LineCounter,
   parseDocument,
   Parser,
@@ -48,16 +49,25 @@ export const MAX_NESTING = 256;
 
 const CST_COLLECTIONS = new Set(['block-map', 'block-seq', 'flow-collection']);
 
+const isCstCollection = (token: unknown) =>
+  typeof token === 'object' &&
+  token !== null &&
+  CST_COLLECTIONS.has(String((token as { type?: unknown }).type));
+
 /**
  * Calls `visit` on every object of the concrete syntax tree with the number of
- * collections it is in (a collection counts itself). Walks with an explicit
+ * collections it is in (a collection counts itself), starting each token at
+ * the depth given with it (0 for a top-level token). Walks with an explicit
  * stack, so any nesting depth fits. The order is not file order.
  */
 function walkCst(
-  cst: readonly unknown[],
+  tokens: readonly (readonly [unknown, number])[],
   visit: (record: Record<string, unknown>, depth: number) => void,
 ): void {
-  const pending: [unknown, number][] = cst.map((token) => [token, 0]);
+  const pending: [unknown, number][] = tokens.map(([token, depth]) => [
+    token,
+    depth,
+  ]);
   for (let next = pending.pop(); next; next = pending.pop()) {
     const [node, outer] = next;
     if (typeof node !== 'object' || node === null) continue;
@@ -86,19 +96,65 @@ const OPTIONS = {
   schema: 'core',
   uniqueKeys: false,
   logLevel: 'error',
+  // Formatting an error copies and scans its whole line: once per error, so
+  // many errors on one long line would take quadratic time. Formatted here
+  // instead, from offsets and one index of the lines (`errorAt`).
+  prettyErrors: false,
 } as const;
+
+/**
+ * The concrete syntax tree of `text`, read one lexical token at a time. The
+ * parser closes collections by recursion, one call per collection closed at
+ * once, so input nested far deeper than the limit (`- - - … x` and then a
+ * line at the left margin) would overflow the call stack inside it. Reading
+ * stops as soon as the parser holds more collections open than the limit;
+ * besides them it holds at most the document and the value being read. Then
+ * `open` holds what it had open, outermost first.
+ */
+function parseCst(
+  text: string,
+  lines: LineCounter,
+): { cst: unknown[]; open?: readonly unknown[] } {
+  const parser = new Parser(lines.addNewLine);
+  lines.addNewLine(0);
+  const cst: unknown[] = [];
+  for (const lexeme of new Lexer().lex(text)) {
+    for (const token of parser.next(lexeme)) cst.push(token);
+    if (parser.stack.length > MAX_NESTING + 2) {
+      return { cst, open: parser.stack };
+    }
+  }
+  for (const token of parser.end()) cst.push(token);
+  return { cst };
+}
+
+/** The offset of the earliest collection more than `MAX_NESTING` deep, in the tree and what the parser still holds open. */
+function tooDeepOffset(
+  cst: readonly unknown[],
+  open: readonly unknown[] = [],
+): number | undefined {
+  // An open token is in the open collections before it, and not yet in their items.
+  const tokens: [unknown, number][] = cst.map((token) => [token, 0]);
+  let outer = 0;
+  for (const token of open) {
+    tokens.push([token, outer]);
+    if (isCstCollection(token)) outer += 1;
+  }
+  let found: number | undefined;
+  walkCst(tokens, (record, depth) => {
+    if (depth > MAX_NESTING && typeof record.offset === 'number') {
+      found = Math.min(found ?? record.offset, record.offset);
+    }
+  });
+  return found;
+}
 
 export function readYamlDocument(text: string): YamlDocument {
   const bom = text.startsWith('\uFEFF');
   const cstLines = new LineCounter();
-  const cst = Array.from(new Parser(cstLines.addNewLine).parse(text));
+  const { cst, open } = parseCst(text, cstLines);
   // The earliest collection past the limit in the file.
-  let tooDeep: number | undefined;
-  walkCst(cst, (record, depth) => {
-    if (depth > MAX_NESTING && typeof record.offset === 'number') {
-      tooDeep = Math.min(tooDeep ?? record.offset, record.offset);
-    }
-  });
+  const tooDeep = tooDeepOffset(cst, open);
   if (tooDeep === undefined) {
     const lineCounter = new LineCounter();
     const doc = parseDocument(text, { ...OPTIONS, lineCounter });
@@ -130,6 +186,83 @@ function positionAt(yaml: YamlDocument, offset: number): Position {
   return parserPosition(yaml, yaml.lineCounter.linePos(offset));
 }
 
+/** What the parser's error formatting looks at on each line, without the line break. */
+interface SourceLines {
+  /** Characters on the line. */
+  length: number[];
+  /** Spaces it starts with. */
+  indent: number[];
+  /** Whether it shows anything other than spaces. */
+  shows: boolean[];
+}
+
+const sourceLines = new WeakMap<YamlDocument, SourceLines>();
+
+/** The lines of the text, indexed once per document and only when an error needs them. */
+function linesOf(yaml: YamlDocument): SourceLines {
+  let lines = sourceLines.get(yaml);
+  if (lines) return lines;
+  const { text } = yaml;
+  const starts = yaml.lineCounter.lineStarts;
+  lines = { length: [], indent: [], shows: [] };
+  for (let line = 0; line < starts.length; line += 1) {
+    const start = starts[line] ?? 0;
+    let end = starts[line + 1] ?? text.length;
+    while (end > start && (text[end - 1] === '\n' || text[end - 1] === '\r')) {
+      end -= 1;
+    }
+    let indent = 0;
+    while (start + indent < end && text[start + indent] === ' ') indent += 1;
+    lines.length.push(end - start);
+    lines.indent.push(indent);
+    lines.shows.push(indent < end - start);
+  }
+  sourceLines.set(yaml, lines);
+  return lines;
+}
+
+/**
+ * Whether the parser follows an error message at `line`, `col` with the
+ * source line, and so with a colon: a line longer than 80 characters is
+ * shown cut with an ellipsis; at the line's start (only spaces before the
+ * column) the line before is shown with it, line break included; otherwise
+ * the line shows something but spaces.
+ */
+function hasSourceLine(yaml: YamlDocument, line: number, col: number): boolean {
+  const { length, indent, shows } = linesOf(yaml);
+  const chars = length[line - 1] ?? 0;
+  if (chars > 80) return true;
+  if (line > 1 && (indent[line - 1] ?? 0) >= Math.min(col - 1, chars)) {
+    return true;
+  }
+  return shows[line - 1] ?? false;
+}
+
+/**
+ * The first line of the message the parser gives an error when it formats
+ * errors (`prettyErrors`, off here), and the position it gives it: `at line
+ * L, column C`, a colon when it shows the source line. An error without an
+ * offset keeps its message and has no position. Errors made here are
+ * formatted already.
+ */
+export function errorAt(
+  yaml: YamlDocument,
+  error: YAMLError,
+): { message: string; at?: { line: number; col: number } } {
+  const firstLine = (message: string) => message.split('\n')[0] ?? '';
+  const given = error.linePos?.[0];
+  if (given) return { message: firstLine(error.message), at: given };
+  if (error.pos[0] === -1) return { message: firstLine(error.message) };
+  const at = yaml.lineCounter.linePos(error.pos[0]);
+  const colon = hasSourceLine(yaml, at.line, at.col) ? ':' : '';
+  return {
+    message: firstLine(
+      `${error.message} at line ${at.line}, column ${at.col}${colon}`,
+    ),
+    at,
+  };
+}
+
 /** A whole-file (`path` `""`) error at a position the parser or the engine gave. */
 export function fileIssue(
   rule: 'syntax' | 'yaml-feature',
@@ -158,8 +291,9 @@ export function yamlErrorIssues(
   errors: readonly YAMLError[] = yaml.doc.errors,
 ): Issue[] {
   return errors.map((error) => {
-    let message = error.message.split('\n')[0] ?? '';
-    const parser = error.linePos?.[0];
+    const formatted = errorAt(yaml, error);
+    let { message } = formatted;
+    const parser = formatted.at;
     if (!parser)
       return fileIssue('syntax', file, message, { line: 1, column: 1 });
     const at = parserPosition(yaml, parser);
@@ -187,16 +321,19 @@ const TRACKED = new Set(['tag', 'anchor', 'alias', 'comment']);
 /** Tags, anchors, aliases and comments, from the concrete syntax tree, in file order. */
 function sourceTokens({ cst }: YamlDocument): SourceToken[] {
   const found: SourceToken[] = [];
-  walkCst(cst, (record) => {
-    if (
-      typeof record.type === 'string' &&
-      TRACKED.has(record.type) &&
-      typeof record.source === 'string' &&
-      typeof record.offset === 'number'
-    ) {
-      found.push(record as unknown as SourceToken);
-    }
-  });
+  walkCst(
+    cst.map((token) => [token, 0]),
+    (record) => {
+      if (
+        typeof record.type === 'string' &&
+        TRACKED.has(record.type) &&
+        typeof record.source === 'string' &&
+        typeof record.offset === 'number'
+      ) {
+        found.push(record as unknown as SourceToken);
+      }
+    },
+  );
   return found.sort((a, b) => a.offset - b.offset);
 }
 
@@ -289,16 +426,18 @@ function comparableKey(key: unknown): unknown {
   return isScalar(key) && !Number.isNaN(key.value) ? key.value : INCOMPARABLE;
 }
 
-interface KeyScan {
+export interface KeyScan {
   /** How many keys repeat an earlier key of their map exactly (parser errors). */
   duplicates: number;
+  /** Where those keys start, in the order found. */
+  duplicateOffsets: number[];
   /** Collection keys, and keys that turn into the same object key as an earlier one. */
   problems: { message: string; offset: number }[];
 }
 
 /** One pass over every map's keys, in document order. */
-function scanKeys(yaml: YamlDocument): KeyScan {
-  const scan: KeyScan = { duplicates: 0, problems: [] };
+export function scanKeys(yaml: YamlDocument): KeyScan {
+  const scan: KeyScan = { duplicates: 0, duplicateOffsets: [], problems: [] };
   walkCollections(yaml, {
     pair(pair) {
       if (isCollection(pair.key)) {
@@ -314,7 +453,10 @@ function scanKeys(yaml: YamlDocument): KeyScan {
       for (const pair of map.items) {
         if (!isScalar(pair.key)) continue;
         const comparable = comparableKey(pair.key);
-        if (exact.has(comparable)) scan.duplicates += 1;
+        if (exact.has(comparable)) {
+          scan.duplicates += 1;
+          scan.duplicateOffsets.push(keyStart(pair.key));
+        }
         if (comparable !== INCOMPARABLE) exact.add(comparable);
         const key = keyString(pair.key.value);
         if (seen.has(key)) {
@@ -328,26 +470,6 @@ function scanKeys(yaml: YamlDocument): KeyScan {
     },
   });
   return scan;
-}
-
-/**
- * Whether the parser follows an error message with the source line, and so
- * with a colon: the line (or, at its start, the line before) shows something.
- */
-function hasSourceLine(
-  { text, lineCounter }: YamlDocument,
-  line: number,
-  col: number,
-): boolean {
-  const start = lineCounter.lineStarts[line - 1] ?? 0;
-  let end = lineCounter.lineStarts[line] ?? text.length;
-  while (end > start && /[\n\r]/.test(text.charAt(end - 1))) end -= 1;
-  // A longer line is shortened with an ellipsis.
-  if (end - start > 80) return true;
-  const shown = text.slice(start, end);
-  return (
-    /[^ ]/.test(shown) || (line > 1 && /^ *$/.test(shown.slice(0, col - 1)))
-  );
 }
 
 /** A duplicate key error at `offset`, worded and placed like the parser's own. */
@@ -370,13 +492,15 @@ function duplicateKeyError(yaml: YamlDocument, offset: number): YAMLError {
  * first one, so it costs one call per key. The composer then reports an error
  * at every key after a map's first, in its own order and at its own offsets;
  * the errors at keys that are no exact duplicate are dropped. Should the kept
- * errors not match the `duplicates` found by `scanKeys`, the parser's own
- * check is used instead.
+ * errors not match the `duplicates` found by `scanKeys`, an error at each
+ * duplicate `scanKeys` found is put among the other errors by offset
+ * instead (the parser's own check would take quadratic time).
  */
 export function parserErrors(
   yaml: YamlDocument,
-  duplicates = scanKeys(yaml).duplicates,
+  scan: KeyScan = scanKeys(yaml),
 ): YAMLError[] {
+  const { duplicates } = scan;
   if (duplicates === 0) return yaml.doc.errors;
   const exact: boolean[] = [];
   // Earlier keys of each map, by the map's first key.
@@ -392,13 +516,8 @@ export function parserErrors(
     keys.add(comparable);
     return true;
   };
-  // Unformatted: formatting an error copies and scans its whole line, once per key.
-  const checked = parseDocument(yaml.text, {
-    ...OPTIONS,
-    uniqueKeys,
-    prettyErrors: false,
-  });
-  // The other errors are the same, in the same order, and already formatted.
+  const checked = parseDocument(yaml.text, { ...OPTIONS, uniqueKeys });
+  // The other errors are the same, in the same order.
   const others = yaml.doc.errors;
   const errors: YAMLError[] = [];
   let other = 0;
@@ -415,8 +534,11 @@ export function parserErrors(
   }
   if (kept !== duplicates) {
     // The parser did not call `uniqueKeys` as expected (another `yaml` version,
-    // say): fall back to its own check, which is right, if slow.
-    return parseDocument(yaml.text, { ...OPTIONS, uniqueKeys: true }).errors;
+    // say): the duplicates found here, in offset order with the others.
+    return [
+      ...others,
+      ...scan.duplicateOffsets.map((offset) => duplicateKeyError(yaml, offset)),
+    ].sort((a, b) => a.pos[0] - b.pos[0]);
   }
   return errors;
 }
@@ -459,7 +581,7 @@ export function parseYaml(file: string, text: string): ParsedText {
   const keys = scanKeys(yaml);
   const result: ParsedText = {
     value: undefined,
-    issues: yamlErrorIssues(file, yaml, parserErrors(yaml, keys.duplicates)),
+    issues: yamlErrorIssues(file, yaml, parserErrors(yaml, keys)),
     positions: new Map(),
   };
   if (result.issues.length > 0) return result;

@@ -1,5 +1,6 @@
 import type { Issue, Position } from '../model/types.js';
 import {
+  errorAt,
   fileIssue,
   type ParsedText,
   parserErrors,
@@ -15,7 +16,9 @@ const ENGINE_POSITION = / at position \d+ \(line (\d+) column (\d+)\)$/;
 /**
  * Reads one layout JSON file. `JSON.parse` decides whether the text is valid;
  * the same text read as YAML gives positions and the nesting limit of every
- * model file. Duplicate keys are found in the text itself.
+ * model file. Duplicate keys are found in the text itself. Text whose lines
+ * end in CR alone is valid but gets no positions, as YAML does not end a
+ * line there (spec 8).
  */
 export function parseJson(file: string, text: string): ParsedText {
   const yaml = readYamlDocument(text);
@@ -28,7 +31,8 @@ export function parseJson(file: string, text: string): ParsedText {
       .replace(/\r/g, '\\r')
       .replace(/\n/g, '\\n');
     const engine = ENGINE_POSITION.exec(message);
-    const yamlAt = engine ? undefined : parserErrors(yaml)[0]?.linePos?.[0];
+    const first = engine ? undefined : parserErrors(yaml)[0];
+    const yamlAt = first && errorAt(yaml, first).at;
     const at: Position = engine
       ? { line: Number(engine[1]), column: Number(engine[2]) }
       : yamlAt

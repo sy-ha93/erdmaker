@@ -398,6 +398,68 @@ describe('schema issues: duplicate items', () => {
     }
   });
 
+  test.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])(
+    'a list of strings holding %s twice: the duplicate pair, as for any other string',
+    (name) => {
+      for (const [synonyms, pair] of [
+        [[name, name], '1 and 0'],
+        [[name, 'b', name, 'c'], '2 and 0'],
+        [['a', name, 'a', name], '3 and 1'],
+      ] as const) {
+        const data = { words: [{ id: 'w', name: 'W', synonyms }] };
+        expect(schemaIssues(FILE, 'dictionary', data)).toEqual([
+          issue(
+            '/words/0/synonyms',
+            `/words/0/synonyms must NOT have duplicate items (items ## ${pair} are identical)`,
+          ),
+        ]);
+      }
+      // A list whose items are not all strings: those are left out of the pairs, as Ajv does.
+      expect(
+        schemaIssues(FILE, 'model', {
+          formatVersion: '0.1',
+          id: 'm',
+          name: 'M',
+          dictionaries: [name, 1, name, 1],
+        }).map((found) => found.message),
+      ).toEqual([
+        '/dictionaries/1 must be string',
+        '/dictionaries/3 must be string',
+        '/dictionaries must NOT have duplicate items (items ## 2 and 0 are identical)',
+      ]);
+    },
+  );
+
+  test("random lists of strings: the same pair and message as Ajv's hashed check", () => {
+    const validate = new Ajv2020({ allErrors: true }).compile({
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+    });
+    let seed = 11;
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const atoms: unknown[] = ['a', 'b', 'c', '1', 1, null, true, 'toString'];
+    for (let run = 0; run < 3000; run += 1) {
+      const synonyms = Array.from(
+        { length: next(8) },
+        () => atoms[next(atoms.length)],
+      );
+      validate(synonyms);
+      const native = (validate.errors ?? [])
+        .filter((error) => error.keyword === 'uniqueItems')
+        .map((error) => `/words/0/synonyms ${error.message}`);
+      const ours = schemaIssues(FILE, 'dictionary', {
+        words: [{ id: 'w', name: 'W', synonyms }],
+      })
+        .map((found) => found.message)
+        .filter((message) => message.includes('duplicate items'));
+      expect(ours).toEqual(native);
+    }
+  });
+
   test('items nested 100000 deep get a key without throwing', () => {
     let deep: unknown = 'x';
     for (let i = 0; i < 100_000; i += 1) deep = { a: [deep] };

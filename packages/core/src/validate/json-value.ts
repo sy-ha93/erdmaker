@@ -65,7 +65,28 @@ interface Frame extends Children {
   node: object;
   path: string;
   next: number;
+  /** Issues found before this container. */
+  issuesBefore: number;
+  /** Collection levels in it, itself included, so far. */
+  height: number;
+  /** Values written for it, itself included, so far. */
+  size: number;
 }
+
+/** A container walked to its end: its levels, its values as written, and whether it held no issue. */
+interface Walked {
+  height: number;
+  size: number;
+  clean: boolean;
+}
+
+/**
+ * The most values the copies of shared objects may add to one file's data.
+ * `serializeModel` writes a shared object at each place, so data in memory
+ * whose levels each hold the level below twice would be written out in
+ * exponential size; data read from a file shares nothing.
+ */
+export const MAX_COPIED_VALUES = 100_000;
 
 /** The values in some data that are not JSON data, and whether the data is safe to read as data. */
 export interface JsonValueCheck {
@@ -87,14 +108,22 @@ export interface JsonValueCheck {
    * data however many collections are that deep; not in `issues`.
    */
   tooDeep?: Issue;
+  /**
+   * Shared objects whose copies would add more than `MAX_COPIED_VALUES`
+   * values when the data is written out: `/ has shared objects whose copies
+   * would hold more than 100000 values`, at `""`. Copies past the limit are
+   * not looked at. Not in `issues`.
+   */
+  tooLarge?: Issue;
 }
 
 /**
  * Finds every value that is not JSON data: anything other than null, a
  * boolean, a string, a finite number (integers within the safe range), an
- * array or a plain object. Shared references are fine; a cycle is reported
- * where it closes. The holes of a sparse array are one issue, at the first
- * hole. Never throws, whatever `value` is, however deeply it nests.
+ * array or a plain object. Shared references are fine (see `tooLarge` of
+ * `checkJsonValue` for a limit); a cycle is reported where it closes. The
+ * holes of a sparse array are one issue, at the first hole. Never throws,
+ * whatever `value` is, however deeply it nests.
  */
 export function jsonValueIssues(file: string, value: unknown): Issue[] {
   return checkJsonValue(file, value).issues;
@@ -102,13 +131,22 @@ export function jsonValueIssues(file: string, value: unknown): Issue[] {
 
 /**
  * `jsonValueIssues`, whether the data is safe to give to code that reads it
- * as data, and whether it nests deeper than a file may hold. One walk with an
- * explicit stack: linear in the data, without recursion.
+ * as data, whether it nests deeper than a file may hold, and whether its
+ * shared objects would be copied too often to write it out. One walk with an
+ * explicit stack, without recursion. A shared object found free of issues
+ * is not walked again where it fits below the nesting limit; one with
+ * issues is, so they are reported at each place, until the copies reach
+ * `MAX_COPIED_VALUES`. So the time is linear in the distinct objects, plus
+ * at most that many values.
  */
 export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
   const issues: Issue[] = [];
   let readable = true;
   let tooDeep: Issue | undefined;
+  let tooLarge: Issue | undefined;
+  // Values the places reached again add, as written.
+  let copied = 0;
+  const walked = new Map<object, Walked>();
   const report = (path: string, unreadable = false) => {
     if (unreadable) readable = false;
     issues.push({
@@ -125,16 +163,51 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
   // An explicit stack instead of recursion: any depth fits.
   const stack: Frame[] = [];
 
+  /** Adds a finished child's levels and values to the container holding it. */
+  const addChild = (height: number, size: number) => {
+    const parent = stack.at(-1);
+    if (!parent) return;
+    parent.height = Math.max(parent.height, height + 1);
+    parent.size += size;
+  };
+
   /** Reports `node` or, for a container, starts walking it. */
   const enter = (node: unknown, path: string): void => {
-    if (isJsonScalar(node)) return;
+    if (isJsonScalar(node)) {
+      addChild(0, 1);
+      return;
+    }
     if (typeof node !== 'object' || node === null) {
       report(path);
+      addChild(0, 1);
       return;
     }
     if (ancestors.has(node)) {
       report(path, true);
+      addChild(0, 1);
       return;
+    }
+    const before = walked.get(node);
+    if (before) {
+      copied += before.size;
+      if (copied > MAX_COPIED_VALUES) {
+        tooLarge ??= {
+          rule: 'schema',
+          severity: 'error',
+          file,
+          path: '',
+          message: `/ has shared objects whose copies would hold more than ${MAX_COPIED_VALUES} values`,
+        };
+        addChild(before.height, before.size);
+        return;
+      }
+      // Free of issues and, at this level, of collections past the limit (or one was found already).
+      const fits =
+        tooDeep !== undefined || stack.length + before.height <= MAX_NESTING;
+      if (before.clean && fits) {
+        addChild(before.height, before.size);
+        return;
+      }
     }
     let children: Children;
     try {
@@ -147,10 +220,12 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
         children = objectChildren(node);
       } else {
         report(path, true);
+        addChild(0, 1);
         return;
       }
     } catch {
       report(path, true);
+      addChild(0, 1);
       return;
     }
     // `node` is at level `stack.length + 1`: the frames above it, then itself.
@@ -164,7 +239,15 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
       };
     }
     ancestors.add(node);
-    stack.push({ node, path, next: 0, ...children });
+    stack.push({
+      node,
+      path,
+      next: 0,
+      ...children,
+      issuesBefore: issues.length,
+      height: 1,
+      size: 1,
+    });
   };
 
   enter(value, '');
@@ -181,6 +264,12 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
     if (entry === undefined) {
       stack.pop();
       ancestors.delete(frame.node);
+      walked.set(frame.node, {
+        height: frame.height,
+        size: frame.size,
+        clean: issues.length === frame.issuesBefore,
+      });
+      addChild(frame.height, frame.size);
       continue;
     }
     frame.next += 1;
@@ -189,9 +278,15 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
     // An accessor is not data and is not called.
     if (descriptor === undefined || !('value' in descriptor)) {
       report(childPath, true);
+      addChild(0, 1);
     } else {
       enter(descriptor.value, childPath);
     }
   }
-  return tooDeep ? { issues, readable, tooDeep } : { issues, readable };
+  return {
+    issues,
+    readable,
+    ...(tooDeep ? { tooDeep } : {}),
+    ...(tooLarge ? { tooLarge } : {}),
+  };
 }

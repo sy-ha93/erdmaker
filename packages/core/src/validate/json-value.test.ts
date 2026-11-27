@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { MAX_NESTING } from '../parse/yaml.js';
-import { checkJsonValue, jsonValueIssues } from './json-value.js';
+import {
+  checkJsonValue,
+  jsonValueIssues,
+  MAX_COPIED_VALUES,
+} from './json-value.js';
 
 const paths = (value: unknown) =>
   jsonValueIssues('f.yaml', value).map((issue) => issue.path);
@@ -269,5 +273,91 @@ describe('JSON value check: nesting', () => {
     // `cyclic` is at level 301, the root again below it.
     expect(check.issues.map((issue) => issue.path)).toEqual(['/0'.repeat(301)]);
     expect(check.tooDeep?.path).toBe('/0'.repeat(256));
+  });
+});
+
+describe('JSON value check: shared objects', () => {
+  /** `levels` objects, each holding the one before it twice, around `bottom`. */
+  const doubling = (levels: number, bottom: unknown = { x: 1 }): unknown => {
+    let value = bottom;
+    for (let level = 0; level < levels; level += 1) {
+      value = { a: value, b: value };
+    }
+    return value;
+  };
+  const LARGE = {
+    rule: 'schema',
+    severity: 'error',
+    file: 'f.yaml',
+    path: '',
+    message: `/ has shared objects whose copies would hold more than ${MAX_COPIED_VALUES} values`,
+  };
+
+  test('each level holding the one before twice, 40 levels: one issue at the root', () => {
+    expect(checkJsonValue('f.yaml', { ext: doubling(40) })).toEqual({
+      issues: [],
+      readable: true,
+      tooLarge: LARGE,
+    });
+  });
+
+  test('copies up to the limit are fine; the size counts each value written', () => {
+    // 2 ** 15 copies of the bottom object of two values (it and its `x`), and of each level above.
+    expect(checkJsonValue('f.yaml', doubling(15))).toEqual({
+      issues: [],
+      readable: true,
+    });
+    expect(checkJsonValue('f.yaml', doubling(16)).tooLarge).toEqual(LARGE);
+    // Data without shared objects is not limited, however large.
+    const big = Array.from({ length: 2 * MAX_COPIED_VALUES }, (_, i) => ({
+      i,
+    }));
+    expect(checkJsonValue('f.yaml', big)).toEqual({
+      issues: [],
+      readable: true,
+    });
+  });
+
+  test('a value that is not JSON in a shared object is reported at each place', () => {
+    const bad = { x: undefined, y: [NaN] };
+    expect(paths({ a: bad, b: [bad], c: { d: bad } })).toEqual([
+      '/a/x',
+      '/a/y/0',
+      '/b/0/x',
+      '/b/0/y/0',
+      '/c/d/x',
+      '/c/d/y/0',
+    ]);
+  });
+
+  test('40 levels around a value that is not JSON: issues up to the limit, then one at the root', () => {
+    const { issues, tooLarge } = checkJsonValue(
+      'f.yaml',
+      doubling(40, { x: undefined }),
+    );
+    expect(tooLarge).toEqual(LARGE);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.length).toBeLessThanOrEqual(MAX_COPIED_VALUES);
+    expect(issues[0]?.path).toBe(`${'/a'.repeat(40)}/x`);
+  });
+
+  test('a shared object too deep at one place only: `tooDeep` at that place', () => {
+    let shared: unknown = [];
+    for (let level = 1; level < 10; level += 1) shared = [shared];
+    // `deep` is level 2, its chain of arrays reaches `shared` at level 252.
+    let chain: unknown = shared;
+    for (let level = 0; level < 250; level += 1) chain = [chain];
+    const { tooDeep } = checkJsonValue('f.yaml', {
+      first: shared,
+      deep: chain,
+    });
+    const path = `/deep${'/0'.repeat(255)}`;
+    expect(tooDeep).toEqual({
+      rule: 'schema',
+      severity: 'error',
+      file: 'f.yaml',
+      path,
+      message: `${path} is nested more than ${MAX_NESTING} levels deep`,
+    });
   });
 });

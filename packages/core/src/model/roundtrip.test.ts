@@ -351,3 +351,79 @@ describe('왕복 성질', () => {
     }
   }, 120_000);
 });
+
+describe('keys and ids named like members of Object.prototype', () => {
+  const NAMES = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+  const ENTITY =
+    'id: constructor\n' +
+    'name: C\n' +
+    'attributes:\n' +
+    '  - id: tostring\n' +
+    '    name: T\n' +
+    'ext:\n' +
+    '  __proto__:\n' +
+    '    a: 1\n' +
+    '  constructor: 2\n' +
+    '  toString: 3\n' +
+    '  hasOwnProperty:\n' +
+    '    - __proto__\n';
+  const WORDS =
+    'words:\n' +
+    '  - id: proto\n' +
+    '    name: P\n' +
+    `    synonyms:\n${NAMES.map((name) => `      - ${name}\n`).join('')}`;
+  const TWICE =
+    'words:\n' +
+    '  - id: twice\n' +
+    '    name: W\n' +
+    '    synonyms:\n' +
+    '      - __proto__\n' +
+    '      - __proto__\n';
+
+  test('load, validate and write: own keys, the duplicate reported, the same bytes back', async () => {
+    const files: Files = {
+      ...exampleFiles(),
+      'entities/constructor.yaml': ENTITY,
+      'dictionary/proto.yaml': WORDS,
+      'dictionary/twice.yaml': TWICE,
+    };
+    const { model, issues, positions } = await loadModel(
+      createMemoryFileSystem(files),
+      '',
+    );
+    expect(issues).toEqual([
+      {
+        rule: 'schema',
+        severity: 'error',
+        file: 'dictionary/twice.yaml',
+        path: '/words/0/synonyms',
+        line: 4,
+        column: 5,
+        message:
+          '/words/0/synonyms must NOT have duplicate items (items ## 1 and 0 are identical)',
+      },
+    ]);
+    const entity = model.entities.find(
+      (item) => item.file === 'entities/constructor.yaml',
+    );
+    const ext = entity?.data.ext as Record<string, unknown>;
+    expect(Object.getPrototypeOf(ext)).toBe(Object.prototype);
+    expect(Object.keys(ext)).toEqual(NAMES);
+    expect(Object.getOwnPropertyDescriptor(ext, '__proto__')?.value).toEqual({
+      a: 1,
+    });
+    expect(
+      model.dictionaries.find((item) => item.file === 'dictionary/proto.yaml')
+        ?.data.words?.[0]?.synonyms,
+    ).toEqual(NAMES);
+    expect(validateModel(model, positions)).toEqual([]);
+
+    const written = asFiles(model);
+    expect(written['entities/constructor.yaml']).toBe(ENTITY);
+    expect(written['dictionary/proto.yaml']).toBe(WORDS);
+    expect(written['dictionary/twice.yaml']).toBeUndefined();
+    const again = await loadModel(createMemoryFileSystem(written), '');
+    expect(again.issues).toEqual([]);
+    expect(again.model).toEqual(model);
+  });
+});

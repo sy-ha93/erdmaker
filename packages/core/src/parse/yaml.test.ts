@@ -443,6 +443,82 @@ describe('deeply nested YAML', () => {
     }
   });
 
+  const lines = (count: number, line: (i: number) => string) =>
+    Array.from({ length: count }, (_, i) => line(i)).join('\n');
+  type Shape = [string, (depth: number) => string, number, number];
+  /**
+   * Deep shapes that end by closing many collections at once, and where the
+   * first collection past the limit starts. Written on one line, their text
+   * grows with the depth.
+   */
+  const COMPACT: Shape[] = [
+    [
+      'a compact block sequence',
+      (depth) => '- '.repeat(depth) + 'x\n- y\n',
+      1,
+      513,
+    ],
+    [
+      'flow sequences in a block sequence',
+      (depth) => '- ' + '['.repeat(depth) + ']'.repeat(depth) + '\n- y\n',
+      1,
+      258,
+    ],
+    [
+      'flow maps in a block map',
+      (depth) =>
+        'a: ' + '{b: '.repeat(depth) + '1' + '}'.repeat(depth) + '\nc: 2\n',
+      1,
+      1024,
+    ],
+    ['an unclosed flow sequence', (depth) => '['.repeat(depth) + '\n', 1, 257],
+  ];
+  /** Indented a level per line, their text grows with the square of the depth. */
+  const INDENTED: Shape[] = [
+    [
+      'an indented block sequence',
+      (depth) => lines(depth, (i) => ' '.repeat(2 * i) + '-') + ' x\n- y\n',
+      257,
+      513,
+    ],
+    [
+      'a block map',
+      (depth) => lines(depth, (i) => ' '.repeat(i) + 'a:') + ' x\nb: y\n',
+      257,
+      257,
+    ],
+    [
+      'block maps in block sequences',
+      (depth) => lines(depth, (i) => ' '.repeat(2 * i) + '- a:') + ' x\n- y\n',
+      129,
+      257,
+    ],
+  ];
+
+  describe.each<[number, Shape[]]>([
+    [300, [...COMPACT, ...INDENTED]],
+    [8_000, [...COMPACT, ...INDENTED]],
+    [100_000, COMPACT],
+  ])('%i levels', (depth, shapes) => {
+    test.each(shapes)(
+      '%s, then fewer: the nesting issue at the first collection past the limit',
+      (_name, text, line, column) => {
+        const source = text(depth);
+        // Twice: a second deep parse is what can bring the process down.
+        for (let i = 0; i < 2; i += 1) {
+          expect(issuesOf(source)).toEqual([
+            {
+              rule: 'syntax',
+              line,
+              column,
+              message: `Collections are nested more than ${MAX_NESTING} levels deep at line ${line}, column ${column}:`,
+            },
+          ]);
+        }
+      },
+    );
+  });
+
   test('nesting up to the limit is read, one level more is a syntax issue', () => {
     const atLimit = parseYaml(FILE, nested(MAX_NESTING));
     expect(atLimit.issues).toEqual([]);

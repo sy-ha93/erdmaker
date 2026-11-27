@@ -499,6 +499,44 @@ describe('what loadModel reads', () => {
     },
   );
 
+  test('dictionary folders named again or nested: each folder is listed once', async () => {
+    const folders = [
+      'dictionary/sub',
+      'dictionary',
+      './dictionary',
+      'x/../dictionary',
+      'dictionary/sub/',
+    ];
+    const files = {
+      ...replaceOnce(
+        exampleFiles(),
+        'model.yaml',
+        'targets:\n',
+        `dictionaries:\n${folders.map((f) => `  - ${f}\n`).join('')}targets:\n`,
+      ),
+      'dictionary/sub/extra.yaml': 'words: []\n',
+    };
+    const inner = exampleFileSystem(files);
+    const listed: string[] = [];
+    const fs = {
+      ...inner,
+      list: (dir: string) => {
+        listed.push(dir);
+        return inner.list(dir);
+      },
+    };
+    const { model, issues } = await loadModel(fs, '');
+    expect(issues).toEqual([]);
+    expect(model.dictionaries.map((item) => item.file)).toEqual([
+      'dictionary/sub/extra.yaml',
+      'dictionary/standard.yaml',
+    ]);
+    expect(listed.filter((dir) => dir.startsWith('dictionary'))).toEqual([
+      'dictionary/sub',
+      'dictionary',
+    ]);
+  });
+
   test('an absolute dictionary folder is an error on its entry, reported once, and is not read', async () => {
     const files = replaceOnce(
       exampleFiles(),

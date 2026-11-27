@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import { createMemoryFileSystem } from '../fs/memory.js';
 import { validateModel } from '../validate/index.js';
+import { MAX_COPIED_VALUES } from '../validate/json-value.js';
 import { finishIssues } from '../validate/issues.js';
 import { loadModel } from './load.js';
 import { serializeModel } from './serialize.js';
@@ -862,6 +863,44 @@ describe('serializeModel: what it refuses', () => {
       name: 'E',
       attributes: [{ id: 'a', name: 'A', default: value }],
     });
+
+  test('shared objects whose copies would be too many: refused as validateModel reports them', () => {
+    const doubling = (levels: number) => {
+      let value: unknown = { x: 1 };
+      for (let level = 0; level < levels; level += 1) {
+        value = { a: value, b: value };
+      }
+      return value;
+    };
+    const message = `/ has shared objects whose copies would hold more than ${MAX_COPIED_VALUES} values`;
+    const of = entity({
+      id: 'e',
+      name: 'E',
+      attributes: [],
+      ext: doubling(40),
+    });
+    expect(() => serializeModel(of)).toThrow(
+      new TypeError(`Cannot write entities/e.yaml: ${message}`),
+    );
+    expect(validateModel(of)).toEqual([
+      {
+        rule: 'schema',
+        severity: 'error',
+        file: 'entities/e.yaml',
+        path: '',
+        message,
+      },
+    ]);
+    // Below the limit, every copy is written.
+    const fine = entity({
+      id: 'e',
+      name: 'E',
+      attributes: [],
+      ext: doubling(10),
+    });
+    expect(validateModel(fine)).toEqual([]);
+    expect(written(fine).split('x: 1').length - 1).toBe(2 ** 10);
+  });
 
   test('data that is not JSON data throws, naming the file and the value', () => {
     class Point {

@@ -23,6 +23,12 @@ const URN = 'urn:erdmaker:format:0.1:';
 
 /** Stands in for `uniqueItems` where Ajv would compare every pair of items. */
 const UNIQUE_ITEMS = 'erdmakerUniqueItems';
+/**
+ * Stands in for `uniqueItems` where Ajv would hash the items: its hash is a
+ * plain object, which cannot hold the key `__proto__`, so two `__proto__`
+ * strings passed as different.
+ */
+const UNIQUE_SCALARS = 'erdmakerUniqueScalars';
 
 /** Keywords whose value is one schema, a list of schemas, or a map of names to schemas. */
 const ONE_SCHEMA = [
@@ -60,19 +66,21 @@ const isObject = (value: unknown): value is SchemaObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * Whether Ajv checks `uniqueItems` under `items` with a hash of the items:
- * only when `items` declares scalar types. Otherwise it compares every pair,
- * which takes quadratic time (a subject area's `entities`, a key's
- * `attributes`). Mirrors `canOptimize` in Ajv's `uniqueItems` keyword.
+ * The scalar types `items` declares when Ajv checks `uniqueItems` under it
+ * with a hash of the items (the types that are hashed), otherwise
+ * `undefined`: then Ajv compares every pair, which takes quadratic time (a
+ * subject area's `entities`, a key's `attributes`). Mirrors `canOptimize` in
+ * Ajv's `uniqueItems` keyword.
  */
-function hashesItems(items: unknown): boolean {
-  if (!isObject(items)) return false;
+function hashedTypes(items: unknown): string[] | undefined {
+  if (!isObject(items)) return undefined;
   const type = items.type;
   const types = type === undefined ? [] : Array.isArray(type) ? type : [type];
-  return (
-    types.length > 0 &&
+  return types.length > 0 &&
+    types.every((name) => typeof name === 'string') &&
     !types.some((name) => name === 'object' || name === 'array')
-  );
+    ? (types as string[])
+    : undefined;
 }
 
 const schemaRoots = new Map<string, SchemaObject>();
@@ -106,7 +114,7 @@ function resolveRef(
  * Ajv joins the errors of a referenced schema to the earlier ones by copying
  * them all, once per failing reference, so every `$ref` is replaced by a copy
  * of its target. A `uniqueItems` that Ajv would check pair by pair becomes
- * `UNIQUE_ITEMS`. Only schema positions are looked at, so a property named
+ * `UNIQUE_ITEMS`, one it would hash `UNIQUE_SCALARS`. Only schema positions are looked at, so a property named
  * `uniqueItems` or `$ref` stays a property. Throws on a recursive `$ref`, and
  * on a `$ref` with keywords beside it other than annotations (`description`,
  * `title`, `default`, `examples`, `$comment`): the format's schemas have
@@ -133,13 +141,11 @@ export function prepareSchema(
           prepareSchema(sub, root, active),
         ]),
       );
-    } else if (
-      keyword === 'uniqueItems' &&
-      value === true &&
+    } else if (keyword === 'uniqueItems' && value === true) {
       // Decided on `items` as written: with its `$ref` replaced, Ajv would hash.
-      !hashesItems(schema.items)
-    ) {
-      copy[UNIQUE_ITEMS] = true;
+      const types = hashedTypes(schema.items);
+      if (types) copy[UNIQUE_SCALARS] = types;
+      else copy[UNIQUE_ITEMS] = true;
     } else {
       copy[keyword] = value;
     }
@@ -236,6 +242,51 @@ export function duplicateItems(
   return found;
 }
 
+/** Whether `value` has one of the JSON Schema `types`, as Ajv checks them (numbers not strict). */
+function hasType(value: unknown, types: readonly string[]): boolean {
+  return types.some((type) => {
+    switch (type) {
+      case 'null':
+        return value === null;
+      case 'integer':
+        return (
+          typeof value === 'number' && !(value % 1) && !Number.isNaN(value)
+        );
+      default:
+        return typeof value === type;
+    }
+  });
+}
+
+/**
+ * The pair Ajv's hashed `uniqueItems` check reports for a list with equal
+ * items of the `types` (items of other types are left out, as Ajv leaves
+ * them to `items`): from the end, the first item equal to a later one (`i`)
+ * and the nearest later item equal to it (`j`). Kept in a `Map`, so every
+ * string is a key, `__proto__` included. Values equal as Ajv's hash keys are
+ * equal here too: `1` and `"1"` differ, `0` and `-0` do not.
+ */
+export function duplicateScalars(
+  items: readonly unknown[],
+  types: readonly string[],
+): { i: number; j: number } | undefined {
+  const later = new Map<unknown, number>();
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (!hasType(item, types)) continue;
+    const j = later.get(item);
+    if (j !== undefined) return { i, j };
+    later.set(item, i);
+  }
+  return undefined;
+}
+
+const DUPLICATE_ERROR: CodeKeywordDefinition['error'] = {
+  message: ({ params }) =>
+    str`must NOT have duplicate items (items ## ${params.j} and ${params.i} are identical)`,
+  params: ({ params }) => _`{i: ${params.i}, j: ${params.j}}`,
+};
+
 /**
  * `UNIQUE_ITEMS`, worded and keyed like Ajv's own `uniqueItems` error. Made
  * as generated code, like Ajv's keywords, so each error is appended to the
@@ -245,15 +296,26 @@ const uniqueItemsKeyword: CodeKeywordDefinition = {
   keyword: UNIQUE_ITEMS,
   type: 'array',
   schemaType: 'boolean',
-  error: {
-    message: ({ params }) =>
-      str`must NOT have duplicate items (items ## ${params.j} and ${params.i} are identical)`,
-    params: ({ params }) => _`{i: ${params.i}, j: ${params.j}}`,
-  },
+  error: DUPLICATE_ERROR,
   code(cxt) {
     const { gen, data } = cxt;
     const find = gen.scopeValue('func', { ref: duplicateItems });
     const found = gen.const('found', _`${find}(${data})`);
+    cxt.setParams({ i: _`${found}.i`, j: _`${found}.j` });
+    cxt.fail(_`${found} !== undefined`);
+  },
+};
+
+/** `UNIQUE_SCALARS`, worded and keyed like Ajv's own `uniqueItems` error; its value is the item types. */
+const uniqueScalarsKeyword: CodeKeywordDefinition = {
+  keyword: UNIQUE_SCALARS,
+  type: 'array',
+  schemaType: 'array',
+  error: DUPLICATE_ERROR,
+  code(cxt) {
+    const { gen, data, schemaCode } = cxt;
+    const find = gen.scopeValue('func', { ref: duplicateScalars });
+    const found = gen.const('found', _`${find}(${data}, ${schemaCode})`);
     cxt.setParams({ i: _`${found}.i`, j: _`${found}.j` });
     cxt.fail(_`${found} !== undefined`);
   },
@@ -273,6 +335,7 @@ export function schemaAjv(): Ajv2020 {
       strictSchema: true,
     });
     instance.addKeyword(uniqueItemsKeyword);
+    instance.addKeyword(uniqueScalarsKeyword);
     for (const schema of schemaRoots.values()) {
       instance.addSchema(prepareSchema(schema, schema) as AnySchemaObject);
     }

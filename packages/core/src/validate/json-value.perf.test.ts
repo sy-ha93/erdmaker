@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { bestTime } from '../testing/timing.js';
-import { jsonValueIssues } from './json-value.js';
+import { checkJsonValue, jsonValueIssues } from './json-value.js';
 
 const paths = (value: unknown) =>
   jsonValueIssues('f.yaml', value).map((issue) => issue.path);
@@ -14,5 +14,17 @@ describe('JSON value check', () => {
     expect(paths({ list })).toEqual(['/list/0', '/list/5']);
     // Visiting every index takes seconds; the best of three runs stays well below one.
     expect(await bestTime(3, () => paths({ list }))).toBeLessThan(1000);
+  });
+});
+
+describe('JSON value check: shared objects', () => {
+  test('40 levels each holding the level before twice are checked at once', async () => {
+    let value: unknown = { x: 1 };
+    for (let level = 0; level < 40; level += 1) value = { a: value, b: value };
+    // Visiting each place takes 2 ** 40 steps; checked object by object, it takes milliseconds.
+    expect(
+      await bestTime(3, () => checkJsonValue('f.yaml', value)),
+    ).toBeLessThan(200);
+    expect(checkJsonValue('f.yaml', value).tooLarge?.path).toBe('');
   });
 });

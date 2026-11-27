@@ -51,9 +51,10 @@ export function schemaIssues(
 
 /**
  * Everything wrong with one file's data on its own: values that are not JSON
- * data, collections nested deeper than a file may hold (one issue, see
- * `checkJsonValue`) and schema errors. The schema check is left out only for
- * data that is not safe to read as data (see `checkJsonValue`), which data
+ * data, collections nested deeper than a file may hold and shared objects
+ * copied too often to write (one issue each, see `checkJsonValue`), and
+ * schema errors. The schema check is left out for data that is not safe to
+ * read as data or that shares too much (see `checkJsonValue`), which data
  * read from a file never is. Never throws.
  */
 export function itemIssues(
@@ -61,8 +62,12 @@ export function itemIssues(
   name: SchemaName,
   data: unknown,
 ): Issue[] {
-  const { issues, readable, tooDeep } = checkJsonValue(file, data);
-  const own = tooDeep ? [...issues, tooDeep] : issues;
-  if (!readable) return own;
+  const { issues, readable, tooDeep, tooLarge } = checkJsonValue(file, data);
+  const own = [...issues];
+  if (tooDeep) own.push(tooDeep);
+  if (tooLarge) own.push(tooLarge);
+  // Too large to write, it is not checked against the schema either: that
+  // check would read every copy.
+  if (!readable || tooLarge) return own;
   return [...own, ...schemaIssues(file, name, data)];
 }
