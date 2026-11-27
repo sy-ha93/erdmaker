@@ -132,7 +132,7 @@
 
 ### FR-08 검증
 
-- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 두 검사는 항목마다 둘 다 한다(`.inf` 같은 값이 그 항목의 스키마 오류를 가리지 않는다). 스키마 검사는 안전하게 읽을 수 없는 데이터(순환, 빈 칸이 있는 배열, 접근자, 클래스 인스턴스, 들여다보면 예외를 던지는 컨테이너)에서만 건너뛰고, 평범한 객체처럼 동작하는 Proxy는 평범한 객체로 검사한다. 매니페스트의 절대 `dictionaries` 항목은 그 항목에 `schema` 오류 `dictionaries entries must be relative paths`로 보고한다(메모리 모델도 같다. 스키마 파일은 바꾸지 않는다). 어떤 모양의 `data`나 `Model`이 와도 예외를 던지지 않는다: 없는 목록은 빈 목록으로 보고, 읽다가 예외가 나는 데이터(던지는 트랩이 있는 Proxy)는 `/ must be a JSON value`로 보고한다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
+- `validateModel(model, positions?)`는 파일 접근 없이 `Issue[]`를 돌려준다. 먼저 모든 항목에 스키마 검사와 JSON 값 검사(FR-05의 `must be a JSON value`)를 하고, 파일 간 규칙 12개는 그 검사를 통과한 항목만으로 한다(디스크에서 읽을 때 오류 파일을 빼는 것과 같다). 메모리 모델에서는 `undefined`, 함수, 심벌, bigint, `Date`, 타입 배열과 그 밖의 클래스 인스턴스도 JSON 값이 아니고, 순환하는 데이터는 순환이 닫히는 자리에서 같은 오류로 보고한다. 두 검사는 항목마다 둘 다 한다(`.inf` 같은 값이 그 항목의 스키마 오류를 가리지 않는다). 스키마 검사는 안전하게 읽을 수 없는 데이터(순환, 빈 칸이 있는 배열, 접근자, 클래스 인스턴스, 들여다보면 예외를 던지는 컨테이너)에서만 건너뛰고, 평범한 객체처럼 동작하는 Proxy는 평범한 객체로 검사한다. 매니페스트의 절대 `dictionaries` 항목은 그 항목에 `schema` 오류 `dictionaries entries must be relative paths`로 보고한다(메모리 모델도 같다. 스키마 파일은 바꾸지 않는다). 이것은 매니페스트에 대한 규칙이지 파일의 스키마 실패가 아니어서, 오류가 이것뿐인 매니페스트는 파일 간 규칙에 그대로 쓰인다. 어떤 모양의 `data`나 `Model`이 와도 예외를 던지지 않는다: 없는 목록은 빈 목록으로 보고, 읽다가 예외가 나는 데이터(던지는 트랩이 있는 Proxy)는 `/ must be a JSON value`로 보고한다. F03은 명령을 적용한 메모리 모델에 이것을 부른다.
 - `validateProject(fs, dir)`는 모델 찾기, 읽기, 검증을 한 번에 해서 `{ issues, models }`를 돌려준다. `issues`는 `P01`·`P02`만 담고, `models`의 항목은 `{ dir, issues, counts }`다(`issues`는 `loadModel`과 `validateModel`의 것). 프로젝트 오류는 `file`로 모델과 이어진다. CLI와 MCP(F08)가 이것을 부른다.
 - `Issue`의 필드:
 
@@ -304,13 +304,13 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 
 | #   | 규칙 | 메시지                                                                       | `path`                                               |
 | --- | ---- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
-| 1   | R01  | `duplicate <종류> id "<id>" (also in <file>)`. 종류는 `entity`, `relationship`, `subtype`, `subject area`, `word`, `term`, `domain`. `<file>`은 모델 폴더 기준 경로 | 뒤 파일의 `/id`, 사전은 `/words/<i>/id`, `/terms/<i>/id`, `/domains/<i>/id` |
+| 1   | R01  | `duplicate <종류> id "<id>" (also in <file>)`. 종류는 `entity`, `relationship`, `subtype`, `subject area`, `word`, `term`, `domain`. `<file>`은 모델 폴더 기준 경로. ID가 겹치면 다른 규칙은 파일 순서로 첫 항목을 참조 대상으로 삼는다 | 뒤 파일의 `/id`, 사전은 `/words/<i>/id`, `/terms/<i>/id`, `/domains/<i>/id` |
 | 2   | R02  | `term "<id>": unknown word "<w>"`                                            | `/terms/<i>/words/<j>`                               |
 | 3   | R02  | `term "<id>": unknown domain "<d>"`                                          | `/terms/<i>/domain`                                  |
 | 4   | R10  | `duplicate schema "<name>"`                                                  | `model.yaml`의 `/schemas/<i>/name`                   |
 | 5   | R12  | `duplicate area group id "<id>"`                                             | `model.yaml`의 `/areaGroups/<i>/id`                  |
 | 6   | R10  | `physical.schema "<s>" is not listed in model.yaml`. 적힌 `physical.schema`만 검사한다. `schemas`가 있어도 `physical.schema`가 없는 엔터티는 오류가 아니다 | `/physical/schema` |
-| 7   | R11  | `table name "<n>" is already used by "<id>" in the same schema`              | `/physical/name`                                     |
+| 7   | R11  | `table name "<n>" is already used by "<id>" in the same schema`. `physical.schema`가 없는 것과 빈 문자열은 같은 스키마다              | `/physical/name`                                     |
 | 8   | R12  | `unknown area group "<g>"`                                                   | `/group`                                             |
 | 9   | R01  | `member id "<id>" clashes with another relationship or subtype member`       | `/members/<i>/id`                                    |
 | 10  | R01  | `duplicate attribute id "<id>"`                                              | `/attributes/<i>/id`                                 |
@@ -326,10 +326,10 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 | 20  | R07  | `attribute "<a>": a recursive relationship needs a rolename`                 | `/attributes/<i>`                                    |
 | 21  | R01  | `duplicate key id "<k>"`                                                     | `/keys/<i>/id`                                       |
 | 22  | R02  | `key "<k>": unknown attribute "<a>"`                                         | `/keys/<i>/attributes/<j>`                           |
-| 23  | R03  | `more than one primary key`                                                  | 둘째 PK의 `/keys/<i>`                                |
+| 23  | R03  | `more than one primary key`. PK가 몇 개든 한 번만 낸다                                                  | 둘째 PK의 `/keys/<i>`                                |
 | 24  | R02  | `"<id>": unknown <parent\|child> entity "<e>"`                               | `/parent`, `/child`, `/supertype`, `/members/<i>/entity` |
 | 25  | R08  | `"<id>": scope is wider than its <parent\|child> entity's`. 다대다 관계에도 검사한다 | `/scope` |
-| 26  | R02 / R04 / R04 | `"<id>": parent "<p>" has no key "<k>" to migrate` / `"<id>": parentKey "<k>" must be an alternate key of "<p>"` (종류가 `primary`나 `inversion`) / `"<id>": parent "<p>" has no primary key to migrate` | `/parentKey` / `/parentKey` / 링크 |
+| 26  | R02 / R04 / R04 | `"<id>": parent "<p>" has no key "<k>" to migrate` / `"<id>": parentKey "<k>" must be an alternate key of "<p>"` (종류가 `primary`나 `inversion`. 이 오류를 내고, 그 관계의 나머지 검사(27, 28, 29, 38)는 그 키로 계속한다) / `"<id>": parent "<p>" has no primary key to migrate` | `/parentKey` / `/parentKey` / 링크 |
 | 27  | R04  | `"<id>": <p>.<pa> must migrate to exactly one attribute of "<c>" (found <n>)` | 링크                                                |
 | 28  | R05  | `"<id>": <c>.<t> must be part of the child's primary key`                    | 링크                                                 |
 | 29  | R05  | `"<id>": non-identifying, but <c>.<t> is the child's whole primary key`      | 링크                                                 |
@@ -341,4 +341,4 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 | 35  | R09  | `node for unknown entity "<n>"`                                              | `/nodes/<n>`                                         |
 | 36  | R09  | `entity "<n>" is not in subject area "<a>"`                                  | `/nodes/<n>`                                         |
 | 37  | R09  | `edge for unknown relationship "<e>"` | `/edges/<e>` |
-| 38  | R04  | `attribute "<a>": <p>.<x> is not part of the key that "<r>" migrates` (다대다가 아니고 부모 속성과 키가 있을 때) | `/attributes/<i>/migratedFrom/<j>/attribute` |
+| 38  | R04  | `attribute "<a>": <p>.<x> is not part of the key that "<r>" migrates` (다대다가 아니고 부모 속성과 키가 있을 때). 15번과 따로 검사하므로 부모와 자식이 뒤바뀐 관계는 둘 다 낼 수 있다 | `/attributes/<i>/migratedFrom/<j>/attribute` |
