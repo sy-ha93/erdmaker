@@ -92,6 +92,7 @@ Git에서 읽기만 하는 기능(기준 버전과 비교)은 F14에 있다. 병
 
 ### F01 `repo-scaffold` (1일)
 
+- **상태**: 완료 (2026-11-27, PR #3). 스펙·분석·계획은 `docs/specs`, `docs/analysis`, `docs/plans`의 `repo-scaffold.md`.
 - **범위**: pnpm 워크스페이스. 패키지 `core`, `cli`, `mcp`, `web`. TypeScript, Vitest, ESLint, Prettier, GitHub Actions(빌드·테스트·린트·`validate:format`). Apache-2.0 `LICENSE`.
 - **제외**: 기능 코드.
 - **수용 기준**: `pnpm build`, `pnpm test`, `pnpm lint`가 빈 패키지에서 통과한다. CI가 같은 명령을 돌린다. 기존 `npm run validate:format`이 계속 통과한다.
