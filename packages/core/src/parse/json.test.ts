@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseJson } from './json.js';
-import { MAX_NESTING } from './yaml.js';
+import { MAX_NESTING, parseYaml } from './yaml.js';
 
 const FILE = 'layouts/sales.json';
 
@@ -155,6 +155,80 @@ describe('layout JSON syntax', () => {
   });
 });
 
+describe('layout JSON duplicate keys', () => {
+  /** Line, column and message of each issue. */
+  const found = (text: string) =>
+    parseJson(FILE, text).issues.map(({ line, column, message }) => ({
+      line,
+      column,
+      message,
+    }));
+  const duplicateAt = (line: number, column: number) => ({
+    line,
+    column,
+    message: `Map keys must be unique at line ${line}, column ${column}:`,
+  });
+
+  test('escaped keys, at the later key', () => {
+    expect(found('{"a": 1, "\\u0061": 2}')).toEqual([duplicateAt(1, 10)]);
+    expect(found('{\n  "a\\"": 1,\n  "a\\u0022": 2\n}')).toEqual([
+      duplicateAt(3, 3),
+    ]);
+  });
+
+  test('keys of different objects are not duplicates', () => {
+    expect(found('[{"x": 1, "x": 2}, {"x": 3}]')).toEqual([duplicateAt(1, 11)]);
+  });
+
+  test("in the order of the YAML reader: after the duplicates in the key's value", () => {
+    const text = '{"a": 1, "a": {"b": 1, "\\u0062": 2}}';
+    expect(found(text)).toEqual([duplicateAt(1, 24), duplicateAt(1, 10)]);
+    expect(found(text)).toEqual(
+      parseYaml(FILE, text).issues.map(({ line, column, message }) => ({
+        line,
+        column,
+        message,
+      })),
+    );
+  });
+
+  test('keys longer than 1024 characters: duplicates found, positions given', () => {
+    const key = `"${'k'.repeat(1100)}"`;
+    const twice = `{${key}: 1, ${key}: 2}`;
+    expect(found(twice)).toEqual([duplicateAt(1, twice.lastIndexOf(key) + 1)]);
+    const result = parseJson(FILE, `{${key}: [1]}`);
+    expect(result.issues).toEqual([]);
+    expect(Object.fromEntries(result.positions)).toEqual({
+      [`/${'k'.repeat(1100)}`]: { line: 1, column: 2 },
+      [`/${'k'.repeat(1100)}/0`]: { line: 1, column: key.length + 5 },
+    });
+  });
+
+  test('no engine position: the YAML error at a duplicate key comes first', () => {
+    expect(only('{"a":1,"a":')).toMatchObject({
+      rule: 'syntax',
+      line: 1,
+      column: 8,
+      message: 'Unexpected end of JSON input',
+    });
+  });
+});
+
+describe('layout JSON with many keys', () => {
+  test('an object of 50000 distinct keys is read in well under two seconds', () => {
+    const count = 50_000;
+    const text = JSON.stringify(
+      Object.fromEntries(Array.from({ length: count }, (_, i) => [`k${i}`, i])),
+    );
+    const start = performance.now();
+    const result = parseJson(FILE, text);
+    const elapsed = performance.now() - start;
+    expect(result.issues).toEqual([]);
+    expect(result.positions.size).toBe(count);
+    expect(elapsed).toBeLessThan(2000);
+  });
+});
+
 describe('deeply nested layout JSON', () => {
   const DEPTH = 5000;
   const arrays = '['.repeat(DEPTH) + ']'.repeat(DEPTH);
@@ -171,14 +245,36 @@ describe('deeply nested layout JSON', () => {
   }
 
   test.each([
-    ['arrays', arrays],
-    ['objects', objects],
-  ])('5000 levels of %s: the value, without positions', (_name, text) => {
-    const result = parseJson(FILE, text);
+    ['arrays', arrays, MAX_NESTING + 1],
+    ['objects', objects, '{"a":'.length * MAX_NESTING + 1],
+  ])(
+    '5000 levels of valid %s: the YAML nesting error, no value',
+    (_name, text, column) => {
+      const result = parseJson(FILE, text);
+      expect(result.value).toBeUndefined();
+      expect(result.positions.size).toBe(0);
+      expect(result.issues).toEqual([
+        {
+          rule: 'syntax',
+          severity: 'error',
+          file: FILE,
+          path: '',
+          line: 1,
+          column,
+          message: `Collections are nested more than ${MAX_NESTING} levels deep at line 1, column ${column}:`,
+        },
+      ]);
+      // One limit for every model file: the same issue as for YAML.
+      expect(result.issues).toEqual(parseYaml(FILE, text).issues);
+    },
+  );
+
+  test('nesting up to the limit is read, with positions', () => {
+    const atLimit = '['.repeat(MAX_NESTING) + ']'.repeat(MAX_NESTING);
+    const result = parseJson(FILE, atLimit);
     expect(result.issues).toEqual([]);
-    // `toEqual` and `JSON.stringify` would themselves overflow the stack.
-    expect(depthOf(result.value)).toBe(DEPTH);
-    expect(result.positions.size).toBe(0);
+    expect(depthOf(result.value)).toBe(MAX_NESTING);
+    expect(result.positions.size).toBe(MAX_NESTING - 1);
   });
 
   test('5000 levels with a syntax error: one syntax issue', () => {
@@ -191,7 +287,8 @@ describe('deeply nested layout JSON', () => {
     });
   });
 
-  test.each([3, 300, DEPTH])(
+  // The text below nests 3 levels more than `depth`.
+  test.each([3, MAX_NESTING - 3])(
     'duplicate keys %i levels down are found, worded the same at every depth',
     (depth) => {
       const text =
@@ -222,6 +319,20 @@ describe('deeply nested layout JSON', () => {
           message: `Map keys must be unique at line ${line}, column 42:`,
         },
       ]);
+    },
+  );
+
+  test.each([300, DEPTH])(
+    'duplicate keys %i levels down: past the limit, only the nesting error',
+    (depth) => {
+      const text =
+        '{"x":\n'.repeat(depth) + '{"b": 1, "b": 2}' + '}'.repeat(depth);
+      expect(only(text)).toMatchObject({
+        rule: 'syntax',
+        line: MAX_NESTING + 1,
+        column: 1,
+        message: `Collections are nested more than ${MAX_NESTING} levels deep at line ${MAX_NESTING + 1}, column 1:`,
+      });
     },
   );
 });

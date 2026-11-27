@@ -161,6 +161,88 @@ describe('YAML syntax', () => {
   });
 });
 
+describe('YAML duplicate keys', () => {
+  /** The parser's duplicate key issue at the later key. */
+  const duplicateAt = (line: number, column: number) => ({
+    rule: 'syntax',
+    line,
+    column,
+    message: `Map keys must be unique at line ${line}, column ${column}:`,
+  });
+
+  test('plain and quoted keys with the same value are duplicates', () => {
+    expect(issuesOf('a: 1\n"a": 2\n')).toEqual([duplicateAt(2, 1)]);
+    expect(issuesOf("a: 1\n'a': 2\nb: 1\n1.0: 2\n0x1: 3\n")).toEqual([
+      duplicateAt(2, 1),
+      duplicateAt(5, 1),
+    ]);
+    expect(issuesOf('~: a\nnull: b\n')).toEqual([duplicateAt(2, 1)]);
+  });
+
+  test('keys with different values that become the same string only collide', () => {
+    expect(issuesOf('.nan: a\n.nan: b\n')).toEqual([
+      {
+        rule: 'syntax',
+        line: 2,
+        column: 1,
+        message: 'Map keys collide as "NaN"',
+      },
+    ]);
+  });
+
+  test('nested maps, flow maps and empty keys', () => {
+    expect(issuesOf('x:\n  y:\n    a: 1\n    a: 2\n')).toEqual([
+      duplicateAt(4, 5),
+    ]);
+    expect(issuesOf('- {a: 1,\n   "a": 2}\n')).toEqual([duplicateAt(2, 4)]);
+    expect(issuesOf('? \n: 1\n?\n: 2\n')).toEqual([duplicateAt(4, 1)]);
+    expect(issuesOf('\uFEFF{a: 1, a: 2}')).toEqual([duplicateAt(1, 8)]);
+  });
+
+  test("in a flow map, after the duplicates in the key's value", () => {
+    expect(issuesOf('{a: 1, a: {b: 1, b: 2}}')).toEqual([
+      duplicateAt(1, 18),
+      duplicateAt(1, 8),
+    ]);
+  });
+
+  test('in the order the parser finds them among its other errors', () => {
+    const broken = (line: number) => ({
+      rule: 'syntax',
+      line,
+      column: 1,
+      message: `Flow sequence in block collection must be sufficiently indented and end with a ] at line ${line}, column 1:`,
+    });
+    expect(issuesOf('a: 1\na: 2\nb: [1\n')).toEqual([
+      duplicateAt(2, 1),
+      broken(4),
+    ]);
+    expect(issuesOf('b: [1\na: 1\na: 2\n')).toEqual([
+      broken(2),
+      duplicateAt(3, 1),
+    ]);
+  });
+
+  test('reported before anchors and tags, which are then not looked for', () => {
+    expect(issuesOf('a: 1\n&x a: 2\nb: !t 1\n')).toEqual([duplicateAt(2, 4)]);
+  });
+});
+
+describe('YAML with many keys', () => {
+  test('a map of 50000 distinct keys is read in well under two seconds', () => {
+    const count = 50_000;
+    const text = Array.from({ length: count }, (_, i) => `k${i}: ${i}\n`).join(
+      '',
+    );
+    const start = performance.now();
+    const result = parseYaml(FILE, text);
+    const elapsed = performance.now() - start;
+    expect(result.issues).toEqual([]);
+    expect(Object.keys(result.value as object)).toHaveLength(count);
+    expect(elapsed).toBeLessThan(2000);
+  });
+});
+
 describe('YAML features', () => {
   test('an anchor', () => {
     expect(issuesOf('id: a\next: &x {b: 1}\n')).toEqual([

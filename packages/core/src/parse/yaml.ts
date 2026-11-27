@@ -32,6 +32,10 @@ export interface YamlDocument {
   cst: unknown[];
   /** The text starts with a byte order mark, which the parser counts as a column. */
   bom: boolean;
+  /** Nested past `MAX_NESTING`: `doc` is empty and carries only that error. */
+  tooDeep: boolean;
+  /** The text that was read. */
+  text: string;
 }
 
 /**
@@ -73,13 +77,18 @@ function walkCst(
   }
 }
 
+/**
+ * The composer's own duplicate key check compares each key with every earlier
+ * key of its map, which takes quadratic time; `scanKeys` finds duplicates instead.
+ */
+const OPTIONS = {
+  version: '1.2',
+  schema: 'core',
+  uniqueKeys: false,
+  logLevel: 'error',
+} as const;
+
 export function readYamlDocument(text: string): YamlDocument {
-  const options = {
-    version: '1.2',
-    schema: 'core',
-    uniqueKeys: true,
-    logLevel: 'error',
-  } as const;
   const bom = text.startsWith('\uFEFF');
   const cstLines = new LineCounter();
   const cst = Array.from(new Parser(cstLines.addNewLine).parse(text));
@@ -92,11 +101,11 @@ export function readYamlDocument(text: string): YamlDocument {
   });
   if (tooDeep === undefined) {
     const lineCounter = new LineCounter();
-    const doc = parseDocument(text, { ...options, lineCounter });
-    return { doc, lineCounter, cst, bom };
+    const doc = parseDocument(text, { ...OPTIONS, lineCounter });
+    return { doc, lineCounter, cst, bom, tooDeep: false, text };
   }
   // Too deep to compose: an empty document that carries the error instead.
-  const doc = parseDocument('', options);
+  const doc = parseDocument('', OPTIONS);
   const at = cstLines.linePos(tooDeep);
   // Worded like the parser's own errors, position included.
   const error = new YAMLParseError(
@@ -106,7 +115,7 @@ export function readYamlDocument(text: string): YamlDocument {
   );
   error.linePos = [at];
   doc.errors.push(error);
-  return { doc, lineCounter: cstLines, cst, bom };
+  return { doc, lineCounter: cstLines, cst, bom, tooDeep: true, text };
 }
 
 /** A parser line and column as a position; a byte order mark is not a column. */
@@ -269,42 +278,134 @@ function walkCollections({ doc }: YamlDocument, visitor: CollectionVisitor) {
 const keyStart = (key: unknown) =>
   isNode(key) && key.range ? key.range[0] : 0;
 
-/** Map keys that are collections, or that turn into the same object key as an earlier one. */
-function keyIssues(file: string, yaml: YamlDocument): Issue[] {
-  const issues: Issue[] = [];
+const INCOMPARABLE = Symbol('incomparable');
+
+/**
+ * What the parser compares to find duplicate keys: a scalar key's value, by
+ * `===`. So `a` and `"a"` are the same key, `1` and `"1"` are not, and NaN
+ * matches nothing.
+ */
+function comparableKey(key: unknown): unknown {
+  return isScalar(key) && !Number.isNaN(key.value) ? key.value : INCOMPARABLE;
+}
+
+interface KeyScan {
+  /** Some key repeats an earlier key of its map exactly (a parser error). */
+  duplicate: boolean;
+  /** Collection keys, and keys that turn into the same object key as an earlier one. */
+  problems: { message: string; offset: number }[];
+}
+
+/** One pass over every map's keys, in document order. */
+function scanKeys(yaml: YamlDocument): KeyScan {
+  const scan: KeyScan = { duplicate: false, problems: [] };
   walkCollections(yaml, {
     pair(pair) {
       if (isCollection(pair.key)) {
-        issues.push(
-          fileIssue(
-            'syntax',
-            file,
-            'Map keys must be scalars',
-            positionAt(yaml, keyStart(pair.key)),
-          ),
-        );
+        scan.problems.push({
+          message: 'Map keys must be scalars',
+          offset: keyStart(pair.key),
+        });
       }
     },
     map(map) {
+      const exact = new Set<unknown>();
       const seen = new Set<string>();
       for (const pair of map.items) {
         if (!isScalar(pair.key)) continue;
+        const comparable = comparableKey(pair.key);
+        if (exact.has(comparable)) scan.duplicate = true;
+        if (comparable !== INCOMPARABLE) exact.add(comparable);
         const key = keyString(pair.key.value);
         if (seen.has(key)) {
-          issues.push(
-            fileIssue(
-              'syntax',
-              file,
-              `Map keys collide as "${key}"`,
-              positionAt(yaml, keyStart(pair.key)),
-            ),
-          );
+          scan.problems.push({
+            message: `Map keys collide as "${key}"`,
+            offset: keyStart(pair.key),
+          });
         }
         seen.add(key);
       }
     },
   });
-  return issues;
+  return scan;
+}
+
+/**
+ * Whether the parser follows an error message with the source line, and so
+ * with a colon: the line (or, at its start, the line before) shows something.
+ */
+function hasSourceLine(
+  { text, lineCounter }: YamlDocument,
+  line: number,
+  col: number,
+): boolean {
+  const start = lineCounter.lineStarts[line - 1] ?? 0;
+  let end = lineCounter.lineStarts[line] ?? text.length;
+  while (end > start && /[\n\r]/.test(text.charAt(end - 1))) end -= 1;
+  // A longer line is shortened with an ellipsis.
+  if (end - start > 80) return true;
+  const shown = text.slice(start, end);
+  return (
+    /[^ ]/.test(shown) || (line > 1 && /^ *$/.test(shown.slice(0, col - 1)))
+  );
+}
+
+/** A duplicate key error at `offset`, worded and placed like the parser's own. */
+function duplicateKeyError(yaml: YamlDocument, offset: number): YAMLError {
+  const at = yaml.lineCounter.linePos(offset);
+  const colon = hasSourceLine(yaml, at.line, at.col) ? ':' : '';
+  const error = new YAMLParseError(
+    [offset, offset + 1],
+    'DUPLICATE_KEY',
+    `Map keys must be unique at line ${at.line}, column ${at.col}${colon}`,
+  );
+  error.linePos = [at, yaml.lineCounter.linePos(offset + 1)];
+  return error;
+}
+
+/**
+ * The parser's errors as they would be with its own duplicate key check on.
+ * Only for text with a duplicate key, the text is composed again with a
+ * `uniqueKeys` function that ends the composer's scan of earlier keys at the
+ * first one, so it costs one call per key. The composer then reports an error
+ * at every key after a map's first, in its own order and at its own offsets;
+ * the errors at keys that are no exact duplicate are dropped.
+ */
+export function parserErrors(
+  yaml: YamlDocument,
+  duplicate = scanKeys(yaml).duplicate,
+): YAMLError[] {
+  if (!duplicate) return yaml.doc.errors;
+  const exact: boolean[] = [];
+  // Earlier keys of each map, by the map's first key.
+  const earlier = new WeakMap<object, Set<unknown>>();
+  const uniqueKeys = (first: object, key: object) => {
+    let keys = earlier.get(first);
+    if (!keys) {
+      keys = new Set([comparableKey(first)]);
+      earlier.set(first, keys);
+    }
+    const comparable = comparableKey(key);
+    exact.push(comparable !== INCOMPARABLE && keys.has(comparable));
+    keys.add(comparable);
+    return true;
+  };
+  // No line counter: the composer's errors are not formatted, which would read each key's line.
+  const checked = parseDocument(yaml.text, { ...OPTIONS, uniqueKeys });
+  // The other errors are the same, in the same order, and already formatted.
+  const others = yaml.doc.errors;
+  const errors: YAMLError[] = [];
+  let other = 0;
+  let key = 0;
+  for (const error of checked.errors) {
+    if (error.code !== 'DUPLICATE_KEY') {
+      const same = others[other++];
+      if (same) errors.push(same);
+    } else if (exact[key++]) {
+      errors.push(duplicateKeyError(yaml, error.pos[0]));
+    }
+  }
+  return errors;
 }
 
 /** JSON Pointer → position: a map entry points at its key, a sequence item at its value. */
@@ -342,9 +443,10 @@ export function positionIndex(yaml: YamlDocument): Map<string, Position> {
  */
 export function parseYaml(file: string, text: string): ParsedText {
   const yaml = readYamlDocument(text);
+  const keys = scanKeys(yaml);
   const result: ParsedText = {
     value: undefined,
-    issues: yamlErrorIssues(file, yaml),
+    issues: yamlErrorIssues(file, yaml, parserErrors(yaml, keys.duplicate)),
     positions: new Map(),
   };
   if (result.issues.length > 0) return result;
@@ -356,7 +458,9 @@ export function parseYaml(file: string, text: string): ParsedText {
   // Features first: an alias that resolves to nothing would make `toJS` throw.
   result.issues = [
     ...featureIssues(file, yaml, tokens),
-    ...keyIssues(file, yaml),
+    ...keys.problems.map(({ message, offset }) =>
+      fileIssue('syntax', file, message, positionAt(yaml, offset)),
+    ),
   ];
   if (result.issues.length > 0) return result;
 

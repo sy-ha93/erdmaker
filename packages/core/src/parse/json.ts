@@ -2,6 +2,7 @@ import type { Issue, Position } from '../model/types.js';
 import {
   fileIssue,
   type ParsedText,
+  parserErrors,
   parserPosition,
   positionIndex,
   readYamlDocument,
@@ -13,7 +14,8 @@ const ENGINE_POSITION = / at position \d+ \(line (\d+) column (\d+)\)$/;
 
 /**
  * Reads one layout JSON file. `JSON.parse` decides whether the text is valid;
- * the same text read as YAML gives positions and finds duplicate keys.
+ * the same text read as YAML gives positions and the nesting limit of every
+ * model file. Duplicate keys are found in the text itself.
  */
 export function parseJson(file: string, text: string): ParsedText {
   const yaml = readYamlDocument(text);
@@ -26,7 +28,7 @@ export function parseJson(file: string, text: string): ParsedText {
       .replace(/\r/g, '\\r')
       .replace(/\n/g, '\\n');
     const engine = ENGINE_POSITION.exec(message);
-    const yamlAt = yaml.doc.errors[0]?.linePos?.[0];
+    const yamlAt = engine ? undefined : parserErrors(yaml)[0]?.linePos?.[0];
     const at: Position = engine
       ? { line: Number(engine[1]), column: Number(engine[2]) }
       : yamlAt
@@ -39,30 +41,51 @@ export function parseJson(file: string, text: string): ParsedText {
     };
   }
 
-  // Valid JSON is valid YAML 1.2. If the YAML reader still objects (it does not
-  // compose deeply nested text), look for duplicate keys here and go without positions.
-  const composed = yaml.doc.errors.every(
-    (error) => error.code === 'DUPLICATE_KEY',
-  );
-  const duplicates = composed
-    ? yamlErrorIssues(file, yaml)
-    : duplicateKeyIssues(file, text);
+  // The YAML reader's limit, error and position, as for a YAML file.
+  if (yaml.tooDeep) {
+    return {
+      value: undefined,
+      issues: yamlErrorIssues(file, yaml),
+      positions: new Map(),
+    };
+  }
+  const duplicates = duplicateKeyIssues(file, text);
   if (duplicates.length > 0) {
     return { value: undefined, issues: duplicates, positions: new Map() };
   }
-  const positions = composed ? positionIndex(yaml) : new Map();
-  return { value, issues: [], positions };
+  // Valid JSON is valid YAML 1.2, except a top-level scalar after a tab, which
+  // has no positions anyway.
+  const composed = yaml.doc.errors.length === 0;
+  return {
+    value,
+    issues: [],
+    positions: composed ? positionIndex(yaml) : new Map(),
+  };
+}
+
+interface OpenObject {
+  keys: Set<string>;
+  /** The issue of the current key, if it repeats one, until its value ends. */
+  duplicate?: Issue;
 }
 
 /**
  * Keys that repeat an earlier key of the same object, after unescaping, in
- * text that `JSON.parse` accepted. Worded and placed like the YAML reader's
- * duplicate key errors. One pass without recursion, so any depth fits.
+ * text that `JSON.parse` accepted. Worded, placed and ordered like the YAML
+ * reader's duplicate key errors, which come after those in the key's value.
+ * One pass without recursion, so any depth fits.
  */
 function duplicateKeyIssues(file: string, text: string): Issue[] {
   const issues: Issue[] = [];
-  // The keys of each open object, or null for an open array.
-  const open: (Set<string> | null)[] = [];
+  // Each open object, or null for an open array.
+  const open: (OpenObject | null)[] = [];
+  const endValue = () => {
+    const object = open.at(-1);
+    if (object?.duplicate) {
+      issues.push(object.duplicate);
+      object.duplicate = undefined;
+    }
+  };
   let expectKey = false;
   let line = 1;
   let lineStart = 0;
@@ -74,33 +97,33 @@ function duplicateKeyIssues(file: string, text: string): Issue[] {
     } else if (char === '"') {
       let end = i + 1;
       while (text[end] !== '"') end += text[end] === '\\' ? 2 : 1;
-      const keys = open.at(-1);
-      if (expectKey && keys) {
+      const object = open.at(-1);
+      if (expectKey && object) {
         const key = JSON.parse(text.slice(i, end + 1)) as string;
-        if (keys.has(key)) {
+        if (object.keys.has(key)) {
           const column = i - lineStart + 1;
-          issues.push(
-            fileIssue(
-              'syntax',
-              file,
-              `Map keys must be unique at line ${line}, column ${column}:`,
-              { line, column },
-            ),
+          object.duplicate = fileIssue(
+            'syntax',
+            file,
+            `Map keys must be unique at line ${line}, column ${column}:`,
+            { line, column },
           );
         }
-        keys.add(key);
+        object.keys.add(key);
         expectKey = false;
       }
       i = end;
     } else if (char === '{') {
-      open.push(new Set());
+      open.push({ keys: new Set() });
       expectKey = true;
     } else if (char === '[') {
       open.push(null);
     } else if (char === '}' || char === ']') {
+      endValue();
       open.pop();
     } else if (char === ',') {
-      expectKey = open.at(-1) instanceof Set;
+      endValue();
+      expectKey = Boolean(open.at(-1));
     }
   }
   return issues;
