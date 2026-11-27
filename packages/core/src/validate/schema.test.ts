@@ -162,14 +162,89 @@ describe('schema issues', () => {
     ).toEqual([]);
   });
 
-  test('data that is not JSON is reported as such and not checked against the schema', () => {
+  test('values that are not JSON are reported, and the schema is still checked', () => {
     expect(
-      itemIssues(FILE, 'subject-area', { id: 'p', ext: { x: Infinity } }),
-    ).toEqual([issue('/ext/x', '/ext/x must be a JSON value')]);
+      sorted(
+        itemIssues(FILE, 'subject-area', {
+          id: 'p',
+          bogus: 1,
+          ext: { x: Infinity, n: NaN, big: 2 ** 60 },
+        }),
+      ),
+    ).toEqual([
+      issue('', "/ must have required property 'entities'"),
+      issue('', "/ must have required property 'name'"),
+      issue('/bogus', '/ must NOT have additional properties'),
+      issue('/ext/big', '/ext/big must be a JSON value'),
+      issue('/ext/n', '/ext/n must be a JSON value'),
+      issue('/ext/x', '/ext/x must be a JSON value'),
+    ]);
     expect(sorted(itemIssues(FILE, 'subject-area', { id: 'p' }))).toEqual([
       issue('', "/ must have required property 'entities'"),
       issue('', "/ must have required property 'name'"),
     ]);
+  });
+
+  test('undefined, functions, symbols and bigints are scalars to the schema check', () => {
+    expect(
+      sorted(
+        itemIssues(FILE, 'subject-area', {
+          id: 'p',
+          name: undefined,
+          group: () => 1,
+          order: 1n,
+          entities: [Symbol('e')],
+        }),
+      ),
+    ).toEqual([
+      issue('', "/ must have required property 'name'"),
+      issue('/entities/0', '/entities/0 must be a JSON value'),
+      issue('/entities/0', '/entities/0 must be string'),
+      issue('/group', '/group must be a JSON value'),
+      issue('/group', '/group must be string'),
+      issue('/name', '/name must be a JSON value'),
+      issue('/order', '/order must be a JSON value'),
+      issue('/order', '/order must be integer'),
+    ]);
+    expect(sorted(itemIssues(FILE, 'subject-area', undefined))).toEqual([
+      issue('', '/ must be a JSON value'),
+      issue('', '/ must be object'),
+    ]);
+  });
+
+  test('data that is not safe to read is not given to the schema check', () => {
+    const cyclic: Record<string, unknown> = { id: 'p', bogus: 1 };
+    cyclic.ext = { self: cyclic };
+    const accessor = Object.defineProperty({ id: 'p', bogus: 1 }, 'name', {
+      enumerable: true,
+      get() {
+        throw new Error('called');
+      },
+    });
+    const sparse: unknown[] = [];
+    sparse.length = 2 ** 32 - 1;
+    class Area {
+      id = 'p';
+    }
+    expect(itemIssues(FILE, 'subject-area', cyclic)).toEqual([
+      issue('/ext/self', '/ext/self must be a JSON value'),
+    ]);
+    expect(itemIssues(FILE, 'subject-area', accessor)).toEqual([
+      issue('/name', '/name must be a JSON value'),
+    ]);
+    expect(
+      itemIssues(FILE, 'subject-area', { id: 'p', bogus: 1, entities: sparse }),
+    ).toEqual([issue('/entities/0', '/entities/0 must be a JSON value')]);
+    expect(itemIssues(FILE, 'subject-area', new Area())).toEqual([
+      issue('', '/ must be a JSON value'),
+    ]);
+    expect(
+      itemIssues(FILE, 'subject-area', {
+        id: 'p',
+        bogus: 1,
+        ext: { d: new Date(0) },
+      }),
+    ).toEqual([issue('/ext/d', '/ext/d must be a JSON value')]);
   });
 
   test('data that throws when Ajv reads it is not JSON data, and nothing is thrown', () => {

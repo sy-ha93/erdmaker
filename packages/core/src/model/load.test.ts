@@ -9,7 +9,7 @@ import {
 import { validateModel } from '../validate/index.js';
 import { finishIssues } from '../validate/issues.js';
 import type { Issue } from './types.js';
-import { COMMENT_MESSAGE, loadModel } from './load.js';
+import { ABSOLUTE_MESSAGE, COMMENT_MESSAGE, loadModel } from './load.js';
 
 const PARTY = 'subject-areas/party.yaml';
 
@@ -212,6 +212,34 @@ describe('문법과 스키마', () => {
     expect(result.positions.has(PARTY)).toBe(false);
   });
 
+  test('a value that is not JSON does not hide the schema errors of its file', async () => {
+    const file = 'entities/zz.yaml';
+    const result = await check({
+      ...exampleFiles(),
+      [file]: 'id: zz\nbogus: 1\nattributes: []\next:\n  x: .inf\n',
+    });
+    const at = (
+      path: string,
+      line: number,
+      column: number,
+      message: string,
+    ) => ({
+      rule: 'schema',
+      severity: 'error',
+      file,
+      path,
+      line,
+      column,
+      message,
+    });
+    expect(result.issues).toEqual([
+      at('', 1, 1, "/ must have required property 'name'"),
+      at('/bogus', 2, 1, '/ must NOT have additional properties'),
+      at('/ext/x', 5, 3, '/ext/x must be a JSON value'),
+    ]);
+    expect(result.model.entities.map((item) => item.file)).not.toContain(file);
+  });
+
   test('a comment line gives one comment warning, and the file is in the model', async () => {
     const result = await check(
       party(['group: master\n', 'group: master\n# 고객 영역\n']),
@@ -225,6 +253,59 @@ describe('문법과 스키마', () => {
       'subject-areas/sales.yaml',
     ]);
   });
+
+  // The warning is only for files in the model. The first three fail if it is
+  // given before the checks; after a parser error `parseYaml` looks for no comment.
+  test.each<[string, [string, string][], Issue[]]>([
+    [
+      'an unknown key (schema)',
+      [['group: master\n', 'group: master\n# 고객 영역\ncolor: red\n']],
+      [
+        partyIssue(
+          'schema',
+          '/color',
+          5,
+          1,
+          '/ must NOT have additional properties',
+        ),
+      ],
+    ],
+    [
+      'an anchor (yaml-feature)',
+      [['group: master\n', 'group: &g master\n# 고객 영역\n']],
+      [partyIssue('yaml-feature', '', 3, 8, 'YAML anchors are not allowed')],
+    ],
+    [
+      'colliding keys (syntax, found after the parser)',
+      [
+        [
+          'group: master\n',
+          'group: master\n# 고객 영역\next:\n  true: 1\n  "true": 2\n',
+        ],
+      ],
+      [partyIssue('syntax', '', 7, 3, 'Map keys collide as "true"')],
+    ],
+    [
+      'a duplicate key (syntax, from the parser)',
+      [['group: master\n', 'group: master\n# 고객 영역\nname: 다른\n']],
+      [
+        partyIssue(
+          'syntax',
+          '',
+          5,
+          1,
+          'Map keys must be unique at line 5, column 1:',
+        ),
+      ],
+    ],
+  ])(
+    'a comment in a file left out for %s gives no comment warning',
+    async (_name, changes, expected) => {
+      const result = await check(party(...changes));
+      expect(result.issues).toEqual(expected);
+      expect(areaFiles(result)).not.toContain(PARTY);
+    },
+  );
 });
 
 const ENTITY = (id: string) => `id: ${id}\nname: ${id}\nattributes: []\n`;
@@ -361,6 +442,100 @@ describe('what loadModel reads', () => {
     expect(model.manifest?.data.dictionaries).toEqual(['missing']);
     expect(model.dictionaries).toEqual([]);
     expect(model.entities).toHaveLength(10);
+  });
+
+  test.each<[string, string[], string[]]>([
+    [
+      'the same folder twice',
+      ['dictionary', './dictionary'],
+      ['dictionary/standard.yaml', 'dictionary/sub/extra.yaml'],
+    ],
+    [
+      'a folder and its subfolder',
+      ['dictionary', 'dictionary/sub'],
+      ['dictionary/standard.yaml', 'dictionary/sub/extra.yaml'],
+    ],
+    [
+      'a subfolder and then its folder',
+      ['dictionary/sub', 'dictionary/', 'x/../dictionary/sub'],
+      ['dictionary/sub/extra.yaml', 'dictionary/standard.yaml'],
+    ],
+  ])(
+    'dictionary folders that overlap (%s): each file read once, where first found',
+    async (_name, folders, expected) => {
+      const files = {
+        ...replaceOnce(
+          exampleFiles(),
+          'model.yaml',
+          'targets:\n',
+          `dictionaries:\n${folders.map((f) => `  - ${f}\n`).join('')}targets:\n`,
+        ),
+        'dictionary/sub/extra.yaml': '# 추가\nwords: []\n',
+        'dictionary/sub/broken.yaml': 'bogus: 1\n',
+      };
+      const { model, issues } = await loadModel(exampleFileSystem(files), '');
+      expect(model.dictionaries.map((item) => item.file)).toEqual(expected);
+      expect(issues).toEqual([
+        {
+          rule: 'schema',
+          severity: 'error',
+          file: 'dictionary/sub/broken.yaml',
+          path: '/bogus',
+          line: 1,
+          column: 1,
+          message: '/ must NOT have additional properties',
+        },
+        {
+          rule: 'comment',
+          severity: 'warning',
+          file: 'dictionary/sub/extra.yaml',
+          path: '',
+          line: 1,
+          column: 1,
+          message: COMMENT_MESSAGE,
+        },
+      ]);
+    },
+  );
+
+  test('an absolute dictionary folder is an error on its entry and is not read', async () => {
+    const files = replaceOnce(
+      exampleFiles(),
+      'model.yaml',
+      'targets:\n',
+      'dictionaries:\n  - /abs/dict\n  - dictionary\n  - C:\\dict\ntargets:\n',
+    );
+    const memory = exampleFileSystem(files);
+    const listed: string[] = [];
+    const fs = {
+      ...memory,
+      list: (dir: string) => {
+        listed.push(dir);
+        return memory.list(dir);
+      },
+    };
+    const { model, issues } = await loadModel(fs, '');
+    const entry = (i: number, line: number): Issue => ({
+      rule: 'schema',
+      severity: 'error',
+      file: 'model.yaml',
+      path: `/dictionaries/${i}`,
+      line,
+      column: 5,
+      message: ABSOLUTE_MESSAGE,
+    });
+    expect(issues).toEqual([entry(0, 6), entry(2, 8)]);
+    expect(model.manifest?.data.dictionaries).toEqual([
+      '/abs/dict',
+      'dictionary',
+      'C:\\dict',
+    ]);
+    expect(model.dictionaries.map((item) => item.file)).toEqual([
+      'dictionary/standard.yaml',
+    ]);
+    expect(listed.filter((dir) => dir.includes('dict'))).toEqual([
+      'dictionary',
+    ]);
   });
 
   test('a broken model.yaml: no manifest, the default dictionary folder, the rest still read', async () => {

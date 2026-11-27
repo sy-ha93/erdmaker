@@ -44,6 +44,15 @@ const SCHEMA_MAPS = [
   'dependentSchemas',
 ];
 
+/** The only keywords allowed beside a `$ref` (see `prepareSchema`). */
+const REF_ANNOTATIONS = [
+  'description',
+  'title',
+  'default',
+  'examples',
+  '$comment',
+];
+
 type SchemaObject = Record<string, unknown>;
 
 const isObject = (value: unknown): value is SchemaObject =>
@@ -97,10 +106,13 @@ function resolveRef(
  * them all, once per failing reference, so every `$ref` is replaced by a copy
  * of its target. A `uniqueItems` that Ajv would check pair by pair becomes
  * `UNIQUE_ITEMS`. Only schema positions are looked at, so a property named
- * `uniqueItems` or `$ref` stays a property. Throws on a recursive `$ref`,
- * which the format's schemas do not have.
+ * `uniqueItems` or `$ref` stays a property. Throws on a recursive `$ref`, and
+ * on a `$ref` with keywords beside it other than annotations (`description`,
+ * `title`, `default`, `examples`, `$comment`): the format's schemas have
+ * neither, and the inlining is only checked for these. Used when the Ajv
+ * instance is made; exported for its tests.
  */
-function prepareSchema(
+export function prepareSchema(
   schema: unknown,
   root: SchemaObject,
   active: Set<string> = new Set(),
@@ -132,6 +144,16 @@ function prepareSchema(
     }
   }
   if (typeof schema.$ref !== 'string') return copy;
+  // Only annotations may sit beside a `$ref`: they do not change what is
+  // checked, so the inlined target checks exactly what the `$ref` did.
+  const siblings = Object.keys(schema).filter(
+    (keyword) => keyword !== '$ref' && !REF_ANNOTATIONS.includes(keyword),
+  );
+  if (siblings.length > 0) {
+    throw new Error(
+      `$ref ${schema.$ref} has keywords beside it other than annotations: ${siblings.join(', ')}`,
+    );
+  }
 
   const target = resolveRef(schema.$ref, root);
   if (active.has(target.key)) {
@@ -145,8 +167,7 @@ function prepareSchema(
     delete inlined.$schema;
   }
   if (Object.keys(copy).length === 0) return inlined;
-  const allOf = Array.isArray(copy.allOf) ? copy.allOf : [];
-  return { ...copy, allOf: [...allOf, inlined] };
+  return { ...copy, allOf: [inlined] };
 }
 
 const literal = Symbol('literal');

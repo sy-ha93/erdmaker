@@ -3,7 +3,11 @@ import { joinPath } from '../fs/path.js';
 import { parseJson } from '../parse/json.js';
 import { parseYaml } from '../parse/yaml.js';
 import type { SchemaName } from '../schema/ajv.js';
-import { type FilePositions, finishIssues } from '../validate/issues.js';
+import {
+  type FilePositions,
+  finishIssues,
+  placeIssue,
+} from '../validate/issues.js';
 import { itemIssues } from '../validate/schema.js';
 import type {
   DictionaryData,
@@ -22,9 +26,18 @@ import type {
 export const COMMENT_MESSAGE =
   'YAML comments are not kept when erdmaker rewrites this file';
 
+export const ABSOLUTE_MESSAGE = 'dictionaries entries must be relative paths';
+
+/** A path from the root of a file system, POSIX or Windows. */
+const ABSOLUTE = /^(?:[/\\]|[A-Za-z]:[/\\])/;
+
 export interface LoadResult {
   model: Model;
-  /** Errors of the files left out of the model, and a `comment` warning per file in it that has comments. Sorted. */
+  /**
+   * Errors of the files left out of the model, an error per absolute
+   * `dictionaries` entry (not read; `model.yaml` stays in the model), and a
+   * `comment` warning per file in the model that has comments. Sorted.
+   */
   issues: Issue[];
   /** Each model file's position index, by file. */
   positions: FilePositions;
@@ -71,9 +84,11 @@ async function filesUnder(
  * tool did: `model.yaml`, the YAML files under `entities/`, `relationships/`,
  * `subtypes/` and `subject-areas/`, the JSON files under `layouts/`, and the
  * YAML files of each dictionary folder `model.yaml` names (`dictionary` when
- * it names none or cannot be read). A file with syntax, YAML feature or
- * schema errors is left out and its errors are returned; the other files are
- * still read. The adapter's failures, a missing `model.yaml` included, reject.
+ * it names none or cannot be read), each file once in the order first found;
+ * an absolute folder is an error and is not read. A file with syntax, YAML
+ * feature or schema errors is left out and its errors are returned; the other
+ * files are still read. The adapter's failures, a missing `model.yaml`
+ * included, reject.
  */
 export async function loadModel(
   fs: FileSystemAdapter,
@@ -132,15 +147,34 @@ export async function loadModel(
     joinPath(dir, 'model.yaml'),
     'model',
   );
-  const dictionaries: ModelItem<DictionaryData>[] = [];
-  for (const folder of manifest?.data.dictionaries ?? ['dictionary']) {
-    for (const item of await readAll<DictionaryData>(
-      joinPath(dir, folder),
-      '.yaml',
-      'dictionary',
-    )) {
-      dictionaries.push(item);
+  // Each dictionary file once, where its first listed folder finds it, so
+  // folders that are the same or nest give one item and one warning per file.
+  const dictionaryFiles = new Set<string>();
+  const folders = manifest?.data.dictionaries ?? ['dictionary'];
+  for (const [i, folder] of folders.entries()) {
+    if (ABSOLUTE.test(folder)) {
+      issues.push(
+        placeIssue(
+          {
+            rule: 'schema',
+            severity: 'error',
+            file: joinPath(dir, 'model.yaml'),
+            path: `/dictionaries/${i}`,
+            message: ABSOLUTE_MESSAGE,
+          },
+          positions,
+        ),
+      );
+      continue;
     }
+    for (const file of await filesUnder(fs, joinPath(dir, folder), '.yaml')) {
+      dictionaryFiles.add(file);
+    }
+  }
+  const dictionaries: ModelItem<DictionaryData>[] = [];
+  for (const file of dictionaryFiles) {
+    const item = await read<DictionaryData>(file, 'dictionary');
+    if (item) dictionaries.push(item);
   }
   const model: Model = {
     dir,

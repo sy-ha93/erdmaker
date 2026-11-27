@@ -1,7 +1,7 @@
 import type { Issue } from '../model/types.js';
 import { escapePointerToken } from '../parse/pointer.js';
 import { type SchemaName, schemaValidator } from '../schema/ajv.js';
-import { jsonValueIssues } from './json-value.js';
+import { checkJsonValue } from './json-value.js';
 
 /**
  * `data` checked against one file schema, as the old tool reported it:
@@ -50,14 +50,16 @@ export function schemaIssues(
 
 /**
  * Everything wrong with one file's data on its own: values that are not JSON
- * data, or else schema errors. Data that is not JSON is not given to Ajv.
- * Never throws.
+ * data and schema errors, both. The schema check is left out only for data
+ * that is not safe to read as data (see `checkJsonValue`), which data read
+ * from a file never is. Never throws.
  */
 export function itemIssues(
   file: string,
   name: SchemaName,
   data: unknown,
 ): Issue[] {
-  const notJson = jsonValueIssues(file, data);
-  return notJson.length > 0 ? notJson : schemaIssues(file, name, data);
+  const notJson = checkJsonValue(file, data);
+  if (!notJson.readable) return notJson.issues;
+  return [...notJson.issues, ...schemaIssues(file, name, data)];
 }

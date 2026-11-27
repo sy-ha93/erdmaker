@@ -2,11 +2,12 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   stat,
   unlink,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import {
   FileNotFoundError,
   type FileEntry,
@@ -26,7 +27,38 @@ function isMissing(error: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
-/** An adapter over the folder `rootDir` (resolved against the current directory). */
+/** Whether `outer` is `inner` or one of the folders that hold it (both real paths). */
+function holds(outer: string, inner: string): boolean {
+  if (outer === inner) return true;
+  return inner.startsWith(outer.endsWith(sep) ? outer : outer + sep);
+}
+
+/**
+ * The real paths of the folder `path` (normalized, relative to `root`) and of
+ * each folder on the way to it: the folders a walk has passed through to
+ * reach it. A path that starts with `..` starts at the folder it climbs to.
+ * One `realpath` per folder, and only for a listing that has a folder link.
+ */
+async function walkedFolders(root: string, path: string): Promise<string[]> {
+  const segments = path === '' ? [] : path.split('/');
+  let start = 0;
+  while (segments[start] === '..') start += 1;
+  const folders: string[] = [];
+  for (let end = start; end <= segments.length; end += 1) {
+    folders.push(await realpath(join(root, ...segments.slice(0, end))));
+  }
+  return folders;
+}
+
+/**
+ * An adapter over the folder `rootDir` (resolved against the current directory).
+ *
+ * `list` follows symbolic links, except a link to a folder that the listed
+ * folder was reached through (itself or a folder above it, by real path):
+ * following that one would walk the same folders forever. A link whose
+ * target does not exist is left out; any other failure to look at a link
+ * rejects.
+ */
 export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
   const root = resolve(rootDir);
   const full = (path: string) => join(root, normalizePath(path));
@@ -58,16 +90,28 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
         throw error;
       }
       const entries: FileEntry[] = [];
+      // Looked up once per listing, and only when a link to a folder needs it.
+      let walked: string[] | undefined;
       for (const dirent of dirents) {
         let kind: FileEntry['kind'] | undefined;
         if (dirent.isFile()) kind = 'file';
         else if (dirent.isDirectory()) kind = 'directory';
         else if (dirent.isSymbolicLink()) {
-          const target = await stat(join(folder, dirent.name)).catch(
-            () => undefined,
-          );
-          if (target?.isFile()) kind = 'file';
-          else if (target?.isDirectory()) kind = 'directory';
+          const link = join(folder, dirent.name);
+          // Only a dangling link is left out; ELOOP, EACCES and the rest reject.
+          const target = await stat(link).catch((error: unknown) => {
+            if (isMissing(error)) return undefined;
+            throw error;
+          });
+          if (!target) continue;
+          if (target.isFile()) kind = 'file';
+          else if (target.isDirectory()) {
+            walked ??= await walkedFolders(root, normalizePath(dir));
+            const real = await realpath(link);
+            if (!walked.some((passed) => holds(real, passed))) {
+              kind = 'directory';
+            }
+          }
         }
         if (kind) entries.push({ name: dirent.name, kind });
       }

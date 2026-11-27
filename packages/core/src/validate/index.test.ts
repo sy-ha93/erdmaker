@@ -126,9 +126,42 @@ describe('validateModel: schema and JSON values', () => {
     expect(validateModel(model)).toEqual([
       schemaIssue('a.yaml', '/ext/d', '/ext/d must be a JSON value'),
       schemaIssue('b.yaml', '/ext/self', '/ext/self must be a JSON value'),
+      // `undefined` and a function are safe to read, so the schema is checked too.
       schemaIssue('c.yaml', '', '/ must be a JSON value'),
+      schemaIssue('c.yaml', '', '/ must be object'),
       schemaIssue('d.yaml', '', '/ must be a JSON value'),
+      schemaIssue('d.yaml', '', '/ must be object'),
     ]);
+  });
+
+  test('a malformed model is checked without throwing', () => {
+    const getter = Object.defineProperty({ file: 'g.yaml' }, 'data', {
+      enumerable: true,
+      get() {
+        throw new Error('called');
+      },
+    });
+    const revoked = Proxy.revocable([], {});
+    revoked.revoke();
+    const huge: unknown[] = [];
+    huge.length = 2 ** 32 - 1;
+    const model = {
+      dir: '',
+      manifest: null,
+      entities: [null, 7, 'x', { data: {} }, { file: 1 }, getter],
+      relationships: { file: 'r.yaml', data: {} },
+      subtypes: revoked.proxy,
+      subjectAreas: huge,
+      layouts: [{ file: 'l.json' }],
+    } as unknown as Model;
+    expect(validateModel(model)).toEqual([
+      schemaIssue('g.yaml', '', '/ must be a JSON value'),
+      schemaIssue('g.yaml', '', '/ must be object'),
+      schemaIssue('l.json', '', '/ must be a JSON value'),
+      schemaIssue('l.json', '', '/ must be object'),
+    ]);
+    expect(validateModel({} as Model)).toEqual([]);
+    expect(validateModel(null as unknown as Model)).toEqual([]);
   });
 
   test('data nested 100000 levels deep is checked without throwing', () => {
