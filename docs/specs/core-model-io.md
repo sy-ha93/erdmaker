@@ -93,9 +93,10 @@
   - `model.yaml`
   - `entities/`, `relationships/`, `subtypes/`, `subject-areas/` 아래의 `*.yaml`과 `layouts/` 아래의 `*.json`. 하위 폴더까지 들어가고, 폴더마다 이름순(코드 단위 비교)으로 읽는다.
   - `dictionaries`에 적힌 폴더(없으면 `dictionary`) 아래의 `*.yaml`. 경로는 `model.yaml` 기준이고 모델 폴더 밖일 수 있다. 폴더가 없으면 빈 사전이다.
-- YAML은 1.2 core 스키마로 읽는다(`parseDocument`에 `version: '1.2'`, `schema: 'core'`, `uniqueKeys: true`, `lineCounter`, `logLevel: 'error'`). 태그·앵커·별칭·주석은 `yaml`의 CST 토큰에서 찾고 그 토큰의 위치를 쓴다. `NO`, `yes`, `on`은 문자열이다. 중복 키와 문법 오류는 `syntax`, 앵커·별칭·태그는 `yaml-feature` 오류다. 메시지는 `YAML anchors are not allowed`, `YAML aliases are not allowed`, `YAML tag <tag> is not allowed`다. 파일에 적힌 태그는 모두 거부한다(`!!binary`, `!!timestamp`, `!!set` 같은 `tag:yaml.org,2002:` 태그와 `%TAG`로 선언한 것 포함).
+- YAML은 1.2 core 스키마로 읽는다(`parseDocument`에 `version: '1.2'`, `schema: 'core'`, `lineCounter`, `logLevel: 'error'`). 중복 키는 `yaml`의 `uniqueKeys` 옵션(키 수의 제곱으로 느려진다)을 쓰지 않고 직접 찾으며, 메시지 `Map keys must be unique at line L, column C:`와 뒤 키의 위치는 그대로다. 파일 맨 앞의 UTF-8 BOM은 열로 세지 않는다. 태그·앵커·별칭·주석은 `yaml`의 CST 토큰에서 찾고 그 토큰의 위치를 쓴다. `NO`, `yes`, `on`은 문자열이다. 중복 키와 문법 오류는 `syntax`, 앵커·별칭·태그는 `yaml-feature` 오류다. 메시지는 `YAML anchors are not allowed`, `YAML aliases are not allowed`, `YAML tag <tag> is not allowed`다. 파일에 적힌 태그는 모두 거부한다(`!!binary`, `!!timestamp`, `!!set` 같은 `tag:yaml.org,2002:` 태그와 `%TAG`로 선언한 것 포함).
+- 컬렉션이 256단계보다 깊이 겹친 파일은 `syntax` 오류 `Collections are nested more than 256 levels deep at line L, column C:`이고 위치는 한도를 넘은 첫 컬렉션이다(더 깊은 입력은 YAML 라이브러리와 엔진을 죽일 수 있고, 실제 모델 파일은 몇 단계뿐이다).
 - 객체로 바꾸면 같은 문자열이 되는 맵 키(`true`와 `"true"`)는 `syntax` 오류 `Map keys collide as "<key>"`이고 위치는 뒤의 키다. 컬렉션인 맵 키(`? [a, b]`)도 `syntax` 오류다.
-- JSON 값은 null, 불리언, 문자열, 유한한 수, 배열, 평범한 객체다. 값이 정수인 수는 어떻게 적었든 안전한 정수(`Number.MAX_SAFE_INTEGER` 이하)여야 한다(`1e300`은 거부). `ext` 안을 포함해 JSON 값이 아닌 것(`.inf`, `.nan`, 큰 정수)은 그 값의 위치에서 `schema` 오류 `<path> must be a JSON value`다.
+- JSON 값은 null, 불리언, 문자열, 유한한 수, 배열, 평범한 객체다. 값이 정수인 수는 어떻게 적었든 안전한 정수(`Number.MAX_SAFE_INTEGER` 이하)여야 한다(`1e300`은 거부). 메모리 모델에서 `Array`의 하위 클래스 인스턴스는 JSON 값이 아니고, 빈 칸이 있는 배열은 배열마다 첫 빈 칸에서 오류 하나를 낸다. `ext` 안을 포함해 JSON 값이 아닌 것(`.inf`, `.nan`, 큰 정수)은 그 값의 위치에서 `schema` 오류 `<path> must be a JSON value`다.
 - `syntax`, `yaml-feature`, `schema` 오류가 있는 파일은 모델에 넣지 않고 오류만 남긴다. `syntax`나 `yaml-feature` 오류가 있으면 그 파일의 스키마 검사는 하지 않는다. 나머지 파일은 계속 읽는다.
 - `model.yaml`이 그런 파일이면 매니페스트 없이 계속한다(사전은 기본 경로, `schemas`와 `areaGroups`는 없는 것으로 본다).
 - 정규형이 아닌 파일(키 순서가 다름, 기본값이 적혀 있음, CRLF)도 읽는다. 오류가 아니다.
@@ -154,7 +155,7 @@
 
 - `JSON.parse`가 실패한 배치 파일은 `syntax` 오류 하나로 보고하고 모델에 넣지 않는다. 다른 파일의 검사는 계속된다.
 - 위치는 다음 순서로 구한다: 엔진 메시지에 줄·열이 있으면 그것, 없으면 같은 글을 YAML 파서로 읽어 나온 첫 오류의 위치, 그것도 없으면 1:1.
-- 중복 키가 있는 JSON도 `syntax` 오류다(YAML 파일과 같은 기준).
+- 중복 키가 있는 JSON과 컬렉션이 256단계보다 깊이 겹친 JSON도 `syntax` 오류다(YAML 파일과 같은 기준, FR-05).
 
 ### FR-10 프로젝트에서 모델 찾기
 
