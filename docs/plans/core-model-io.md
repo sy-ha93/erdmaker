@@ -596,7 +596,17 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - **문서로만 남긴 것**: 스펙 8장에 줄마다 하나씩(저장의 원자성과 밖의 변경, 공용 사전 다시 쓰기, 앞의 `/`, CR만 쓰는 JSON, 적대적인 메모리 객체, O(n log n) 정렬, 링크 검사와 작업 사이의 경합, 대소문자를 가리지 않는 파일 시스템, Linux가 아닌 곳의 `realpath` 비용). 메모리 어댑터의 `list`는 이미 있었다. 해당 함수의 JSDoc에도 한 줄씩.
 - 관문: `dist` 넷을 지운 뒤 `pnpm build`, `pnpm lint`, `npm run --silent validate:format` 모두 `exit=0`. 예제의 CLI stdout은 고치기 전과 바이트가 같다. `pnpm test` 5번 연속 통과(37개 파일 604개, 70.0~71.5초. 고치기 전 551개). 새 시간 테스트가 든 파일 여섯(`load.perf`, `cli/main.perf`, `yaml.perf`, `serialize.perf`, `json-value.perf`, `fs.perf`)을 하나씩 15번: 90번 모두 통과. Codex의 재현(A, C, F 스크립트, B는 `fs-vanishing.test.ts`)을 다시 돌려 모두 고쳐진 결과를 봤다.
 
+### D-11 재확인 Codex 리뷰(2회차) 대응 (2026-11-28)
+
+D-13대로 처리했다. 고칠 것마다 고치기 전에 실패하는 테스트를 먼저 썼다.
+
+- **A. Node 어댑터(경고 1~5, 참고 1)**: `/proc`·`realpath`·핸들을 쓰던 `realFolder`·`linkFree`를 지우고, 기준 폴더 아래 이름을 하나씩 `lstat`하는 `walkFolders`(읽기·`list`·`remove`)와 없는 폴더를 하나씩 만드는 `makeFolders`(쓰기)로 바꿨다. `MAX_PATH_DEPTH = 32`(내보낸다)와 4096자 한도는 `locate`가 나누기 전에 본다. 쓰기는 기준 폴더를 재귀로 만든다. 테스트: `fs.test.ts`에 한도 넷(32단, 33단과 `..`·정규화, 1MB·4097자, 없는 연 폴더), 링크 넷(깊이 5, 들어갈 수 없는 대상, 순환, 진짜 폴더의 `EACCES`), 깊은 트리 셋(엔터티, `../shared` 사전, `findModels`). 새 `fs-work.test.ts`(16개)가 `lstat`·`mkdir` 호출을 센다: 깊이 d의 `readText`는 d번, `list`는 d번, 모두 없는 d단 폴더에 쓰기는 `lstat` 많아야 d+2번·`mkdir` d+1번. `fs.perf.test.ts`의 "deep"은 32단 사슬 8개/32개로 바꿨다. 고치기 전: 새 테스트 4개(33단, 긴 경로, 없는 연 폴더, `chmod 000` 대상)와 `fs-work.test.ts` 전체가 실패했다. 순환 링크 쓰기 사례는 실제 폴더에서는 고치기 전에도 통과했다(Codex는 모의 파일 시스템에서 봤다).
+- **B. 공유 객체(경고 6)**: `checkJsonValue`의 `Frame.paid`와 `inPaidCopy`. 테스트: 중첩 공유(잎 24000개)의 한도−1·한도·한도+1을 오류가 있는 것과 없는 것으로, Codex의 사례(잎 16000개, 32000개 보고), `serializeModel`과 `validateModel`의 한도 일치 셋, 시간 테스트 하나(오류가 있는 40단계, 1초 미만). 고치기 전: 오류가 있는 한도−1·한도와 Codex 사례가 실패.
+- **C. 너무 큰 출력(경고 7)**: `serializeModel`이 글 만들기를 `try`로 감싼다. 새 `serialize-too-large.test.ts`가 YAML `Document.prototype.toString`과 `layoutJson`이 `RangeError`를 던지게 한다(셋: YAML, 배치, 다른 오류는 그대로). 고치기 전: 앞의 둘이 실패.
+- **D. CLI(경고 8)**: `cli`의 `exitWhenWritten`이 유일한 종료 길이다. 테스트: 가짜 타이머로 넷(1000ms, stderr `error` 먼저, `close` 먼저, `unref`). 고치기 전: 넷 모두 실패.
+- **문서**: 스펙 FR-02(링크 검사 방법, 경로 한도), FR-06(너무 큰 글), FR-11(종료), AC-09, 8장(대소문자, 32단 한도, 글 길이를 세지 않음. `realpath` 비용 줄은 지웠다). 형식 문서에 32단 한 문장. D-13.
+
 ---
 
-마지막 수정: 2026-11-28 (마지막 Codex 리뷰 대응)
+마지막 수정: 2026-11-28 (D-11 재확인 리뷰 대응)
 상태: 구현 완료 (push와 `gh pr checks`는 리드)

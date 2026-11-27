@@ -71,6 +71,8 @@ interface Frame extends Children {
   height: number;
   /** Values written for it, itself included, so far. */
   size: number;
+  /** A place reached again whose whole copy was counted when it was entered. */
+  paid: boolean;
 }
 
 /** A container walked to its end: its levels, its values as written, and whether it held no issue. */
@@ -136,16 +138,21 @@ export function jsonValueIssues(file: string, value: unknown): Issue[] {
  * explicit stack, without recursion. A shared object found free of issues
  * is not walked again where it fits below the nesting limit; one with
  * issues is, so they are reported at each place, until the copies reach
- * `MAX_COPIED_VALUES`. So the time is linear in the distinct objects, plus
- * at most that many values.
+ * `MAX_COPIED_VALUES`. Each copied value is counted once: a place reached
+ * again counts its whole copy, and the places inside that copy are not
+ * counted again while it is walked. So the time is linear in the distinct
+ * objects, plus at most that many values.
  */
 export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
   const issues: Issue[] = [];
   let readable = true;
   let tooDeep: Issue | undefined;
   let tooLarge: Issue | undefined;
-  // Values the places reached again add, as written.
+  // Values the places reached again add, as written: each copied value once.
   let copied = 0;
+  // Whether a copy already counted whole is being walked: a place reached
+  // again inside it is part of that copy and is not counted again.
+  let inPaidCopy = false;
   const walked = new Map<object, Walked>();
   const report = (path: string, unreadable = false) => {
     if (unreadable) readable = false;
@@ -189,7 +196,7 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
     }
     const before = walked.get(node);
     if (before) {
-      copied += before.size;
+      if (!inPaidCopy) copied += before.size;
       if (copied > MAX_COPIED_VALUES) {
         tooLarge ??= {
           rule: 'schema',
@@ -239,6 +246,8 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
       };
     }
     ancestors.add(node);
+    const paid = before !== undefined && !inPaidCopy;
+    if (paid) inPaidCopy = true;
     stack.push({
       node,
       path,
@@ -247,6 +256,7 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
       issuesBefore: issues.length,
       height: 1,
       size: 1,
+      paid,
     });
   };
 
@@ -264,6 +274,7 @@ export function checkJsonValue(file: string, value: unknown): JsonValueCheck {
     if (entry === undefined) {
       stack.pop();
       ancestors.delete(frame.node);
+      if (frame.paid) inPaidCopy = false;
       walked.set(frame.node, {
         height: frame.height,
         size: frame.size,

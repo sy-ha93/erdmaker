@@ -341,6 +341,72 @@ describe('JSON value check: shared objects', () => {
     expect(issues[0]?.path).toBe(`${'/a'.repeat(40)}/x`);
   });
 
+  /**
+   * `{ x: [shared, shared] }` where `shared` holds `leaves` copies of `leaf`
+   * (two values each) and `extra` scalars: the copies add
+   * `2 * (leaves - 1)` values inside the first `shared` and the whole second
+   * `shared`, `2 * leaves + 2 + extra` values, so `4 * leaves + extra`.
+   */
+  const nested = (leaf: object, leaves: number, extra: number) => {
+    const shared = {
+      values: Array(leaves).fill(leaf),
+      extra: Array(extra).fill(0),
+    };
+    return { x: [shared, shared] };
+  };
+  // `extra` adds its own array: one more value.
+  const copiedBy = (leaves: number, extra: number) => 4 * leaves + extra + 1;
+  const LEAVES = 24_000;
+
+  test.each([
+    ['one below the limit', -1],
+    ['at the limit', 0],
+    ['one above the limit', 1],
+  ])(
+    'nested shared objects with issues, %s: each copy counted once, every issue reported',
+    (_name, offset) => {
+      const extra = MAX_COPIED_VALUES - copiedBy(LEAVES, 0) + offset;
+      expect(copiedBy(LEAVES, extra)).toBe(MAX_COPIED_VALUES + offset);
+      const { issues, tooLarge } = checkJsonValue(
+        'f.yaml',
+        nested({ a: undefined }, LEAVES, extra),
+      );
+      if (offset > 0) {
+        expect(tooLarge).toEqual(LARGE);
+        // The first `shared` is walked whole, the second is not.
+        expect(issues).toHaveLength(LEAVES);
+      } else {
+        expect(tooLarge).toBeUndefined();
+        expect(issues).toHaveLength(2 * LEAVES);
+        expect(issues.at(-1)?.path).toBe(`/x/1/values/${LEAVES - 1}/a`);
+      }
+    },
+  );
+
+  test.each([
+    ['one below the limit', -1],
+    ['at the limit', 0],
+    ['one above the limit', 1],
+  ])(
+    'nested shared objects free of issues, %s: the same count',
+    (_name, offset) => {
+      const extra = MAX_COPIED_VALUES - copiedBy(LEAVES, 0) + offset;
+      const check = checkJsonValue('f.yaml', nested({ a: 1 }, LEAVES, extra));
+      expect(check.tooLarge).toEqual(offset > 0 ? LARGE : undefined);
+      expect(check.issues).toEqual([]);
+    },
+  );
+
+  test('the case from the review: 16000 leaves with an issue, shared twice, are all reported', () => {
+    const leaf = { a: undefined };
+    const shared = { values: Array(16_000).fill(leaf) };
+    const { issues, tooLarge } = checkJsonValue('f.yaml', {
+      x: [shared, shared],
+    });
+    expect(tooLarge).toBeUndefined();
+    expect(issues).toHaveLength(32_000);
+  });
+
   test('a shared object too deep at one place only: `tooDeep` at that place', () => {
     let shared: unknown = [];
     for (let level = 1; level < 10; level += 1) shared = [shared];

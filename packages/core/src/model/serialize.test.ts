@@ -902,6 +902,42 @@ describe('serializeModel: what it refuses', () => {
     expect(written(fine).split('x: 1').length - 1).toBe(2 ** 10);
   });
 
+  test.each([
+    ['one below the limit', -1],
+    ['at the limit', 0],
+    ['one above the limit', 1],
+  ])(
+    'nested shared objects %s: serializeModel refuses exactly when validateModel reports',
+    (_name, offset) => {
+      // `{ x: [shared, shared] }`: copies add `2 * (leaves - 1)` values in
+      // the first `shared` and `2 * leaves + extra + 3` for the second.
+      const leaves = 24_000;
+      const extra = MAX_COPIED_VALUES - 4 * leaves - 1 + offset;
+      const shared = {
+        values: Array(leaves).fill({ a: 1 }),
+        extra: Array(extra).fill(0),
+      };
+      const of = entity({
+        id: 'e',
+        name: 'E',
+        attributes: [],
+        ext: { x: [shared, shared] },
+      });
+      const message = `/ has shared objects whose copies would hold more than ${MAX_COPIED_VALUES} values`;
+      if (offset > 0) {
+        expect(validateModel(of).map((issue) => issue.message)).toEqual([
+          message,
+        ]);
+        expect(() => serializeModel(of)).toThrow(
+          new TypeError(`Cannot write entities/e.yaml: ${message}`),
+        );
+      } else {
+        expect(validateModel(of)).toEqual([]);
+        expect(written(of).split('a: 1').length - 1).toBe(2 * leaves);
+      }
+    },
+  );
+
   test('data that is not JSON data throws, naming the file and the value', () => {
     class Point {
       x = 1;

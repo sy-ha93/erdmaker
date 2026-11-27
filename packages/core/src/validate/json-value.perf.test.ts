@@ -27,4 +27,14 @@ describe('JSON value check: shared objects', () => {
     ).toBeLessThan(200);
     expect(checkJsonValue('f.yaml', value).tooLarge?.path).toBe('');
   });
+
+  test('40 such levels around a value that is not JSON: walked up to the limit, then stopped', async () => {
+    let value: unknown = { x: undefined };
+    for (let level = 0; level < 40; level += 1) value = { a: value, b: value };
+    // Each copy is counted once, so the walk stops after about the limit's values.
+    expect(
+      await bestTime(3, () => checkJsonValue('f.yaml', value)),
+    ).toBeLessThan(1000);
+    expect(checkJsonValue('f.yaml', value).tooLarge?.path).toBe('');
+  });
 });

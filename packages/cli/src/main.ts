@@ -202,14 +202,19 @@ export interface Stdio {
   exit(code: number): void;
 }
 
+/** How long the `Unexpected error` line may take to be written before the exit. */
+export const EXIT_WAIT_MS = 1_000;
+
 /**
  * Runs `main` on the process's streams (spec FR-11). Listens for stream
  * errors before `main` starts. `EPIPE` (the reader closed the pipe, as
  * `| head -1` does) stops all writing and exits quietly with `main`'s exit
  * code, or 2 while `main` has not returned yet. Any other stream error
  * stops all writing, prints `Unexpected error: <message>` on stderr unless
- * stderr failed, and exits 2 (after that line is written, or failed to be). An exception out of `main` is that same line
- * and 2. Nothing prints a stack.
+ * stderr failed, and exits 2: once the line is written, stderr fails or
+ * closes, or `EXIT_WAIT_MS` have passed, whichever comes first (the timer
+ * does not keep the process alive). An exception out of `main` is that same
+ * line and 2. Nothing prints a stack.
  */
 export async function cli(
   args: readonly string[],
@@ -217,22 +222,36 @@ export async function cli(
 ): Promise<void> {
   let code: number | undefined;
   let stopped = false;
+  // Set while the `Unexpected error` line is on its way: the one way out.
+  let exitWhenWritten: (() => void) | undefined;
   const unexpected = (error: unknown) =>
     `${oneLine(`Unexpected error: ${describeError(error)}`)}\n`;
   const onError = (failed: 'stdout' | 'stderr') => (error: unknown) => {
-    if (stopped) return;
+    if (stopped) {
+      if (failed === 'stderr') exitWhenWritten?.();
+      return;
+    }
     stopped = true;
     if ((error as { code?: unknown } | null)?.code === 'EPIPE') {
       stdio.exit(code ?? 2);
       return;
     }
-    // The line may still be on its way when `write` returns: exit once it is
-    // written, or once writing it failed.
-    if (failed === 'stdout') {
-      stdio.stderr.write(unexpected(error), () => stdio.exit(2));
-    } else {
+    if (failed === 'stderr') {
       stdio.exit(2);
+      return;
     }
+    // The line may still be on its way when `write` returns.
+    let exited = false;
+    const timer = setTimeout(() => exitWhenWritten?.(), EXIT_WAIT_MS);
+    timer.unref?.();
+    exitWhenWritten = () => {
+      if (exited) return;
+      exited = true;
+      clearTimeout(timer);
+      stdio.exit(2);
+    };
+    stdio.stderr.once('close', exitWhenWritten);
+    stdio.stderr.write(unexpected(error), exitWhenWritten);
   };
   stdio.stdout.on('error', onError('stdout'));
   stdio.stderr.on('error', onError('stderr'));

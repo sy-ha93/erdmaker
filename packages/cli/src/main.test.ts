@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import type { FileSystemAdapter } from '@erdmaker/core';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   MAX_MESSAGE,
   type Stdio,
@@ -186,6 +186,75 @@ describe('validate: cli', () => {
     stderr.finish();
     expect(exits).toEqual([2]);
     expect(io.exitCode).toBeUndefined();
+  });
+
+  describe('another stdout error while stderr never finishes the line', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const stalled = async () => {
+      vi.useFakeTimers();
+      const stdout = new FakeStream((s) => s.emit('error', new Error('full')));
+      const stderr = new FakeStream(undefined, true);
+      const run = stdio(stdout, stderr);
+      await cli(['validate', EXAMPLE], run.io);
+      expect(stderr.written).toEqual(['Unexpected error: full\n']);
+      expect(run.exits).toEqual([]);
+      return run;
+    };
+
+    test('exit 2 after 1000 ms, once', async () => {
+      const { exits, stderr } = await stalled();
+      vi.advanceTimersByTime(999);
+      expect(exits).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(exits).toEqual([2]);
+      // A late callback, error or close does not exit again.
+      stderr.finish();
+      stderr.emit('error', new Error('late'));
+      stderr.emit('close');
+      expect(exits).toEqual([2]);
+    });
+
+    test('a stderr error first: exit 2 at once, and not again on the timer', async () => {
+      const { exits, stderr } = await stalled();
+      stderr.emit('error', new Error('gone'));
+      expect(exits).toEqual([2]);
+      vi.advanceTimersByTime(2_000);
+      stderr.finish();
+      expect(exits).toEqual([2]);
+    });
+
+    test('stderr closed first: exit 2 at once, and not again on the timer', async () => {
+      const { exits, stderr } = await stalled();
+      stderr.emit('close');
+      expect(exits).toEqual([2]);
+      vi.advanceTimersByTime(2_000);
+      expect(exits).toEqual([2]);
+    });
+
+    test('the timer does not keep the process alive', async () => {
+      const unref = vi.fn();
+      const real = globalThis.setTimeout;
+      const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+        fn: () => void,
+        ms?: number,
+      ) => {
+        const timer = real(fn, ms);
+        return Object.assign(timer, { unref: () => (unref(), timer) });
+      }) as typeof setTimeout);
+      try {
+        const stdout = new FakeStream((s) =>
+          s.emit('error', new Error('full')),
+        );
+        const { io } = stdio(stdout, new FakeStream(undefined, true));
+        await cli(['validate', EXAMPLE], io);
+        expect(unref).toHaveBeenCalledTimes(1);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 
   test('a stderr error: nothing more is written, exit 2', async () => {
