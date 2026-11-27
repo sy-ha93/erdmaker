@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import { MAX_NESTING } from '../parse/yaml.js';
 import { escapePointerToken } from '../parse/pointer.js';
 import {
@@ -30,10 +31,6 @@ export type Canon = CanonScalar | CanonList | CanonMap;
 
 export const isCanonContainer = (value: Canon): value is CanonList | CanonMap =>
   typeof value === 'object' && value !== null;
-
-/** Code unit order, as `<` compares strings. */
-export const compareCodeUnits = (a: string, b: string): number =>
-  a < b ? -1 : a > b ? 1 : 0;
 
 /** The schema positions the writing rules of spec FR-06 name, found once. */
 interface Positions {

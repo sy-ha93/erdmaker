@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../../compare.js';
 import { field, indexed } from '../plain.js';
 
 /**
@@ -158,12 +159,10 @@ function keysOf(value: unknown): string[] {
   }
 }
 
-const code = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
 /** A data type's fields in code unit order, as one string; `undefined` if a field is not a scalar. */
 function typeFields(type: unknown): string | undefined {
   const fields: string[] = [];
-  for (const key of keysOf(type).sort(code)) {
+  for (const key of keysOf(type).sort(compareCodeUnits)) {
     const value = field(type, key);
     if (typeof value === 'object' && value !== null) return undefined;
     fields.push(JSON.stringify([key, value]));

@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import type { Model } from '../model/types.js';
 
 /** A seeded random source (mulberry32), so a failing model can be made again from its seed. */
@@ -376,13 +377,11 @@ function unique(
   return [...new Set(list(random, min, max, make))];
 }
 
-/** An `ext` object holding any JSON data. */
 /** Distinct ids in code unit order. */
 const sortedIds = (random: Random, min: number, max: number) =>
-  unique(random, min, max, () => randomId(random)).sort((a, b) =>
-    a < b ? -1 : a > b ? 1 : 0,
-  );
+  unique(random, min, max, () => randomId(random)).sort(compareCodeUnits);
 
+/** An `ext` object holding any JSON data. */
 const ext = (random: Random) => {
   const object: Record<string, unknown> = {};
   for (let i = random.int(0, 4); i > 0; i -= 1) {

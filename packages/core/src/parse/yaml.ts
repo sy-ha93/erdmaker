@@ -414,7 +414,8 @@ export function parserErrors(
     }
   }
   if (kept !== duplicates) {
-    // The parser no longer calls `uniqueKeys` as above; its own check is right, if slow.
+    // The parser did not call `uniqueKeys` as expected (another `yaml` version,
+    // say): fall back to its own check, which is right, if slow.
     return parseDocument(yaml.text, { ...OPTIONS, uniqueKeys: true }).errors;
   }
   return errors;

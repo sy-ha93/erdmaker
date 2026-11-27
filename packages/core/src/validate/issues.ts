@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import type { Issue, PositionIndex } from '../model/types.js';
 
 /** Position indexes by file, as `loadModel` returns them. */
@@ -21,17 +22,15 @@ export function placeIssue(issue: Issue, positions?: FilePositions): Issue {
   return at ? { ...rest, line: at.line, column: at.column } : rest;
 }
 
-const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
 /** By file, issues without a position first, line, column, rule, message; text by code unit. */
 export function compareIssues(a: Issue, b: Issue): number {
   return (
-    compareText(a.file, b.file) ||
+    compareCodeUnits(a.file, b.file) ||
     Number(a.line !== undefined) - Number(b.line !== undefined) ||
     (a.line ?? 0) - (b.line ?? 0) ||
     (a.column ?? 0) - (b.column ?? 0) ||
-    compareText(a.rule, b.rule) ||
-    compareText(a.message, b.message)
+    compareCodeUnits(a.rule, b.rule) ||
+    compareCodeUnits(a.message, b.message)
   );
 }
 

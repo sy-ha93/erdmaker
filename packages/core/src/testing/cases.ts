@@ -24,11 +24,6 @@ export interface RuleCase {
   changes: Change[];
   /** Every issue of the model, sorted as `validateProject` returns them. */
   issues: Issue[];
-  /**
-   * Set when the parity test against the old tool leaves the case out: why
-   * (only behaviour FR-13 lists as changed on purpose).
-   */
-  parityExcluded?: string;
 }
 
 /** A copy of `files` with `file` added. Throws when it is already there. */
@@ -78,12 +73,6 @@ const CATALOG_LAYOUT = 'layouts/catalog.json';
 const SALES_LAYOUT = 'layouts/sales.json';
 const entity = (id: string) => `entities/${id}.yaml`;
 const relationship = (id: string) => `relationships/${id}.yaml`;
-
-const FR13_TYPE = 'FR-13: row 18, types that differ only in key order';
-const FR13_MANY = 'FR-13: row 25, the scope rule on many-to-many';
-const FR13_PARENT_KEY =
-  'FR-13: row 26, parentKey naming a primary or inversion key';
-const FR13_KEY_PART = 'FR-13: row 38, migratedFrom outside the migrated key';
 
 /**
  * The cases of spec Appendix A. Messages and paths come from Appendix A,
@@ -705,7 +694,6 @@ export const RULE_CASES: RuleCase[] = [
       ),
     ],
     issues: [],
-    parityExcluded: FR13_TYPE,
   },
   {
     name: 'migrated attribute and its parent both without domain and type',
@@ -1069,7 +1057,6 @@ export const RULE_CASES: RuleCase[] = [
         '"product_has_tag": scope is wider than its child entity\'s',
       ),
     ],
-    parityExcluded: FR13_MANY,
   },
   {
     name: 'parentKey that the parent does not have',
@@ -1112,7 +1099,6 @@ export const RULE_CASES: RuleCase[] = [
         '"customer_places_order": parentKey "pk" must be an alternate key of "customer"',
       ),
     ],
-    parityExcluded: FR13_PARENT_KEY,
   },
   {
     // The checks of what the key migrates still run on the key parentKey names.
@@ -1159,7 +1145,6 @@ export const RULE_CASES: RuleCase[] = [
         '"order_contains_item": parentKey "ie_ord_dtm" must be an alternate key of "order"',
       ),
     ],
-    parityExcluded: FR13_PARENT_KEY,
   },
   {
     name: 'parent without a primary key',
@@ -1505,7 +1490,6 @@ export const RULE_CASES: RuleCase[] = [
         'attribute "ship_addr_no": address.cust_no is not part of the key that "order_ships_to" migrates',
       ),
     ],
-    parityExcluded: FR13_KEY_PART,
   },
   {
     name: 'migratedFrom naming a parent attribute outside the alternate key parentKey names',
@@ -1535,7 +1519,6 @@ export const RULE_CASES: RuleCase[] = [
         '"customer_places_order": customer.email must migrate to exactly one attribute of "order" (found 0)',
       ),
     ],
-    parityExcluded: FR13_KEY_PART,
   },
   {
     // Row 38 is checked apart from row 15, so a swapped relationship gives both.
@@ -1574,7 +1557,6 @@ export const RULE_CASES: RuleCase[] = [
         '"customer_places_order": order.ord_no must migrate to exactly one attribute of "customer" (found 0)',
       ),
     ],
-    parityExcluded: FR13_KEY_PART,
   },
   {
     name: 'subtype member id that another member has',

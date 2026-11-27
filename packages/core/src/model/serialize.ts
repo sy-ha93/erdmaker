@@ -13,12 +13,8 @@ import { normalizePath } from '../fs/path.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { rootSchema } from '../schema/resolve.js';
 import { checkJsonValue } from '../validate/json-value.js';
-import {
-  type Canon,
-  canonical,
-  compareCodeUnits,
-  isCanonContainer,
-} from './canonical.js';
+import { compareCodeUnits } from '../compare.js';
+import { type Canon, canonical, isCanonContainer } from './canonical.js';
 import { layoutJson } from './layout-json.js';
 import type { Model } from './types.js';
 

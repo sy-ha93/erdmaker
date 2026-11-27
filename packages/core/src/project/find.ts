@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { joinPath } from '../fs/path.js';
 import type { Issue } from '../model/types.js';
@@ -14,8 +15,6 @@ export interface FoundModels {
   /** `P02`: a `model.yaml` inside a model folder, at that file. Sorted. */
   issues: Issue[];
 }
-
-const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Folders the search does not enter. */
 const skipped = (name: string) =>
@@ -68,5 +67,8 @@ export async function findModels(
       });
     }
   }
-  return { models: models.sort(compareText), issues: finishIssues(issues) };
+  return {
+    models: models.sort(compareCodeUnits),
+    issues: finishIssues(issues),
+  };
 }

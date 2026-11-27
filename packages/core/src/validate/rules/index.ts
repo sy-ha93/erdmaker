@@ -214,7 +214,8 @@ function physicalIssues(
   entities: Iterable<Entity>,
   schemas: Set<string>,
 ) {
-  // Table names by schema; an absent schema and `""` are the same one, as in the old tool.
+  // Table names by schema; an absent schema and `""` are the same one, as in
+  // the former `tools/validate-format.mjs`.
   const tables = new Map<string, Map<string, string>>();
   for (const entity of entities) {
     const schema = entity.physicalSchema;

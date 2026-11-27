@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { compareCodeUnits } from '../compare.js';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { createMemoryFileSystem } from '../fs/memory.js';
 
@@ -25,7 +26,7 @@ export function exampleFiles(): Files {
     }
   }
   return Object.fromEntries(
-    Object.entries(files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    Object.entries(files).sort(([a], [b]) => compareCodeUnits(a, b)),
   );
 }
 

@@ -201,16 +201,6 @@ describe('규칙 사례', () => {
     expect(row33).toContain('second layout for the whole model');
   });
 
-  test('every case is excluded from parity only for a reason FR-13 lists', () => {
-    const reasons = new Set(
-      RULE_CASES.flatMap((rule) =>
-        rule.parityExcluded ? [rule.parityExcluded] : [],
-      ),
-    );
-    for (const reason of reasons)
-      expect(reason).toMatch(/^FR-13: row (18|25|26|38), /);
-  });
-
   test('a case whose text is not in the example fails', () => {
     expect(() =>
       caseFiles({

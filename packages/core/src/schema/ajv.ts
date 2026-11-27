@@ -6,6 +6,7 @@ import {
   str,
   type ValidateFunction,
 } from 'ajv/dist/2020.js';
+import { compareCodeUnits } from '../compare.js';
 import { schemaFiles } from '../generated/schemas.js';
 
 /** The schema of each kind of model file, by its `$id` without the common prefix. */
@@ -195,9 +196,7 @@ export function canonicalJson(value: unknown): string {
       parts.push(text(']'));
       for (let i = parts.length - 1; i >= 0; i -= 1) pending.push(parts[i]);
     } else if (typeof token === 'object' && token !== null) {
-      const keys = Object.keys(token).sort((a, b) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      );
+      const keys = Object.keys(token).sort(compareCodeUnits);
       const parts: Token[] = [text('{')];
       keys.forEach((key, i) =>
         parts.push(
@@ -262,7 +261,10 @@ const uniqueItemsKeyword: CodeKeywordDefinition = {
 
 let ajv: Ajv2020 | undefined;
 
-/** The one Ajv instance, set up as the old tool's and holding the 8 schemas. Made on first use. */
+/**
+ * The one Ajv instance, holding the 8 schemas and set up as the former
+ * `tools/validate-format.mjs` set up its own. Made on first use.
+ */
 export function schemaAjv(): Ajv2020 {
   if (!ajv) {
     const instance = new Ajv2020({

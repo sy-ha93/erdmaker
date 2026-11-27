@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import {
   FileNotFoundError,
   type FileEntry,
@@ -78,7 +79,7 @@ export function createMemoryFileSystem(
         kinds.set(name, rest.length === 1 ? 'file' : 'directory');
       }
       return [...kinds]
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .sort(([a], [b]) => compareCodeUnits(a, b))
         .map(([name, kind]) => ({ name, kind }));
     },
 

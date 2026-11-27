@@ -4,9 +4,10 @@ import { type SchemaName, schemaValidator } from '../schema/ajv.js';
 import { checkJsonValue } from './json-value.js';
 
 /**
- * `data` checked against one file schema, as the old tool reported it:
- * `<instancePath or "/"> <Ajv message>`. `path` is the instance path, except
- * that an unknown key points at the key itself. No positions yet.
+ * `data` checked against one file schema, as the former
+ * `tools/validate-format.mjs` reported it: `<instancePath or "/"> <Ajv
+ * message>`. `path` is the instance path, except that an unknown key points
+ * at the key itself. No positions yet.
  */
 export function schemaIssues(
   file: string,

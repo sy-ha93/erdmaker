@@ -1,3 +1,4 @@
+import { compareCodeUnits } from '../compare.js';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { joinPath } from '../fs/path.js';
 import { parseJson } from '../parse/json.js';
@@ -37,7 +38,7 @@ export interface LoadResult {
 }
 
 const byName = (a: { name: string }, b: { name: string }) =>
-  a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  compareCodeUnits(a.name, b.name);
 
 /**
  * The files under `dir` whose names end with `extension`, subfolders
