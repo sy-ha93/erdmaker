@@ -6,3 +6,6 @@ coverage/
 # 비공개 자료: 공개 저장소에 올리지 않는다
 docs/handoff/
 docs/reference/
+
+# yyy-workflow 실행 상태: 실행 중에만 쓰는 파일
+docs/.yyy-workflow-state.json

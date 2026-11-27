@@ -1,5 +1,7 @@
 id: catalog
 name: 상품
+group: master
+order: 1
 entities:
   - category
   - product
