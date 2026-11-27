@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
 **설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
 **브랜치**: `feature/core-model-io`
-**상태**: 진행 중 (단계 1/6 완료)
+**상태**: 진행 중 (단계 2/6 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
 
@@ -276,15 +276,15 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 ### 단계 2: 파일 어댑터와 파서
 
 **목표**: 어댑터 둘이 같은 계약을 지키고, YAML과 배치 JSON 글 하나를 "값, 오류, 위치 색인, 첫 주석"으로 바꿀 수 있다. 모델은 아직 없다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-09 · **요구사항**: FR-02, FR-05(파일 하나 단위), FR-09(위치 규칙)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-09 · **요구사항**: FR-02, FR-05(파일 하나 단위), FR-09(위치 규칙)
 
-- [ ] 2.1 `packages/core/src/model/types.ts`에 `Issue`, `Severity`, `Position`, `PositionIndex`를, `packages/core/src/fs/adapter.ts`에 인터페이스와 `FileNotFoundError`를 쓴다. `packages/core/src/fs/path.ts`와 `path.test.ts`(합치기, `a/../b`, 앞의 `..` 유지, `""`).
-- [ ] 2.2 **테스트 먼저**: `packages/core/src/fs/adapter.test.ts`에 "어댑터 계약"(AC-09의 항목 전부)을 쓰고 두 구현에 돌린다(2장 결정 1). 이어서 `packages/core/src/fs/memory.ts`, `packages/core/src/node/fs.ts`, `packages/core/src/node/index.ts`를 구현한다. Node 쪽은 `mkdtemp`로 만든 폴더를 쓰고 끝나면 그 폴더만 지운다. `node/fs.ts`는 `FileNotFoundError`를 `../fs/adapter.js`에서 가져온다(자기 클래스를 만들지 않는다).
-- [ ] 2.3 `packages/core/src/validate/json-value.ts`와 `json-value.test.ts`: FR-05와 FR-08이 든 값 종류, 안전한 정수, 공유 참조는 통과하고 순환은 닫히는 자리에서 보고(분석 A10).
-- [ ] 2.4 `packages/core/src/parse/yaml.ts`와 `yaml.test.ts`: FR-05의 읽기 옵션, `syntax`(문법, 중복 키, 키 충돌, 컬렉션 키), `yaml-feature`(앵커, 별칭, 풀리지 않는 별칭, 태그 종류별), 첫 주석의 위치, JSON Pointer → 위치 색인. 위치는 CST 토큰에서 얻는다(분석 Y11, Y15, Y16). 테스트는 사례마다 `rule`, `line`, `column`, `message`를 단언한다.
-- [ ] 2.5 `packages/core/src/parse/json.ts`와 `json.test.ts`: FR-09의 위치 순서 세 갈래를 각각 단언하고(분석 4.2절의 표가 입력 예다), 중복 키, 유효한 파일의 위치 색인을 단언한다.
-- [ ] 2.6 `packages/core/src/index.ts`가 이 단계의 공개 이름을 내보낸다.
-- [ ] 2.7 **검증**: AC-09("어댑터 계약"이 두 구현 모두에서 통과한다. 테스트 이름에 구현 이름이 보이게 한다)와 아래 둘을 돌리고, 마지막에 5장의 단계 관문을 돌린다(아래 검사가 `dist`를 건드리므로 관문이 뒤다).
+- [x] 2.1 `packages/core/src/model/types.ts`에 `Issue`, `Severity`, `Position`, `PositionIndex`를, `packages/core/src/fs/adapter.ts`에 인터페이스와 `FileNotFoundError`를 쓴다. `packages/core/src/fs/path.ts`와 `path.test.ts`(합치기, `a/../b`, 앞의 `..` 유지, `""`).
+- [x] 2.2 **테스트 먼저**: `packages/core/src/fs/adapter.test.ts`에 "어댑터 계약"(AC-09의 항목 전부)을 쓰고 두 구현에 돌린다(2장 결정 1). 이어서 `packages/core/src/fs/memory.ts`, `packages/core/src/node/fs.ts`, `packages/core/src/node/index.ts`를 구현한다. Node 쪽은 `mkdtemp`로 만든 폴더를 쓰고 끝나면 그 폴더만 지운다. `node/fs.ts`는 `FileNotFoundError`를 `../fs/adapter.js`에서 가져온다(자기 클래스를 만들지 않는다).
+- [x] 2.3 `packages/core/src/validate/json-value.ts`와 `json-value.test.ts`: FR-05와 FR-08이 든 값 종류, 안전한 정수, 공유 참조는 통과하고 순환은 닫히는 자리에서 보고(분석 A10).
+- [x] 2.4 `packages/core/src/parse/yaml.ts`와 `yaml.test.ts`: FR-05의 읽기 옵션, `syntax`(문법, 중복 키, 키 충돌, 컬렉션 키), `yaml-feature`(앵커, 별칭, 풀리지 않는 별칭, 태그 종류별), 첫 주석의 위치, JSON Pointer → 위치 색인. 위치는 CST 토큰에서 얻는다(분석 Y11, Y15, Y16). 테스트는 사례마다 `rule`, `line`, `column`, `message`를 단언한다.
+- [x] 2.5 `packages/core/src/parse/json.ts`와 `json.test.ts`: FR-09의 위치 순서 세 갈래를 각각 단언하고(분석 4.2절의 표가 입력 예다), 중복 키, 유효한 파일의 위치 색인을 단언한다.
+- [x] 2.6 `packages/core/src/index.ts`가 이 단계의 공개 이름을 내보낸다.
+- [x] 2.7 **검증**: AC-09("어댑터 계약"이 두 구현 모두에서 통과한다. 테스트 이름에 구현 이름이 보이게 한다)와 아래 둘을 돌리고, 마지막에 5장의 단계 관문을 돌린다(아래 검사가 `dist`를 건드리므로 관문이 뒤다).
   - 두 프로젝트가 공유 파일을 같은 내용으로 내보낸다(스펙 7장). 기본 프로젝트의 출력을 떼어 두고 `dist`에서 지운 뒤 둘째 프로젝트만 돌려 비교한다. 둘째 프로젝트가 그 파일을 내보내지 않으면 `cmp`가 파일 없음으로 실패한다. `exit=0`이어야 한다.
 
     ```bash
@@ -311,7 +311,7 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
     process.exit(e instanceof FileNotFoundError ? 0 : 1);"; echo "exit=$?"
     ```
 
-- [ ] 2.8 커밋한다.
+- [x] 2.8 커밋한다.
 
 ### 단계 3: 스키마 검사와 모델 읽기
 
@@ -486,7 +486,19 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - 1.9: 계획과 스펙의 검사 명령을 고치지 않고 그대로 돌렸다. 모두 `exit=0`: 단계 관문, `pnpm install --frozen-lockfile`, 생성 명령 검사, AC-11, `vitest run -t '스키마 동기화'`(10개 통과), AC-15(세 패키지 모두 `pnpm lint`가 종료 2로 실패하고 `zz-probe.test.ts(1,14): error TS2322`가 나온 뒤, 탐침을 지운 `pnpm lint`가 성공), 옛 도구의 요약 줄(`pnpm --silent`, `npm run --silent` 둘 다 `want`와 같다).
 - 계획과 달라진 점: 없다. 5장 AC 확인의 AC-12 줄은 다른 AC와 묶여 있어 체크하지 않았다(AC-12 자체는 위 1.9에서 닫혔다).
 
+### 단계 2 (2026-11-27)
+
+- 2.1: `Issue.rule`은 스펙 FR-08의 값 열여덟 개의 리터럴 합집합이다(따로 이름을 내보내지 않는다). `line`·`column`은 선택 필드다(FR-08: 위치를 못 구하면 뺀다). `PositionIndex`는 `ReadonlyMap<string, Position>`이다.
+- 2.2: 계약 묶음은 `adapter.test.ts`의 함수 하나이고 `describe('어댑터 계약: memory')`, `describe('어댑터 계약: node')`로 두 번 돈다(각 18개). Node 쪽은 `mkdtemp`로 만든 폴더 하나 아래에 사례마다 `<n>/root`를 열고 `afterAll`에서 그 폴더만 지운다. AC-09의 항목 밖에 더 단언한 것: 줄바꿈·비ASCII를 바꾸지 않고 쓰기, 덮어쓰기, `list('')`, 파일 경로의 `list`는 빈 목록, 경로 정규화, 폴더 위에 쓰기·파일을 거쳐 쓰기·폴더 `remove`는 거부되고 내용이 그대로다. Node 구현의 `list`도 `ENOENT`·`ENOTDIR`을 "폴더 없음"으로 보고 빈 목록을 돌려준다(스펙은 `readText`의 `ENOTDIR`만 적었다).
+- 2.3: `jsonValueIssues(file, value)`가 `schema` 오류 `<path 또는 "/"> must be a JSON value`를 낸다. 스펙 FR-08대로 `undefined`도 JSON 값이 아니다(분석 S5의 "없는 키로 본다"는 따르지 않았다). 배열의 빈 자리와 접근자 속성(부르지 않는다)도 JSON 값이 아니다. 검사 중에 던지는 객체(트랩이 던지는 Proxy)는 그 자리를 보고하고 계속한다.
+- 2.4: `parseYaml(file, text)` → `{ value, issues, positions, firstComment? }`. `value`와 `positions`는 `issues`가 없을 때만 채운다. 파서 오류가 있으면 `yaml-feature`와 키 검사는 하지 않는다(옛 도구와 같다). `syntax`·`yaml-feature`는 파서나 CST 토큰의 위치를 바로 넣고, 파서 위치가 없으면 1:1이다(FR-08 (1), (3)). 위치 색인에 `""`(파일 전체)는 넣지 않는다(FR-08 (3)이 1:1로 정한다). 컬렉션 맵 키의 메시지는 스펙에 없어 `Map keys must be scalars`로 정했다. 흐름 배열 안의 쌍(`[a: 1]`)은 `yaml`이 한 키짜리 맵으로 만들어 따로 다루지 않는다(시험으로 확인).
+- 2.5: `parseJson(file, text)`는 같은 모양을 돌려준다. 엔진 메시지가 원문을 따옴표로 인용하며 줄바꿈을 품을 때가 있어(`Unexpected token '}', "{⏎  "a": ⏎}⏎" is not valid JSON`) 줄바꿈을 `\n`, `\r` 글자로 바꿔 한 줄로 둔다(FR-08 "영어 한 줄"; 스펙은 YAML의 "첫 줄"만 정했다). 세 갈래의 입력: 엔진 위치 `{"formatVersion": "0.1", "nodes": {`→2:1, YAML 위치 `{⏎  "a": @x⏎}`→2:8, 둘 다 없음 `{⏎  "a": ⏎}`·빈 파일·BOM→1:1. `JSON.parse`가 성공한 뒤 YAML의 `DUPLICATE_KEY`만 `syntax`로 내고, 다른 YAML 오류가 있으면 위치 색인 없이 받아들인다(그런 입력은 찾지 못했다).
+- 2.6: 공개 이름 `FileNotFoundError`, `createMemoryFileSystem`, 타입 `FileSystemAdapter`, `FileEntry`, `Issue`, `Severity`, `Position`, `PositionIndex`. `@erdmaker/core/node`는 `createNodeFileSystem`만 낸다.
+- 2.7: 모두 `exit=0`: `cmp` 검사, `exports` 가져오기 검사, 단계 관문, `npm run validate:format`(요약 줄이 스펙 6.2의 `want`와 같다). AC-09: `vitest run -t '어댑터 계약'`에서 36개 통과(구현마다 18개). 새 테스트는 구현을 하나씩 일부러 깨뜨려 실패하는 것을 봤다(경로, 어댑터, JSON 값, YAML, JSON 각각).
+- 검사 명령: 고치지 않았다. 다만 `cmp` 검사의 `mktemp -d`는 `TMPDIR`이 없으면 `/tmp`에 폴더를 남긴다. 처음 실행이 남긴 폴더는 파일 둘과 폴더를 경로로 지웠고, 이후에는 `TMPDIR`을 세션 작업 폴더로 두고 같은 명령을 돌렸다(조건은 같다).
+- 계획과 달라진 점: (1) 모듈 표에 없는 `parse/pointer.ts`(JSON Pointer 토큰 이스케이프)를 더했다. `parse`와 `validate/json-value.ts`가 함께 쓰고, `parse`가 `validate`를 가져오면 의존 방향이 거꾸로 되기 때문이다. (2) `parse/yaml.ts`가 `parse/json.ts`를 위해 `readYamlDocument`, `yamlErrorIssues`, `positionIndex`, 타입 `ParsedText`를 내보낸다(코어 안에서만 쓴다). (3) `json-value.test.ts`의 `9007199254740993`은 `no-loss-of-precision` 때문에 `Number('9007199254740993')`로 적었다(값은 YAML이 읽은 것과 같은 `2 ** 53`).
+
 ---
 
-마지막 수정: 2026-11-27 (단계 0, 1 구현)
-상태: 진행 중 (단계 1/6 완료)
+마지막 수정: 2026-11-27 (단계 2 구현)
+상태: 진행 중 (단계 2/6 완료)
