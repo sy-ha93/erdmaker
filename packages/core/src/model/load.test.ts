@@ -9,7 +9,8 @@ import {
 import { validateModel } from '../validate/index.js';
 import { finishIssues } from '../validate/issues.js';
 import type { Issue } from './types.js';
-import { ABSOLUTE_MESSAGE, COMMENT_MESSAGE, loadModel } from './load.js';
+import { ABSOLUTE_MESSAGE } from '../validate/manifest.js';
+import { COMMENT_MESSAGE, loadModel } from './load.js';
 
 const PARTY = 'subject-areas/party.yaml';
 
@@ -498,7 +499,7 @@ describe('what loadModel reads', () => {
     },
   );
 
-  test('an absolute dictionary folder is an error on its entry and is not read', async () => {
+  test('an absolute dictionary folder is an error on its entry, reported once, and is not read', async () => {
     const files = replaceOnce(
       exampleFiles(),
       'model.yaml',
@@ -514,7 +515,7 @@ describe('what loadModel reads', () => {
         return memory.list(dir);
       },
     };
-    const { model, issues } = await loadModel(fs, '');
+    const { model, issues, positions } = await loadModel(fs, '');
     const entry = (i: number, line: number): Issue => ({
       rule: 'schema',
       severity: 'error',
@@ -524,7 +525,10 @@ describe('what loadModel reads', () => {
       column: 5,
       message: ABSOLUTE_MESSAGE,
     });
-    expect(issues).toEqual([entry(0, 6), entry(2, 8)]);
+    // The loader leaves the error to `validateModel`, so the two give it once.
+    expect(issues).toEqual([]);
+    expect(validateModel(model, positions)).toEqual([entry(0, 6), entry(2, 8)]);
+    expect((await check(files)).issues).toEqual([entry(0, 6), entry(2, 8)]);
     expect(model.manifest?.data.dictionaries).toEqual([
       '/abs/dict',
       'dictionary',

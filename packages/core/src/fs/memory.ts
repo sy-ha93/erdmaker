@@ -5,15 +5,24 @@ import {
 } from './adapter.js';
 import { normalizePath } from './path.js';
 
+/** No file's path holds a NUL character, on disk or here. */
+function nulError(path: string): TypeError {
+  return new TypeError(`A path cannot hold a NUL character: ${path}`);
+}
+
 /**
  * An adapter over an in-memory map of `path → text`. Folders exist only as
- * prefixes of file paths. Paths may start with `..`.
+ * prefixes of file paths. Paths may start with `..`. As on disk, no file has
+ * a NUL character in its path: such a path is read, listed and removed as a
+ * missing one, and writing it, or passing it in `files`, fails. Paths are not
+ * limited in length.
  */
 export function createMemoryFileSystem(
   files: Readonly<Record<string, string>> = {},
 ): FileSystemAdapter {
   const store = new Map<string, string>();
   for (const [path, text] of Object.entries(files)) {
+    if (path.includes('\0')) throw nulError(path);
     store.set(normalizePath(path), text);
   }
 
@@ -44,6 +53,7 @@ export function createMemoryFileSystem(
     },
 
     async writeText(path, text) {
+      if (path.includes('\0')) throw nulError(path);
       const key = normalizePath(path);
       if (key === '' || (!store.has(key) && isDirectory(key))) {
         throw new Error(`Is a directory: ${path}`);

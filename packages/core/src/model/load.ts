@@ -3,11 +3,8 @@ import { joinPath } from '../fs/path.js';
 import { parseJson } from '../parse/json.js';
 import { parseYaml } from '../parse/yaml.js';
 import type { SchemaName } from '../schema/ajv.js';
-import {
-  type FilePositions,
-  finishIssues,
-  placeIssue,
-} from '../validate/issues.js';
+import { type FilePositions, finishIssues } from '../validate/issues.js';
+import { isAbsoluteEntry } from '../validate/manifest.js';
 import { itemIssues } from '../validate/schema.js';
 import type {
   DictionaryData,
@@ -26,17 +23,13 @@ import type {
 export const COMMENT_MESSAGE =
   'YAML comments are not kept when erdmaker rewrites this file';
 
-export const ABSOLUTE_MESSAGE = 'dictionaries entries must be relative paths';
-
-/** A path from the root of a file system, POSIX or Windows. */
-const ABSOLUTE = /^(?:[/\\]|[A-Za-z]:[/\\])/;
-
 export interface LoadResult {
   model: Model;
   /**
-   * Errors of the files left out of the model, an error per absolute
-   * `dictionaries` entry (not read; `model.yaml` stays in the model), and a
-   * `comment` warning per file in the model that has comments. Sorted.
+   * Errors of the files left out of the model and a `comment` warning per
+   * file in the model that has comments. Sorted. An absolute `dictionaries`
+   * entry is not read but `model.yaml` stays in the model, so its error comes
+   * from `validateModel`, not from here.
    */
   issues: Issue[];
   /** Each model file's position index, by file. */
@@ -85,7 +78,7 @@ async function filesUnder(
  * `subtypes/` and `subject-areas/`, the JSON files under `layouts/`, and the
  * YAML files of each dictionary folder `model.yaml` names (`dictionary` when
  * it names none or cannot be read), each file once in the order first found;
- * an absolute folder is an error and is not read. A file with syntax, YAML
+ * an absolute folder is not read (`validateModel` reports it). A file with syntax, YAML
  * feature or schema errors is left out and its errors are returned; the other
  * files are still read. The adapter's failures, a missing `model.yaml`
  * included, reject.
@@ -151,22 +144,8 @@ export async function loadModel(
   // folders that are the same or nest give one item and one warning per file.
   const dictionaryFiles = new Set<string>();
   const folders = manifest?.data.dictionaries ?? ['dictionary'];
-  for (const [i, folder] of folders.entries()) {
-    if (ABSOLUTE.test(folder)) {
-      issues.push(
-        placeIssue(
-          {
-            rule: 'schema',
-            severity: 'error',
-            file: joinPath(dir, 'model.yaml'),
-            path: `/dictionaries/${i}`,
-            message: ABSOLUTE_MESSAGE,
-          },
-          positions,
-        ),
-      );
-      continue;
-    }
+  for (const folder of folders) {
+    if (isAbsoluteEntry(folder)) continue;
     for (const file of await filesUnder(fs, joinPath(dir, folder), '.yaml')) {
       dictionaryFiles.add(file);
     }

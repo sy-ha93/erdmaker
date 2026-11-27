@@ -2,6 +2,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -10,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { loadModel } from '../model/load.js';
-import { exampleFiles, type Files } from '../testing/example.js';
+import { exampleFiles, type Files, replaceOnce } from '../testing/example.js';
 import { createNodeFileSystem } from './fs.js';
 
 const ENTITY = (id: string) => `id: ${id}\nname: ${id}\nattributes: []\n`;
@@ -136,6 +137,42 @@ describe('node adapter: symbolic links', { timeout: 5_000 }, () => {
     expect(await createNodeFileSystem(root).list('../shared-1')).toEqual([]);
   });
 
+  test('a model opened through a link to its folder: each file once', async () => {
+    const root = await folder({}, { 'entities/up': '..' });
+    const alias = `${root}-alias`;
+    await symlink(root, alias);
+    expect(await entityFiles(alias)).toEqual(EXAMPLE_ENTITIES);
+    // A link by the model folder's real path is not followed either.
+    await symlink(await realpath(root), join(root, 'entities', 'top'));
+    expect(await entityFiles(alias)).toEqual(EXAMPLE_ENTITIES);
+    const names = (await createNodeFileSystem(alias).list('entities')).map(
+      (entry) => entry.name,
+    );
+    expect(names).not.toContain('up');
+    expect(names).not.toContain('top');
+  });
+
+  test('a link to a folder whose name starts like an outer folder is followed', async () => {
+    const root = await folder(
+      { 'entit/z.yaml': ENTITY('z') },
+      { 'entities/ent': '../entit' },
+    );
+    expect(await entityFiles(root)).toEqual(
+      [...EXAMPLE_ENTITIES, 'entities/ent/z.yaml'].sort(),
+    );
+  });
+
+  test('a link whose target name is too long is left out, like a dangling one', async () => {
+    const root = await folder(
+      {},
+      {
+        'entities/long': 'n'.repeat(300),
+        'entities/long.yaml': 'n'.repeat(300),
+      },
+    );
+    expect(await entityFiles(root)).toEqual(EXAMPLE_ENTITIES);
+  });
+
   test('a link that loops on itself rejects with ELOOP', async () => {
     const root = await folder({}, { 'entities/loop': 'loop' });
     const error = await rejection(loadModel(createNodeFileSystem(root), ''));
@@ -158,6 +195,89 @@ describe('node adapter: symbolic links', { timeout: 5_000 }, () => {
       } finally {
         await chmod(join(root, 'locked'), 0o755);
       }
+    },
+  );
+});
+
+describe('node adapter: dictionary folders that cannot exist', () => {
+  test.each([
+    ['a NUL character', '"dict\\0x"'],
+    ['a name of 300 characters', 'n'.repeat(300)],
+    ['a path of 6000 characters', 'a/'.repeat(3000)],
+  ])(
+    'a folder with %s is an empty dictionary and the rest is read',
+    async (_name, entry) => {
+      const root = await folder(
+        replaceOnce(
+          exampleFiles(),
+          'model.yaml',
+          'targets:\n',
+          `dictionaries:\n  - ${entry}\ntargets:\n`,
+        ),
+      );
+      const { model, issues } = await loadModel(createNodeFileSystem(root), '');
+      expect(issues).toEqual([]);
+      expect(model.manifest?.data.dictionaries).toEqual([
+        entry === '"dict\\0x"' ? 'dict\0x' : entry,
+      ]);
+      expect(model.dictionaries).toEqual([]);
+      expect(model.entities.map((item) => item.file)).toEqual(EXAMPLE_ENTITIES);
+      expect(model.layouts).toHaveLength(2);
+    },
+  );
+});
+
+describe('node adapter: walking deep folders', () => {
+  /** `depth` nested folders `d`, each with a file and links `up -> ..` and `root -> /`. */
+  async function nested(depth: number): Promise<string> {
+    cases += 1;
+    const root = join(base, String(cases));
+    let dir = root;
+    for (let level = 0; level < depth; level += 1) {
+      dir = join(dir, 'd');
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, 'f.yaml'), 'x', 'utf8');
+      await symlink('..', join(dir, 'up'));
+      await symlink('/', join(dir, 'root'));
+    }
+    return root;
+  }
+
+  /** Lists every folder below `root` as a walk does; the best time of three and the entries seen. */
+  async function walk(root: string) {
+    let best = Infinity;
+    let entries = 0;
+    for (let run = 0; run < 3; run += 1) {
+      const fs = createNodeFileSystem(root);
+      const start = performance.now();
+      entries = 0;
+      const pending = [''];
+      for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+        for (const entry of await fs.list(dir)) {
+          entries += 1;
+          if (entry.kind === 'directory') {
+            pending.push(dir === '' ? entry.name : `${dir}/${entry.name}`);
+          }
+        }
+      }
+      best = Math.min(best, performance.now() - start);
+    }
+    return { time: best, entries };
+  }
+
+  test(
+    'with a folder link in every folder, the time grows with the entries walked',
+    { timeout: 60_000 },
+    async () => {
+      // 100 and 400 levels: about 4.8 times as long now; the time grew as the
+      // cube of the depth before (85 times), since each level looked again
+      // at every folder above it.
+      const small = await walk(await nested(100));
+      const large = await walk(await nested(400));
+      expect(small.entries).toBe(200);
+      expect(large.entries).toBe(800);
+      expect(large.time / small.time).toBeLessThan(12);
+      expect(large.time).toBeLessThan(5_000);
     },
   );
 });

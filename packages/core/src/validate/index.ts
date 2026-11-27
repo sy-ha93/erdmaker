@@ -1,31 +1,9 @@
 import type { Issue, Model, ModelItem } from '../model/types.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { type FilePositions, finishIssues } from './issues.js';
+import { manifestIssues } from './manifest.js';
+import { field, listed } from './plain.js';
 import { itemIssues } from './schema.js';
-
-/** An own data property of `value`, without calling getters or traps that throw. */
-function field(value: unknown, key: string): unknown {
-  if (typeof value !== 'object' || value === null) return undefined;
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The entries of `list` in index order; none when it is not an array or throws. */
-function listed(list: unknown): unknown[] {
-  try {
-    if (!Array.isArray(list)) return [];
-    // Own keys, not every index, so a huge sparse array stays cheap.
-    return Object.keys(list)
-      .filter((key) => /^(?:0|[1-9]\d*)$/.test(key))
-      .map((key) => field(list, key));
-  } catch {
-    return [];
-  }
-}
 
 /**
  * Every item of the model with the schema of its file, in reading order.
@@ -60,7 +38,9 @@ export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
 
 /**
  * Checks a model without touching files: every item against its schema and
- * for values that are not JSON data. With `positions` (from `loadModel`) the
+ * for values that are not JSON data, and the manifest for absolute
+ * `dictionaries` entries (`loadModel` does not read those folders and leaves
+ * the error to this check, so loading and checking report it once). With `positions` (from `loadModel`) the
  * issues get lines and columns; without, only paths. Sorted by file, then
  * position. Does not change the model and never throws, whatever the items'
  * `data` holds or however the model itself is malformed (see `modelItems`).
@@ -72,6 +52,9 @@ export function validateModel(
   const issues: Issue[] = [];
   for (const [{ file, data }, schema] of modelItems(model)) {
     for (const issue of itemIssues(file, schema, data)) issues.push(issue);
+    if (schema === 'model') {
+      for (const issue of manifestIssues(file, data)) issues.push(issue);
+    }
   }
   return finishIssues(issues, positions);
 }

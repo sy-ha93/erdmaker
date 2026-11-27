@@ -167,6 +167,35 @@ function adapterContract(name: string, make: MakeAdapter) {
       expect(await fs.list('')).toEqual([{ name: 'model.yaml', kind: 'file' }]);
     });
 
+    // A NUL character, a name of 300 characters, a path of 6000 characters.
+    test.each([
+      ['with a NUL character', 'dict\0x'],
+      ['with a name too long for any system', 'n'.repeat(300)],
+      ['too long for any system', 'a/'.repeat(3000)],
+    ])(
+      'a path that cannot exist (%s) is missing: empty list, FileNotFoundError, nothing removed',
+      async (_name, path) => {
+        const fs = await make({ 'a.txt': '1' });
+        expect(await fs.list(path)).toEqual([]);
+        const error = await rejection(fs.readText(path));
+        expect(error).toBeInstanceOf(FileNotFoundError);
+        expect((error as FileNotFoundError).path).toBe(path);
+        expect(await rejection(fs.readText(`${path}/b.txt`))).toBeInstanceOf(
+          FileNotFoundError,
+        );
+        await expect(fs.remove(path)).resolves.toBeUndefined();
+        expect(await fs.list('')).toEqual([{ name: 'a.txt', kind: 'file' }]);
+      },
+    );
+
+    test('writing a path with a NUL character rejects and creates nothing', async () => {
+      const fs = await make({ 'a.txt': '1' });
+      expect(await rejection(fs.writeText('d\0/x.txt', 'x'))).toBeInstanceOf(
+        Error,
+      );
+      expect(await fs.list('')).toEqual([{ name: 'a.txt', kind: 'file' }]);
+    });
+
     test('paths are normalized (a/../b, ./, doubled slashes)', async () => {
       const fs = await make({ 'b/c.txt': '1' });
       expect(await fs.readText('a/../b/c.txt')).toBe('1');
@@ -176,6 +205,10 @@ function adapterContract(name: string, make: MakeAdapter) {
 }
 
 adapterContract('memory', async (files) => createMemoryFileSystem(files));
+
+test('the memory adapter is not given a file whose path has a NUL character', () => {
+  expect(() => createMemoryFileSystem({ 'a\0b.txt': '1' })).toThrow(TypeError);
+});
 
 let nodeTemp = '';
 let nodeCases = 0;

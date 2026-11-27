@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { loadModel } from '../model/load.js';
 import type { EntityData, Issue, Model } from '../model/types.js';
-import { exampleFileSystem } from '../testing/example.js';
+import {
+  exampleFileSystem,
+  exampleFiles,
+  replaceOnce,
+} from '../testing/example.js';
 import { validateModel } from './index.js';
+import { ABSOLUTE_MESSAGE } from './manifest.js';
 
 const emptyModel = (): Model => ({
   dir: '',
@@ -164,6 +169,35 @@ describe('validateModel: schema and JSON values', () => {
     expect(validateModel(null as unknown as Model)).toEqual([]);
   });
 
+  test('getters that would return items are not called: their lists and items count as missing', () => {
+    let calls = 0;
+    const getter = <T>(value: T) => ({
+      enumerable: true,
+      get() {
+        calls += 1;
+        return value;
+      },
+    });
+    const bad = entity('bad.yaml', { id: 1 });
+    const model = Object.defineProperties(
+      {
+        ...emptyModel(),
+        entities: [
+          Object.defineProperty({ file: 'a.yaml' }, 'data', getter(bad.data)),
+          Object.defineProperty({ data: bad.data }, 'file', getter('b.yaml')),
+        ],
+        relationships: Object.defineProperty([], '0', getter(bad)),
+      },
+      { layouts: getter([bad]), dictionaries: getter([bad]) },
+    ) as unknown as Model;
+    expect(validateModel(model)).toEqual([
+      // `data` behind a getter is `undefined`; an item whose `file` is behind one is skipped.
+      schemaIssue('a.yaml', '', '/ must be a JSON value'),
+      schemaIssue('a.yaml', '', '/ must be object'),
+    ]);
+    expect(calls).toBe(0);
+  });
+
   test('data nested 100000 levels deep is checked without throwing', () => {
     const model: Model = {
       ...emptyModel(),
@@ -268,4 +302,75 @@ describe('validateModel: schema and JSON values', () => {
       }
     },
   );
+});
+
+describe('validateModel: absolute dictionaries entries', () => {
+  const manifest = (dictionaries: unknown) => ({
+    ...emptyModel(),
+    manifest: {
+      file: 'm/model.yaml',
+      data: { formatVersion: '0.1', id: 'm', name: 'M', dictionaries } as never,
+    },
+  });
+
+  test('a model made in memory: an error per absolute entry, without a position', () => {
+    const entries: unknown[] = ['/abs', 'dictionary', 'C:\\dict', 'c:/d'];
+    entries[5] = '\\share';
+    expect(validateModel(manifest(entries))).toEqual([
+      // The hole at 4 is not JSON data; the entries keep their own indexes.
+      schemaIssue(
+        'm/model.yaml',
+        '/dictionaries/4',
+        '/dictionaries/4 must be a JSON value',
+      ),
+      schemaIssue('m/model.yaml', '/dictionaries/0', ABSOLUTE_MESSAGE),
+      schemaIssue('m/model.yaml', '/dictionaries/2', ABSOLUTE_MESSAGE),
+      schemaIssue('m/model.yaml', '/dictionaries/3', ABSOLUTE_MESSAGE),
+      schemaIssue('m/model.yaml', '/dictionaries/5', ABSOLUTE_MESSAGE),
+    ]);
+    expect(
+      validateModel(manifest(['dictionary', '../shared', 'a:b', '.\\x'])),
+    ).toEqual([]);
+  });
+
+  test('entries that are not strings or are behind a getter are not read as paths', () => {
+    let calls = 0;
+    const behind = Object.defineProperty(
+      { formatVersion: '0.1' },
+      'dictionaries',
+      {
+        enumerable: true,
+        get() {
+          calls += 1;
+          return ['/abs'];
+        },
+      },
+    );
+    const messages = (model: Model) =>
+      validateModel(model).map((issue) => issue.message);
+    expect(messages(manifest([1, ['/abs']]))).not.toContain(ABSOLUTE_MESSAGE);
+    expect(
+      messages({
+        ...emptyModel(),
+        manifest: { file: 'model.yaml', data: behind as never },
+      }),
+    ).not.toContain(ABSOLUTE_MESSAGE);
+    expect(calls).toBe(0);
+  });
+
+  test('with positions from loadModel, the error gets the position of the entry', async () => {
+    const files = replaceOnce(
+      exampleFiles(),
+      'model.yaml',
+      'targets:\n',
+      'dictionaries:\n  - /abs/dict\ntargets:\n',
+    );
+    const { model, positions } = await loadModel(exampleFileSystem(files), '');
+    expect(validateModel(model, positions)).toEqual([
+      schemaIssue('model.yaml', '/dictionaries/0', ABSOLUTE_MESSAGE, {
+        line: 6,
+        column: 5,
+      }),
+    ]);
+  });
 });
