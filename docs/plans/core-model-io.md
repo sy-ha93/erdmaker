@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-model-io.md](../analysis/core-model-io.md)
 **설계 문서**: 없음 (공개 API는 스펙이, 파일 배치는 분석 3.2절이 정한다. 모듈 나눔은 이 계획 2장에 있다)
 **브랜치**: `feature/core-model-io`
-**상태**: 진행 중 (단계 6A 완료, 6.6 관문 대기)
+**상태**: 구현 완료 (단계 6B 커밋. push와 PR의 `gh pr checks`는 리드)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에 고쳐졌다(분석 5장의 S1~S8, S11은 스펙 본문에 이미 반영됐다). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록 A의 줄 번호로 스펙을 찾아 읽는다.
 
@@ -358,7 +358,7 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 ### 단계 6: 프로젝트, CLI, 대조, 옛 도구 제거
 
 **목표**: `erdmaker validate <dir>`가 되고, 코어가 Node 없이 도는 것과 옛 도구와 결과가 같은 것이 테스트로 확인된 뒤, 옛 도구가 없어진다.
-**위험**: 높음 (삭제와 `validate:format` 교체) · **상태**: 진행 중 (6A 완료, 6.6 관문 대기) · **수용 기준**: 6A는 AC-08, AC-10, AC-13, AC-16 / 6B는 AC-14, AC-17, AC-18, AC-19 · **요구사항**: FR-01(`bin`), FR-10, FR-11, FR-13, FR-14
+**위험**: 높음 (삭제와 `validate:format` 교체) · **상태**: 완료 · **수용 기준**: 6A는 AC-08, AC-10, AC-13, AC-16 / 6B는 AC-14, AC-17, AC-18, AC-19 · **요구사항**: FR-01(`bin`), FR-10, FR-11, FR-13, FR-14
 
 **커밋 경계**: 6.1~6.5가 커밋 6A, 6.7~6.12가 커밋 6B다. 6A에는 옛 도구, 루트의 `ajv`·`yaml`, `eslint.config.js`의 `tools/**` 블록, 옛 `validate:format`이 그대로 있고 대조 테스트가 그것을 쓴다. 6B는 그것들과 대조 테스트를 한 커밋에서 함께 지운다(하나만 지우면 CI의 `validate:format`이나 `--frozen-lockfile`이 깨진다. 분석 C2).
 
@@ -371,21 +371,21 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
 - [x] 6.3 `packages/cli/src/bundle.test.ts`에 "브라우저 번들"(AC-10, 스펙 6.1의 세 단계)을 쓴다. 같은 파일에서 차단 플러그인이 일하는 것도 단언한다: `node:fs`를 가져오는 한 줄짜리 진입점(임시 폴더에 쓴다)의 빌드가 거부된다. 테스트별 타임아웃을 준다.
 - [x] 6.4 `packages/core/src/parity.test.ts`에 대조 테스트(FR-13의 1단계)를 쓴다. 대상은 예제, `testing/cases.ts`에서 대조 표시가 켜진 사례 전부, 모델 밖 사전을 가진 프로젝트 모양 하나, YAML 문법 오류 사례 하나(따라 나오는 오류까지 같아야 한다. 분석 4.9절)다. 비교하는 것은 FR-13이 적은 둘(종료 코드, 줄의 다중집합)이다. 묶음 단언: 부록 A의 1~37번마다 대조한 사례가 하나 이상 있다, 대조에서 뺀 사례는 모두 이유가 적혀 있다. 사례마다 테스트를 나누고 타임아웃을 준다(옛 도구 한 번에 약 0.2초).
 - [x] 6.5 **검증**: 5장의 단계 관문. `node packages/cli/dist/bin.js validate format/v0/examples/shop`의 stdout이 옛 `pnpm --silent validate:format`의 것과 같다. 커밋한다(6A). 해시를 7장에 적는다.
-- [ ] 6.6 **관문 (여기서 멈춘다)**: 리드에게 6A의 해시를 넘긴다. 리드는 사용자 승인 뒤 6A를 머리로 push하고 PR을 열어 CI를 돌린다. AC-16의 판정: `gh run list --commit <6A 해시> --json conclusion --jq '.[].conclusion'`의 출력이 `success` 한 줄 이상이고 다른 값이 없다. 출력이 비었거나(실행이 없다) 다른 값이 있으면 닫지 않는다. 실패면 6A를 고친 새 커밋으로 다시 판정받고, 그 해시를 쓴다. 닫히기 전에는 6.7로 가지 않는다.
+- [x] 6.6 **관문 (여기서 멈춘다)**: 리드에게 6A의 해시를 넘긴다. 리드는 사용자 승인 뒤 6A를 머리로 push하고 PR을 열어 CI를 돌린다. AC-16의 판정: `gh run list --commit <6A 해시> --json conclusion --jq '.[].conclusion'`의 출력이 `success` 한 줄 이상이고 다른 값이 없다. 출력이 비었거나(실행이 없다) 다른 값이 있으면 닫지 않는다. 실패면 6A를 고친 새 커밋으로 다시 판정받고, 그 해시를 쓴다. 닫히기 전에는 6.7로 가지 않는다.
 
 #### 6B 옛 도구 제거와 문서
 
-- [ ] 6.7 한꺼번에 바꾼다: `git rm tools/validate-format.mjs packages/core/src/parity.test.ts`, 루트 `package.json`의 `validate:format`을 스펙 4장의 값으로 교체하고 devDependencies에서 `ajv`·`yaml` 제거, `pnpm install`로 `pnpm-lock.yaml` 갱신, `eslint.config.js`의 `tools/**` 블록 제거. `testing/cases.ts`의 대조 표시는 지워도 되고 남겨도 된다(기대 `message`가 옛 문구를 계속 고정한다).
-- [ ] 6.8 문서를 고친다(FR-14): `CLAUDE.md`의 "지금 상태"와 "명령" 절(`validate:format`과 `pnpm test`의 일부, `pnpm lint`의 타입 검사가 `pnpm build` 뒤에 된다는 것, `pnpm lint`에 테스트 타입 검사가 들어간 것), `docs/format-v0.md`와 `docs/planning.md`의 옛 도구 문장, `docs/stage1-backlog.md`의 세 줄(2장 결정 9: 92행의 파일 목록에서 옛 경로를 `packages/core`로 바꾸고, 103행과 108행은 경로 대신 "옛 검사 도구"로 적는다. 뜻은 바꾸지 않는다). `CLAUDE.md`는 `pnpm exec prettier --write CLAUDE.md`로 서식을 맞춘다(`docs/`는 서식 대상이 아니다).
-- [ ] 6.9 남은 참조가 없는지 본다. 종료 코드 1(일치 없음, 오류 없음)이어야 통과다.
+- [x] 6.7 한꺼번에 바꾼다: `git rm tools/validate-format.mjs packages/core/src/parity.test.ts`, 루트 `package.json`의 `validate:format`을 스펙 4장의 값으로 교체하고 devDependencies에서 `ajv`·`yaml` 제거, `pnpm install`로 `pnpm-lock.yaml` 갱신, `eslint.config.js`의 `tools/**` 블록 제거. `testing/cases.ts`의 대조 표시는 지워도 되고 남겨도 된다(기대 `message`가 옛 문구를 계속 고정한다).
+- [x] 6.8 문서를 고친다(FR-14): `CLAUDE.md`의 "지금 상태"와 "명령" 절(`validate:format`과 `pnpm test`의 일부, `pnpm lint`의 타입 검사가 `pnpm build` 뒤에 된다는 것, `pnpm lint`에 테스트 타입 검사가 들어간 것), `docs/format-v0.md`와 `docs/planning.md`의 옛 도구 문장, `docs/stage1-backlog.md`의 세 줄(2장 결정 9: 92행의 파일 목록에서 옛 경로를 `packages/core`로 바꾸고, 103행과 108행은 경로 대신 "옛 검사 도구"로 적는다. 뜻은 바꾸지 않는다). `CLAUDE.md`는 `pnpm exec prettier --write CLAUDE.md`로 서식을 맞춘다(`docs/`는 서식 대상이 아니다).
+- [x] 6.9 남은 참조가 없는지 본다. 종료 코드 1(일치 없음, 오류 없음)이어야 통과다.
 
   ```bash
   grep -n 'validate-format' package.json eslint.config.js CLAUDE.md \
     docs/format-v0.md docs/planning.md docs/stage1-backlog.md; test $? -eq 1; echo "exit=$?"
   ```
 
-- [ ] 6.10 **검증**: `pnpm install --frozen-lockfile`, 5장의 단계 관문(이제 `validate:format`은 새 CLI다), AC-14(스펙 6.2의 스크립트 전체), AC-17(스펙 6.4의 스크립트와 `docs/specs/repo-scaffold.md` 6.4의 라이선스 스크립트), AC-19의 로컬 절반(`pnpm build && pnpm test && pnpm lint`).
-- [ ] 6.11 **AC-18**: "작업 후" 목록을 0.1과 같은 두 `find`로 만들어 기준선과 비교한다. `exit=0`이고 출력이 없어야 한다. 아니면 커밋하지 않고 멈춰 알린다.
+- [x] 6.10 **검증**: `pnpm install --frozen-lockfile`, 5장의 단계 관문(이제 `validate:format`은 새 CLI다), AC-14(스펙 6.2의 스크립트 전체), AC-17(스펙 6.4의 스크립트와 `docs/specs/repo-scaffold.md` 6.4의 라이선스 스크립트), AC-19의 로컬 절반(`pnpm build && pnpm test && pnpm lint`).
+- [x] 6.11 **AC-18**: "작업 후" 목록을 0.1과 같은 두 `find`로 만들어 기준선과 비교한다. `exit=0`이고 출력이 없어야 한다. 아니면 커밋하지 않고 멈춰 알린다.
 
   ```bash
   (set -euo pipefail
@@ -395,7 +395,7 @@ AC-16과 AC-19의 뒷부분(`gh pr checks`)은 push가 있어야 닫힌다. push
    } | diff docs/handoff/core-model-io-spikes-before.sha256 -); echo "exit=$?"
   ```
 
-- [ ] 6.12 커밋한다(6B). 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다. 리드에게 넘긴다: 6B의 push, PR 설명에 6A의 해시 적기(AC-16), `gh pr checks`(AC-19의 나머지)는 사용자 승인 뒤 리드가 한다.
+- [x] 6.12 커밋한다(6B). 커밋 뒤 `git status --porcelain --untracked-files=no`의 출력이 비어야 한다. 리드에게 넘긴다: 6B의 push, PR 설명에 6A의 해시 적기(AC-16), `gh pr checks`(AC-19의 나머지)는 사용자 승인 뒤 리드가 한다.
 
 ## 5. 품질 관문
 
@@ -425,11 +425,11 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
   process.exit(JSON.stringify(c.lib) === '[\"es2022\"]' && JSON.stringify(c.types) === '[]' ? 0 : 1)"; echo "exit=$?"
   ```
 
-- [ ] AC-12, AC-09, AC-06, AC-05, AC-07, AC-01~04, AC-08, AC-13, AC-10: 스펙 6장이 이름 붙인 테스트가 `pnpm test`에 있고 통과한다. 테스트의 `describe`나 `test` 이름에 스펙의 이름("예제 왕복" 등)을 그대로 쓴다. 닫을 때 `pnpm exec vitest run -t '<이름>'`의 출력에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
+- [x] AC-12, AC-09, AC-06, AC-05, AC-07, AC-01~04, AC-08, AC-13, AC-10: 스펙 6장이 이름 붙인 테스트가 `pnpm test`에 있고 통과한다. 테스트의 `describe`나 `test` 이름에 스펙의 이름("예제 왕복" 등)을 그대로 쓴다. 닫을 때 `pnpm exec vitest run -t '<이름>'`의 출력에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
 - [x] AC-15 (단계 1): 스펙 6.3.
-- [ ] AC-16 (6A 뒤, 리드): 6.6의 판정.
-- [ ] AC-14, AC-17 (6B): 스펙 6.2, 6.4.
-- [ ] AC-18 (6B): 6.11.
+- [x] AC-16 (6A 뒤, 리드): 6.6의 판정.
+- [x] AC-14, AC-17 (6B): 스펙 6.2, 6.4.
+- [x] AC-18 (6B): 6.11.
 - [ ] AC-19 (6B와 PR 뒤): 로컬 세 명령, 리드의 `gh pr checks`.
 
 스펙 6장의 스크립트는 구현 전에 쓴 것이다. 틀리면 같은 조건을 검사하도록 고치고 7장에 적는다. 조건을 낮추지 않는다.
@@ -562,14 +562,25 @@ out=$(find packages/core/dist packages/cli/dist packages/mcp/dist \
 - 6.3: `bundle.test.ts`의 `describe('브라우저 번들')` 4개. Vite `build`(설정 파일 없음, `publicDir: false`, `write: false`, 축소 없음, IIFE `erdcore`)로 `packages/core/dist/index.js`를 묶고, `console`만 넣은 `vm` 컨텍스트에서 `process`·`require`·`Buffer`가 `undefined`인 것, 예제 29개를 메모리 어댑터에 넣은 `validateProject`의 결과 전체(오류 0개, 엔터티 10개를 포함한 개수)를 컨텍스트 안에서 `JSON.stringify`해 비교한다. 차단 플러그인은 `node:`로 시작하거나 `builtinModules`에 있는(첫 경로 조각 기준) 모듈을 거부한다. 한 줄짜리 진입점 셋(`node:fs`, `path`, `fs/promises`)의 빌드가 `Node built-in imported: <모듈>`로 거부된다. 플러그인을 빼면 그 셋이 실패하고, `dist/index.js`에 `import 'node:fs'`를 붙이면 첫 테스트가 실패하는 것을 봤다. `vite`는 루트 devDependency(8.4.0)를 쓴다. 테스트별 타임아웃 60초.
 - 6.4: `parity.test.ts`의 `describe('대조')` 71개: 사례 68개(예제, 대조 표시가 켜진 규칙 사례 64개, 모델 밖 사전 `proj/m` + `proj/dictionary`에 모르는 단어, YAML 중복 키, 닫히지 않은 흐름 배열)와 묶음 단언 셋(부록 A 1~37번마다 대조한 사례, 뺀 사례 7개 모두 `FR-13: `으로 시작하는 이유, 코드 프레임 줄 고르기). 사례마다 임시 폴더에 파일을 쓰고 옛 도구와 새 검증기(`createNodeFileSystem(모델 폴더)` + `validateProject(fs, '')`, CLI와 같다)를 같은 폴더에 돌린다. 옛 출력은 파일 부분이 `.yaml`·`.json`으로 끝나는 줄만 쓴다. 새 쪽은 오류만, `P01`·`P02` 빼고, 메시지 첫 줄. 종료 코드와 정렬한 줄 목록을 비교한다. 옛 도구가 죽지 않았는지(종료 0이거나 stderr가 `<n> error(s)`로 끝남)와, 마지막 세 사례는 이름대로의 줄(`../dictionary/standard.yaml: …`, `Map keys must be unique at line 3, column 1:`, `Flow sequence … at line 2, column 1:`)이 옛 출력에 있는지도 단언한다. `test.concurrent`로 돌려 파일 하나가 약 6초다. 주제영역 `unknown entity` 문구를 바꾸면 5개가 실패한다.
 - 6.5: 5장의 단계 관문 `exit=0`(테스트 33개 파일 596개, 단계 5 끝의 487개에서 109개 늘었다. `pnpm test` 59.1초). `npm run --silent validate:format`의 요약 줄이 `want`와 같다. `node packages/cli/dist/bin.js validate format/v0/examples/shop`과 `pnpm --silent validate:format`(옛 도구)의 stdout이 같고 둘 다 종료 0. `node packages/cli/dist/bin.js validate docs`는 종료 2. `pnpm install --frozen-lockfile` 성공(`bin`은 lockfile을 바꾸지 않는다). `vitest run -t`: `모델 찾기` 20개, `validate` 41개(이름에 `validate`가 든 다른 테스트 포함), `브라우저 번들` 4개, `대조` 71개 통과.
-- 6A 커밋의 해시: 커밋은 자기 해시를 담을 수 없어 리드에게 넘기고, 6B 커밋에서 이 줄에 적는다(6.6의 AC-16 판정도 그때 적는다).
+- 6A 커밋의 해시: 리뷰 대응 두 번 뒤의 6A 머리 `cf8da584404dff90936897d0c22a48f0e1c30589`(PR #5). 6.6의 AC-16 판정은 6B 기록에 있다.
 - 검사 명령: 고치지 않았다.
 - 스펙이 정하지 않아 정한 것: (1) **`P01` 메시지**: `duplicate model id "<id>" (also in <다른 model.yaml>)`. 같은 `id`가 셋 이상이면 첫 모델은 둘째를, 나머지는 첫 모델을 가리킨다(메시지 길이가 모델 수에 선형이다. R01과 같은 모양). (2) **`P02` 메시지**: `model.yaml inside another model (<바깥 model.yaml>)`, 위치 1:1. (3) **`ModelCounts`**: 모델에 들어간 항목 수(`entities`, `relationships`, `subtypes`, `subjectAreas`, `layouts`)와 사전 파일들의 `words`·`terms`·`domains` 항목 수의 합. 옛 도구는 겹치지 않은 `id` 수를 셌지만, OK 줄이 나오는 모델은 R01이 없어 두 값이 같다. (4) **CLI 사용법 오류의 문구**: `Usage: erdmaker validate <dir>`, `Unknown command: <명령>` 다음 줄에 사용법, `Not a folder: <dir>`, `No model found in <dir>`. 인자가 셋 이상이어도 사용법 오류(2)다. (5) **CLI 출력 순서**: 프로젝트 오류 먼저, 그다음 모델 순서대로. 여러 모델이 함께 쓰는 사전의 오류는 모델마다 한 줄씩 나오고 그만큼 센다. (6) 어댑터가 던진 예외(`EACCES` 등)는 `main`이 잡지 않는다. Node가 스택을 찍고 종료 1로 끝난다.
 - 계획과 달라진 점: (1) 6.2의 프로젝트 사례는 계획의 "모델 셋"과 "`id`가 같은 둘 중 앞의 것의 OK 줄"이 서로 맞지 않는다(그 둘은 모두 `P01`을 받는다. AC-08, FR-11). 스펙을 따라 `id`가 같은 둘, 안쪽 `model.yaml`을 가진 하나, 오류 없는 넷째 모델로 만들고 넷째의 OK 줄만 있음을 단언했다. (2) `findModels`의 시간 테스트(`find.perf.test.ts`)를 더했다(계획에 없다. 사용자 데이터 크기를 걷는 코드라서). (3) 6.1은 테스트를 먼저 썼지만 구현 전에 돌려 실패하는 것을 보지 않았다(구현을 바로 이어 썼다). 대신 위의 변이로 테스트가 일하는 것을 확인했다. 6.2의 CLI 테스트도 같다.
 - **6A 리뷰 대응 (2026-11-28)**: 6A 코드 리뷰의 지적 일곱을 한 커밋에서 고쳤다. (1) **읽기 실패**: 위 "스펙이 정하지 않아 정한 것" (6)을 바꾼다. `main`이 `validateProject`의 예외를 잡아 stderr에 `Cannot read <dir>: <메시지>` 한 줄을 찍고 stdout은 비운 채 종료 2를 돌려준다. `<메시지>`는 `Error`의 `message`, 아니면 `String(값)`, 그것도 던지면 `unknown error`(`describeError`). `bin.ts`는 `main` 밖으로 나온 예외를 `Unexpected error: <메시지>` 한 줄과 종료 2로 바꾼다. 종료 코드의 뜻은 0 오류 없음, 1 모델에 오류, 2 검사를 하지 못함(사용법, 폴더 아님, 모델 없음, 읽기 실패)이다. 모델 찾기는 읽지 못하는 폴더에서 건너뛰지 않고 멈춘다(스펙 FR-11, 8장). `main`에 셋째 인자 `open`(`dir` → 어댑터, 기본 `createNodeFileSystem`)을 더해 단위 테스트가 가짜 어댑터를 넣는다. (2) **한 기록은 한 줄**: `main`이 찍는 줄은 모두 `oneLine`을 거친다. C0 제어 문자, U+007F, U+0085, U+2028, U+2029를 `\n`, `\r`, `\t`, 나머지는 `\u{<16진수>}`로 바꾸고 역슬래시는 그대로 둔다. 줄 전체에 걸므로 경로, `<dir>`, 메시지가 모두 덮인다. 예제 출력과 대조 테스트는 바뀌지 않았다. (3) **모르는 명령**: `Unknown command: <명령>. Usage: erdmaker validate <dir>` 한 줄. 위 (4)의 "다음 줄에 사용법"을 바꾼다. (4) **대조의 행 검사**: 부록 A 1~37번마다 옛 도구의 출력에 오류 줄이 하나 이상 있는 대조 사례가 있어야 한다. 사례마다 폴더 쓰기와 옛 도구 실행을 한 번만 하는 `prepare`를 사례 테스트와 행 검사가 함께 쓴다(행 검사만 `-t`로 돌려도 된다. 약 14초). 지금 모든 행이 이미 충족한다. 20번을 빼는 변이로 실패를 봤다. (5) **`modelIdIssues` 시간 테스트**: 5만/20만 개 앞에 2천/8천 개 측정을 더했다. `id`마다 앞의 목록을 훑는 변이가 테스트마다 약 2.7초에 비 14.6~16.4로 실패한다(전에는 끝나지 않았다). 고친 코드는 10번 연속 통과했다. (6) 스펙 8장에 `dist/bin.js`의 실행 권한, 번들 테스트가 검증 경로만 도는 것, 읽기 실패가 나머지 모델의 검사도 막는 것을 더했다. (7) 이 줄. 테스트: `validate.test.ts`에 사례 다섯(이름에 줄바꿈이 든 모델 폴더, 줄바꿈·탭이 든 파일 이름, `describe('validate: unreadable')`의 `chmod 000` 셋: 엔터티 파일, 모델 폴더, 프로젝트 안의 모델이 아닌 폴더. root면 건너뛰고 권한은 `finally`에서 되돌린다), 새 `main.test.ts`에 9개(가짜 어댑터가 문자열·객체·`undefined`·변환이 던지는 값·`Error`로 거부, `describeError`, `oneLine`의 보통 경로·제어 문자 전부·긴 글). 관문: `dist` 넷을 지운 뒤 `pnpm build`, `pnpm test` 두 번(34개 파일 610개, 두 번 모두 `exit=0`), `pnpm lint`, `npm run --silent validate:format` 모두 `exit=0`. `node packages/cli/dist/bin.js validate format/v0/examples/shop`과 `pnpm --silent validate:format`의 stdout이 같다.
 - **6A 재리뷰 대응 (2026-11-28)**: 6A 재리뷰의 지적 여섯을 한 커밋에서 고쳤다. **바로잡음**: 위 (5)의 "고친 코드는 10번 연속 통과했다"는 틀렸다. 재리뷰에서 그 파일만 돌리면 "model ids all alike"가 대부분 실패했다(5만/20만 개에서 비 약 8~11, 한도 8). 코드는 선형이고, 20만 개의 `Issue` 객체(모두 다른 `id`이면 20만 개의 맵 항목)를 만드는 GC 비용이 입력보다 빨리 는다. 모두 다른 `id`도 같은 크기에서 비 6.6~7.2로 한도에 가까워 같이 다뤘다. (1) **시간 테스트**: `modelIdIssues`의 두 사례에서 5만/20만 개 측정을 빼고 2천/8천 개 측정만 남겼다(비 한도는 그대로 8). 그 파일만 15번 연속 실패 0, 앞 `id`를 모두 훑는 변이는 두 사례 모두 비 14.2~18.9로 실패한다. 모델 폴더 찾기의 두 사례(5000/20000개)는 비 4.3~5.6이라 그대로 뒀다. (2) **출력이 닫힘**: `main.ts`에 `cli(args, stdio = process)`를 더하고 `bin.ts`는 `await cli(process.argv.slice(2))`뿐이다. `main`을 부르기 전에 stdout·stderr에 `error` 처리기를 단다. `EPIPE`면 더 쓰지 않고 `main`이 돌려준 코드(아직이면 2)로 끝내고, 다른 스트림 오류면 stderr가 쓸 수 있을 때 `Unexpected error: <메시지>` 한 줄을 찍고 2로 끝낸다. `main`의 둘째 인자(`output`)는 이제 필수다. (3) **`oneLine`**: C1 제어 문자(U+0080~U+009F), 양방향 제어 문자(U+202A~U+202E, U+2066~U+2069), 짝 없는 서로게이트도 `\u{<16진수>}`로 바꾼다(정규식 하나, `u` 플래그라 짝을 이룬 서로게이트는 한 글자로 건너뛴다). (4) **`Not a folder`**: `<dir>`의 `stat`이 `ENOENT`·`ENOTDIR` 말고 다른 이유로 실패하면 `Cannot read <dir>: <메시지>`(2)다. (5) **메시지 길이**: `describeError`가 코드 포인트 500개(`MAX_MESSAGE`)보다 긴 메시지를 잘라 `…`를 붙인다. 서로게이트 짝을 가르지 않는다. (6) 스펙 FR-11, AC-13, 8장을 고쳤다. 테스트: `validate.test.ts`에 셋(`chmod 000`인 `<dir>`의 부모 폴더, `chmod 000`인 모델 밖 사전 폴더, 긴 이름의 모델 400개(OK 줄 약 128KB)를 내는 프로젝트에서 첫 덩어리 뒤 stdout을 닫는 자식 프로세스), `main.test.ts`에 열 개(메시지 자르기 둘, `cli`의 가짜 스트림 여섯: 정상, `main`이 돌려주기 전·후의 `EPIPE`, 다른 stdout 오류, stderr 오류, `main` 밖으로 나온 예외, `oneLine`의 새 범위와 그 이웃·서로게이트 짝). 깨뜨려 확인한 것: stdout 처리기를 빼면 자식 프로세스 사례가, `stat`의 `EACCES`를 `Not a folder`로 돌리면 부모 폴더 사례가 실패한다. 고치기 전의 CLI는 300개 모델 프로젝트의 `| head -1`에서 `node:events`의 스택과 종료 1로 끝났다.
 
+### 단계 6B (2026-11-28)
+
+- 6.6 (AC-16): 리드가 6A 머리 `cf8da584404dff90936897d0c22a48f0e1c30589`를 PR #5로 올렸다. `gh run list --commit cf8da584404dff90936897d0c22a48f0e1c30589 --json conclusion --jq '.[].conclusion'`의 출력은 `success` 한 줄(`pull_request` 이벤트의 CI)이다. 닫았다.
+- 6.7: `git rm tools/validate-format.mjs packages/core/src/parity.test.ts`. `tools/`에 다른 파일이 없어 폴더가 없어졌다. 루트 `validate:format`은 스펙 4장의 값 `node packages/cli/dist/bin.js validate format/v0/examples/shop`. 루트 devDependencies에서 `ajv`(`^8.17.1`)와 `yaml`(`^2.6.0`)을 뺐다. `pnpm install`이 `pnpm-lock.yaml`의 루트 importer에서 두 항목만 지웠다(6줄). `core`의 `ajv` 8.20.0, `yaml` 2.9.1은 그대로다. `eslint.config.js`의 `tools/**/*.mjs` 블록을 지웠다. `testing/cases.ts`의 `parityExcluded`는 남겼다: `validate/rules.test.ts`의 "every case is excluded from parity only for a reason FR-13 lists"가 아직 이유를 고정한다. 대조 테스트가 쓰던 `caseFiles`, `RULE_CASES`, `exampleFiles`, `replaceOnce`는 모두 다른 테스트도 쓴다(죽은 코드 없음).
+- 6.8: `CLAUDE.md`의 "지금 상태"(F02까지의 `core`·`cli`)와 "명령"(`pnpm build`가 먼저인 것, `pnpm test` 약 1분과 시간 테스트가 끝에 한 파일씩 도는 것, `pnpm lint`의 테스트 포함 타입 검사, 새 `validate:format`, `generate:schemas`, `erdmaker validate <dir>`의 출력과 종료 코드 0·1·2. 2는 6A 리뷰 뒤의 FR-11대로 사용법 오류, 폴더 아님, 모델 없음, 읽기 실패, 결과 전에 출력이 닫힘, 예기치 못한 오류). `pnpm exec prettier --write CLAUDE.md`. `docs/format-v0.md`의 두 문장(검증 규칙을 검사하는 것, 예제 검사가 `pnpm build` 뒤라는 것), `docs/planning.md` 5.1절의 한 문장, `docs/stage1-backlog.md`의 세 줄(결정 9)과 F02의 상태 줄(F01과 같은 모양, PR #5).
+- 6.9: `grep` 종료 1, `exit=0`. 스펙·분석·계획·결정 기록 밖에는 `validate-format`이나 `tools/`를 가리키는 추적 파일이 없다(`git grep`).
+- 6.10: `pnpm install --frozen-lockfile` 성공. 5장의 단계 관문 `exit=0`(테스트 33개 파일 552개, `pnpm test` 57.1초. 대조 71개가 빠졌다). AC-14(스펙 6.2 전체) `exit=0`, 마지막 `validate docs`는 `No model found in docs`와 종료 2. AC-17(스펙 6.4) `exit=0`, 라이선스 스크립트 `exit=0`(루트 9개, `core`의 `ajv` MIT·`yaml` ISC, 나머지는 `@erdmaker/core` Apache-2.0). AC-19 로컬 절반 `pnpm build && pnpm test && pnpm lint` 성공. 이름 붙인 테스트(`vitest run --project unit -t`, 통과 수): 예제 왕복 2, 비정규형 입력 2, 쓰기 세부 26, 바뀐 파일만 쓰기 9, 규칙 사례 86, 문법과 스키마 21, 깨진 배치 3, 모델 찾기 16, 어댑터 계약 44, 브라우저 번들 4, 스키마 동기화 10, validate 66. 모두 1개 이상이라 5장의 AC 묶음 칸도 닫았다. AC-19는 `gh pr checks`가 남아 열어 둔다.
+- 6.11 (AC-18): 기준선(866줄)과 `diff` 출력 없음, `exit=0`.
+- 검사 명령: 고치지 않았다.
+- 계획과 달라진 점: (1) 6.8의 `CLAUDE.md` 종료 코드 설명은 계획을 쓴 뒤 6A 리뷰에서 바뀐 FR-11(종료 2의 뜻, 한 줄 이스케이프, `cli()` 감싸기의 출력 닫힘 처리)을 따랐다. (2) `docs/stage1-backlog.md`에 F02 상태 줄을 더했다(결정 9의 세 줄 밖. 리드의 지시). (3) `docs/format-v0.md` 18행의 예제 검사 문장에 "`pnpm build` 뒤에"를 더했다(옛 도구를 가리키지는 않지만 새 `validate:format`의 전제가 바뀌었다).
+
 ---
 
-마지막 수정: 2026-11-28 (단계 6A 완료)
-상태: 진행 중 (단계 6A 완료, 6.6 관문 대기)
+마지막 수정: 2026-11-28 (단계 6B 완료)
+상태: 구현 완료 (push와 `gh pr checks`는 리드)

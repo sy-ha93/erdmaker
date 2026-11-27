@@ -10,7 +10,12 @@
 
 ## 지금 상태
 
-모노레포 골격이 있다: pnpm 워크스페이스, 빈 패키지 `core`·`cli`·`mcp`·`web`, CI(`.github/workflows/ci.yml`). 기능 코드는 아직 없다. 그 밖에 있는 것은 모델 파일 형식 초안(`format/v0/`)과 검사 도구(`tools/validate-format.mjs`)다.
+모노레포 골격(pnpm 워크스페이스, 패키지 `core`·`cli`·`mcp`·`web`, CI `.github/workflows/ci.yml`)과 모델 파일 형식 초안(`format/v0/`)이 있다. F02(`core-model-io`)까지 들어왔다.
+
+- `core`: 형식 v0 모델 폴더를 메모리 모델로 읽고(`loadModel`) 다시 쓴다(`serializeModel`, `writeModel`). 스키마 검사와 파일 간 규칙(R01~R12), 프로젝트에서 모델 찾기(`findModels`, `validateProject`, P01·P02)를 한다. 파일 접근은 어댑터(`FileSystemAdapter`)로만 한다. 기본 진입점은 브라우저와 Node 양쪽에서 돌고, Node용 어댑터는 `@erdmaker/core/node`에 있다. 스키마는 `src/generated/schemas.ts`에 내장한다(생성물이다. 스키마를 고치면 `pnpm --filter @erdmaker/core generate:schemas`).
+- `cli`: `erdmaker validate <dir>` 하나(아래 "명령").
+- `mcp`, `web`: 아직 비어 있다.
+- 편집 명령 API는 아직 없다(F03).
 
 ## 바꾸지 않는 결정
 
@@ -49,15 +54,34 @@
 corepack enable pnpm     # 한 번만. package.json의 packageManager에 적힌 pnpm을 쓴다
 pnpm install
 pnpm build
-pnpm test
-pnpm lint                # ESLint와 prettier --check
+pnpm test                # pnpm build 뒤에. 약 1분 걸린다
+pnpm lint                # ESLint, prettier --check, 패키지마다 테스트 포함 타입 검사. pnpm build 뒤에
 pnpm format              # prettier --write
-pnpm validate:format     # 예제 모델(format/v0/examples/shop)을 형식 v0로 검사
+pnpm validate:format     # pnpm build 뒤에. 예제 모델(format/v0/examples/shop)을 형식 v0로 검사
 ```
 
 - 설치는 `pnpm install`로 한다. 루트에서 `npm install`을 쓰지 않는다. 워크스페이스 패키지를 연결하지 않고 `package-lock.json`을 다시 만든다.
-- `npm run validate:format`은 `pnpm install` 뒤에도 계속 된다.
+- **`pnpm build`가 먼저다.** `test`, `lint`, `validate:format`은 `packages/*/dist`를 읽는다. 빌드 없이 돌리면 `TS2307`이나 파일 없음으로 실패한다(맞는 실패다).
+- `pnpm test`가 약 1분 걸리는 것은 시간 테스트(`*.perf.test.ts`) 때문이다. 다른 테스트가 모두 끝난 뒤 한 파일씩 돈다(`vitest.config.ts`의 `perf` 프로젝트). 처리 시간을 비교하므로 다른 일과 겹치면 흔들릴 수 있다.
+- `pnpm lint`의 끝은 `pnpm -r typecheck`다. `core`·`cli`·`mcp`의 `src/**/*.test.ts`까지 `tsc --noEmit`으로 본다.
+- `validate:format`은 `node packages/cli/dist/bin.js validate format/v0/examples/shop`이다. `npm run validate:format`도 된다.
+- 스키마(`format/v0/schema/`)를 고치면 `pnpm --filter @erdmaker/core generate:schemas`로 내장 스키마를 다시 만든다. 잊으면 테스트가 실패한다.
 - CI는 같은 명령을 `install --frozen-lockfile`, `build`, `test`, `lint`, `validate:format` 순서로 돌린다.
+
+### `erdmaker validate <dir>`
+
+빌드한 뒤 `node packages/cli/dist/bin.js validate <dir>`로 부른다. `<dir>`은 모델 폴더나 프로젝트 폴더다. 프로젝트 폴더면 그 아래(깊이 3까지)의 모델을 모두 찾아 검증한다.
+
+- 오류는 stderr에 한 줄씩 `<file>:<line>:<column>: <message> [<rule>]`, 끝에 빈 줄과 `<n> error(s)`. 경고는 메시지 앞에 `warning: `이 붙고 개수에 세지 않는다.
+- 오류가 없는 모델은 stdout에 `OK: <n> entities, …` 한 줄. `<dir>`이 모델 폴더가 아니면 줄 앞에 `<모델 폴더>: `가 붙는다. 모델 `id`가 겹치거나(`P01`) 모델 안에 `model.yaml`이 또 있으면(`P02`) 오류다.
+- 찍는 줄은 모두 한 줄이다. 제어 문자, 줄 구분 문자, 양방향 제어 문자, 짝 없는 서로게이트는 `\n`, `\t`, `\u{1b}` 같은 이스케이프로 바뀐다.
+- 출력이 닫히면(`| head -1` 등) 조용히 끝난다. 스택을 찍지 않는다.
+
+| 종료 코드 | 뜻                                                                                                                                                                                                                                |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | 찾은 모델이 모두 오류 없음(경고는 상관없다)                                                                                                                                                                                       |
+| 1         | 모델에 오류가 하나 이상                                                                                                                                                                                                           |
+| 2         | 검사를 하지 못함: 사용법 오류, 모르는 명령, 폴더가 아님, 모델 없음, 읽기 실패(`Cannot read <dir>: …`). stderr에 이유 한 줄, stdout은 비어 있다. 결과를 내기 전에 출력이 닫힌 경우와 예기치 못한 오류(`Unexpected error: …`)도 2다 |
 
 ## 문서 위치
 

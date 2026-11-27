@@ -11,19 +11,17 @@
     "test": "vitest run",
     "lint": "eslint . && prettier --check . && pnpm -r typecheck",
     "format": "prettier --write .",
-    "validate:format": "node tools/validate-format.mjs format/v0/examples/shop"
+    "validate:format": "node packages/cli/dist/bin.js validate format/v0/examples/shop"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.7",
-    "ajv": "^8.17.1",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.10.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.74.0",
     "vite": "^8.4.0",
-    "vitest": "^5.1.2",
-    "yaml": "^2.6.0"
+    "vitest": "^5.1.2"
   }
 }

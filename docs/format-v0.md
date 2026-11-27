@@ -15,7 +15,7 @@
   dictionary/*.yaml        단어, 용어, 도메인
 ```
 
-예제는 `format/v0/examples/shop/`에 있고, `npm run validate:format`으로 검사한다.
+예제는 `format/v0/examples/shop/`에 있고, `pnpm build` 뒤에 `npm run validate:format`으로 검사한다.
 
 ## 프로젝트, 모델, 주제영역
 
@@ -123,7 +123,7 @@
 
 ## 검증 규칙
 
-스키마로 표현하지 못하는 규칙이다. `tools/validate-format.mjs`가 검사한다.
+스키마로 표현하지 못하는 규칙이다. `packages/core`의 검증기가 검사하고, 명령줄에서는 `erdmaker validate <dir>`(`pnpm build` 뒤에 `node packages/cli/dist/bin.js validate <dir>`)로 돌린다.
 
 1. 엔터티, 관계(서브타입 멤버 포함), 서브타입, 주제영역, 단어, 용어, 도메인의 ID는 각 종류 안에서 유일하다. 속성과 키 ID는 엔터티 안에서 유일하다.
 2. 모든 ID 참조는 실제 객체를 가리킨다.

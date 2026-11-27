@@ -15,14 +15,5 @@ export default defineConfig(
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,
-  {
-    files: ['tools/**/*.mjs'],
-    languageOptions: {
-      globals: {
-        process: 'readonly',
-        console: 'readonly',
-      },
-    },
-  },
   prettier,
 );

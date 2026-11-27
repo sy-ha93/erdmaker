@@ -89,7 +89,7 @@ Git에서 읽기만 하는 기능(기준 버전과 비교)은 F14에 있다. 병
 
 - 코어·CLI·MCP 기능의 관문은 단위 테스트다. E2E와 디자인 리뷰는 건너뛴다.
 - 화면 기능은 조작 대상에 `data-testid`를 붙이고 명령 API를 `window.__erd`로 노출한다. 캔버스 드래그는 E2E에서 불안정하므로 결과는 명령 API와 파일 내용으로 확인한다.
-- 초기 기능은 기존 코드가 없다. 분석 단계의 필수 참고 파일로 `docs/format-v0.md`, `format/v0/schema/`, `format/v0/examples/shop/`, `tools/validate-format.mjs`를 지정한다.
+- 초기 기능은 기존 코드가 없다. 분석 단계의 필수 참고 파일로 `docs/format-v0.md`, `format/v0/schema/`, `format/v0/examples/shop/`, `packages/core`를 지정한다.
 
 ### F01 `repo-scaffold` (1일)
 
@@ -100,12 +100,13 @@ Git에서 읽기만 하는 기능(기준 버전과 비교)은 F14에 있다. 병
 
 ### F02 `core-model-io` (3일)
 
-- **범위**: 형식 v0 모델 디렉터리를 메모리 모델로 읽고 다시 쓴다. `tools/validate-format.mjs`의 스키마 검사와 파일 간 규칙 12개를 코어로 옮긴다. 프로젝트 폴더에서 모델 폴더를 찾는다(형식 문서의 "프로젝트, 모델, 주제영역"). CLI `erdmaker validate <dir>`.
+- **상태**: 완료 (2026-11-28, PR #5). 스펙·분석·계획·결정 기록은 `docs/specs`, `docs/analysis`, `docs/plans`, `docs/decisions`의 `core-model-io.md`.
+- **범위**: 형식 v0 모델 디렉터리를 메모리 모델로 읽고 다시 쓴다. 옛 검사 도구의 스키마 검사와 파일 간 규칙 12개를 코어로 옮긴다. 프로젝트 폴더에서 모델 폴더를 찾는다(형식 문서의 "프로젝트, 모델, 주제영역"). CLI `erdmaker validate <dir>`.
 - **제외**: 편집 명령, 형식 마이그레이션.
 - **수용 기준**:
   - `format/v0/examples/shop`을 읽고 쓰면 파일이 바이트 단위로 같다.
   - `erdmaker validate <프로젝트 폴더>`가 그 안의 모델을 모두 찾아 검증하고, 모델 `id`가 겹치면 오류다.
-  - 깨진 배치 JSON을 만나면 죽지 않고 오류로 보고한다(F01에서 넘긴 `tools/validate-format.mjs`의 버그).
+  - 깨진 배치 JSON을 만나면 죽지 않고 오류로 보고한다(F01에서 넘긴 옛 검사 도구의 버그).
   - 검증 규칙마다 위반 예제가 하나 이상 있고, 오류 메시지에 파일과 위치가 나온다.
   - YAML 1.2 core 스키마만 쓴다(`NO`가 문자열로 남는다). 앵커·별칭·태그는 오류다.
   - 코어는 브라우저와 Node 양쪽에서 돈다(파일 접근은 어댑터로 분리).
