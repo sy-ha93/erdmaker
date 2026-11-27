@@ -1,1 +1,1 @@
-export { createNodeFileSystem } from './fs.js';
+export { MAX_PATH_DEPTH, createNodeFileSystem } from './fs.js';

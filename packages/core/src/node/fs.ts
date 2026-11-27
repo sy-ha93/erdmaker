@@ -5,8 +5,6 @@ import {
   mkdir,
   open,
   readdir,
-  readlink,
-  realpath,
   unlink,
 } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -17,10 +15,9 @@ import {
 } from '../fs/adapter.js';
 import { normalizePath } from '../fs/path.js';
 
-// Windows has none of these three; the checks around each open stand in.
+// Windows has neither; the checks around each open stand in.
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const O_NONBLOCK = constants.O_NONBLOCK ?? 0;
-const O_DIRECTORY = constants.O_DIRECTORY ?? 0;
 
 function errorCode(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error
@@ -71,15 +68,31 @@ function badPath(path: string): TypeError | undefined {
   return undefined;
 }
 
-/** Folders and the last entry of an adapter path, below the folder it climbs to. */
+/**
+ * The most folders a path may name below the opened folder (or below the
+ * folder its leading `..` climb to). Each call looks at each of them with
+ * one `lstat`, so a call costs a bounded number of system calls.
+ */
+export const MAX_PATH_DEPTH = 32;
+
+/** The longest path string the adapter looks at; longer ones are impossible. */
+const MAX_PATH_LENGTH = 4096;
+
+/** A path in a message, cut to 200 characters. */
+const shown = (path: string) =>
+  path.length > 200 ? `${path.slice(0, 200)}…` : path;
+
+/** An adapter path split below the folder it climbs to. */
 interface Located {
-  /** The opened folder, or the folder its leading `..` climb to (joined, not resolved). */
+  /** The opened folder, or the folder its leading `..` climb to; used as given. */
   base: string;
-  /** The names below `base`; none of them may be a symbolic link. */
+  /** The folders below `base`, then the last entry; none may be a symbolic link. */
   names: string[];
-  /** `base` and `names` joined. */
-  full: string;
 }
+
+/** What one folder walk found. */
+type Walk =
+  { found: 'folder'; path: string } | { found: 'link' | 'missing' | 'file' };
 
 /** What `stat` and `lstat` say an entry is. */
 interface EntryType {
@@ -113,53 +126,69 @@ async function entryAt(path: string): Promise<Stats | undefined> {
 }
 
 /**
- * The folder's path with every link resolved, at a cost that does not grow
- * with the number of folders in it. `realpath` looks at every folder of the
- * path, so a walk down a deep tree would take the cube of its depth; on
- * Linux the system names an open folder in one call instead.
+ * Walks `folders` below `base` one name at a time with `lstat`, never
+ * through a symbolic link: the first name that is a link, missing, or not a
+ * folder ends the walk. A missing or looping name reads as `missing`; any
+ * other failure rejects.
  */
-async function realFolder(path: string): Promise<string> {
-  if (process.platform !== 'linux') return realpath(path);
-  let handle: FileHandle;
-  try {
-    handle = await open(path, constants.O_RDONLY | O_DIRECTORY);
-  } catch (error) {
-    // A folder that can be passed through but not read: resolved by name.
-    if (errorCode(error) === 'EACCES') return realpath(path);
-    throw error;
+async function walkFolders(
+  base: string,
+  folders: readonly string[],
+): Promise<Walk> {
+  let path = base;
+  for (const name of folders) {
+    path = join(path, name);
+    let entry: Stats;
+    try {
+      entry = await lstat(path);
+    } catch (error) {
+      if (isMissing(error) || isLoop(error)) return { found: 'missing' };
+      throw error;
+    }
+    if (entry.isSymbolicLink()) return { found: 'link' };
+    if (!entry.isDirectory()) return { found: 'file' };
   }
-  try {
-    return await readlink(`/proc/self/fd/${handle.fd}`);
-  } catch {
-    // No `/proc` mounted: resolved by name.
-    return realpath(path);
-  } finally {
-    await handle.close();
-  }
+  return { found: 'folder', path };
 }
 
 /**
- * Whether the folder `names` below `base` is reached without passing a
- * symbolic link, the last name included: the system resolves it to the same
- * place as `base` resolved, then `names` as written. `missing` when nothing
- * or a file is there. `base` itself may be or pass a link.
+ * `walkFolders` for a write: a missing folder is made, one at a time, and
+ * so are the ones after it. A non-folder ends the walk with `file`; a
+ * failure other than a missing name rejects with the system's error.
  */
-async function linkFree(
+async function makeFolders(
   base: string,
-  names: readonly string[],
-): Promise<'yes' | 'link' | 'missing'> {
-  if (names.length === 0) return 'yes';
-  try {
-    const [real, realBase] = await Promise.all([
-      realFolder(join(base, ...names)),
-      realpath(base),
-    ]);
-    return real === join(realBase, ...names) ? 'yes' : 'link';
-  } catch (error) {
-    if (isLoop(error)) return 'link';
-    if (isMissing(error)) return 'missing';
-    throw error;
+  folders: readonly string[],
+): Promise<Walk> {
+  // The opened folder (or the one `..` climbs to) is made as given, links allowed.
+  await mkdir(base, { recursive: true });
+  let path = base;
+  let making = false;
+  for (const name of folders) {
+    path = join(path, name);
+    let entry: Stats | undefined;
+    if (!making) {
+      try {
+        entry = await lstat(path);
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') throw error;
+      }
+    }
+    if (!entry) {
+      try {
+        await mkdir(path);
+        making = true;
+        continue;
+      } catch (error) {
+        if (errorCode(error) !== 'EEXIST') throw error;
+        // Made by someone else since: looked at as any folder that is there.
+        entry = await lstat(path);
+      }
+    }
+    if (entry.isSymbolicLink()) return { found: 'link' };
+    if (!entry.isDirectory()) return { found: 'file' };
   }
+  return { found: 'folder', path };
 }
 
 /** The type of each entry by name, `lstat` for each; entries gone since are left out. */
@@ -179,45 +208,53 @@ async function typesByName(
  * An adapter over the folder `rootDir` (resolved against the current directory).
  *
  * Symbolic links below the opened folder are never followed (as in the
- * browser, whose folder access shows none): `list` leaves them out, and a
- * path whose folders or last entry below the opened folder include a link is
- * missing (`readText` rejects with `FileNotFoundError`, `list` is empty,
- * `remove` does nothing) or, for `writeText`, refused with `Cannot write
- * <path>: a folder on its way is a symbolic link` (`…: it is a symbolic
- * link` for the last entry) before anything is made. The opened folder
- * itself may be a link or be reached through links, and so may the folder a
- * leading `..` climbs to; the names after it may not. `readText` reads
- * regular files only: a folder, FIFO, socket or device is missing and is
- * not opened. A path that cannot exist (too long, a NUL character, on
- * Windows a backslash) is read, listed and removed as a missing one, and
- * refused by `writeText` before any folder is made. The adapter keeps
- * nothing between calls. The checks and the call that follows them are not
- * one step: a link put in place between the two is followed (a known limit).
+ * browser, whose folder access shows none): `list` leaves them out, and each
+ * call looks at the folders of its path below the opened folder and at its
+ * last entry one at a time with `lstat`, without passing a link. A path
+ * whose folders or last entry include a link is missing (`readText` rejects
+ * with `FileNotFoundError`, `list` is empty, `remove` does nothing) or, for
+ * `writeText`, refused with `Cannot write <path>: a folder on its way is a
+ * symbolic link` (`…: it is a symbolic link` for the last entry) before
+ * anything is made. The opened folder itself is used as given (it may be a
+ * link or be reached through links, and it is made for a write when
+ * missing), and so is the folder a leading `..` climbs to; the names after
+ * it may not be links. `readText` reads regular files only: a folder, FIFO,
+ * socket or device is missing and is not opened. A path that cannot exist
+ * (longer than 4096 characters, more than `MAX_PATH_DEPTH` folders below
+ * the folder it climbs to, a NUL character, on Windows a backslash) is
+ * read, listed and removed as a missing one, and refused by `writeText`
+ * before any folder is made. The adapter keeps nothing between calls. The
+ * checks and the call that follows them are not one step: a link put in
+ * place between the two is followed (a known limit).
  */
 export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
   const root = resolve(rootDir);
-  const locate = (path: string): Located => {
+  /** The path split below the folder it climbs to, or `undefined` when no file can have it. */
+  const locate = (path: string, folderOnly: boolean): Located | undefined => {
+    // Bounded first, so splitting and joining it stay cheap.
+    if (path.length > MAX_PATH_LENGTH || impossible(path)) return undefined;
     const segments = normalizePath(path).split('/').filter(Boolean);
     let up = 0;
     while (segments[up] === '..') up += 1;
-    const base = join(root, ...segments.slice(0, up));
     const names = segments.slice(up);
-    return { base, names, full: join(base, ...names) };
+    const folders = folderOnly ? names.length : names.length - 1;
+    if (folders > MAX_PATH_DEPTH) return undefined;
+    const base = up === 0 ? root : join(root, segments.slice(0, up).join('/'));
+    return { base, names };
   };
 
   return {
     async readText(path) {
-      if (impossible(path)) throw new FileNotFoundError(path);
-      const { base, names, full } = locate(path);
+      const located = locate(path, false);
+      if (!located) throw new FileNotFoundError(path);
+      const { base, names } = located;
       let handle: FileHandle | undefined;
       try {
+        const walk = await walkFolders(base, names.slice(0, -1));
+        if (walk.found !== 'folder') throw new FileNotFoundError(path);
+        const full = join(walk.path, names.at(-1) ?? '');
         const entry = await lstat(full);
-        if (
-          !entry.isFile() ||
-          (await linkFree(base, names.slice(0, -1))) !== 'yes'
-        ) {
-          throw new FileNotFoundError(path);
-        }
+        if (!entry.isFile()) throw new FileNotFoundError(path);
         handle = await open(full, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
         // Replaced since `lstat`: still only a regular file is read.
         if (!(await handle.stat()).isFile()) throw new FileNotFoundError(path);
@@ -234,32 +271,31 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
     },
 
     async writeText(path, text) {
+      if (path.length > MAX_PATH_LENGTH) {
+        throw new TypeError(
+          `Cannot write ${shown(path)}: its path is longer than ${MAX_PATH_LENGTH} characters`,
+        );
+      }
       const bad = badPath(path);
       if (bad) throw bad;
-      const { base, names, full } = locate(path);
-      const onTheWay = () =>
-        new Error(
+      const located = locate(path, false);
+      if (!located) {
+        throw new TypeError(
+          `Cannot write ${shown(path)}: its path has more than ${MAX_PATH_DEPTH} folders`,
+        );
+      }
+      const { base, names } = located;
+      const walk = await makeFolders(base, names.slice(0, -1));
+      if (walk.found === 'link') {
+        throw new Error(
           `Cannot write ${path}: a folder on its way is a symbolic link`,
         );
-      // The deepest folder on the way that is there is checked; the ones
-      // after it are made, so cannot be links.
-      const folders = names.slice(0, -1);
-      let there = folders.length;
-      let entry: Stats | undefined;
-      for (; there > 0; there -= 1) {
-        entry = await entryAt(join(base, ...folders.slice(0, there)));
-        if (entry) break;
       }
-      if (entry?.isSymbolicLink()) throw onTheWay();
-      if (
-        entry?.isDirectory() &&
-        (await linkFree(base, folders.slice(0, there))) === 'link'
-      ) {
-        throw onTheWay();
-      }
-      if (there < folders.length) {
-        await mkdir(join(base, ...folders), { recursive: true });
-      }
+      // Past a file where a folder is needed, the system names the failure.
+      const full =
+        walk.found === 'folder'
+          ? join(walk.path, names.at(-1) ?? '')
+          : join(base, names.join('/'));
       const isLink = () =>
         new Error(`Cannot write ${path}: it is a symbolic link`);
       if ((await entryAt(full))?.isSymbolicLink()) throw isLink();
@@ -286,9 +322,11 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
     },
 
     async list(dir) {
-      if (impossible(dir)) return [];
-      const { base, names, full } = locate(dir);
-      if ((await linkFree(base, names)) !== 'yes') return [];
+      const located = locate(dir, true);
+      if (!located) return [];
+      const walk = await walkFolders(located.base, located.names);
+      if (walk.found !== 'folder') return [];
+      const full = walk.path;
       let typed: [string, EntryType][];
       try {
         typed = (await readdir(full, { withFileTypes: true })).map(
@@ -322,9 +360,12 @@ export function createNodeFileSystem(rootDir: string): FileSystemAdapter {
     },
 
     async remove(path) {
-      if (impossible(path)) return;
-      const { base, names, full } = locate(path);
-      if ((await linkFree(base, names.slice(0, -1))) !== 'yes') return;
+      const located = locate(path, false);
+      if (!located) return;
+      const { base, names } = located;
+      const walk = await walkFolders(base, names.slice(0, -1));
+      if (walk.found !== 'folder') return;
+      const full = join(walk.path, names.at(-1) ?? '');
       const entry = await entryAt(full);
       if (!entry || entry.isSymbolicLink()) return;
       try {

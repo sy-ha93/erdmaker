@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { expectLinearTime } from '../testing/timing.js';
-import { createNodeFileSystem } from './fs.js';
+import { MAX_PATH_DEPTH, createNodeFileSystem } from './fs.js';
 
 let base = '';
 let cases = 0;
@@ -17,15 +17,20 @@ afterAll(async () => {
 });
 
 describe('node adapter: walk time', () => {
-  /** `depth` nested folders `d`, each with a file. */
-  async function deep(depth: number): Promise<string> {
+  /**
+   * `chains` folders side by side, each the top of `MAX_PATH_DEPTH` nested
+   * folders with a file in each: the deepest tree the adapter walks.
+   */
+  async function deep(chains: number): Promise<string> {
     cases += 1;
     const root = join(base, String(cases));
-    let dir = root;
-    for (let level = 0; level < depth; level += 1) {
-      dir = join(dir, 'd');
-      await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, 'f.yaml'), 'x', 'utf8');
+    for (let chain = 0; chain < chains; chain += 1) {
+      let dir = join(root, `c${chain}`);
+      for (let level = 0; level < MAX_PATH_DEPTH; level += 1) {
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, 'f.yaml'), 'x', 'utf8');
+        dir = join(dir, 'd');
+      }
     }
     return root;
   }
@@ -57,23 +62,24 @@ describe('node adapter: walk time', () => {
     return entries;
   }
 
-  // Linear: about 4 for the wide tree, about 6 for the deep one, whose paths
-  // grow with the depth (the system resolves each). Listing the parent folder
-  // again for every folder makes the wide ratio about 11.
+  // Linear: about 4 for both. A call looks at each folder of its path once
+  // and a path has at most `MAX_PATH_DEPTH` folders, so each folder costs
+  // the same however many there are. Listing the parent folder again for
+  // every folder makes the wide ratio about 11.
   test.each([
-    ['deep', deep, 200, 12],
-    ['wide', wide, 500, 8],
+    ['deep', deep, 8, MAX_PATH_DEPTH],
+    ['wide', wide, 500, 1],
   ])(
     'a %s tree: four times the folders takes about four times as long',
     { timeout: 120_000 },
-    async (_name, make, size, maxRatio) => {
+    async (_name, make, size, folders) => {
       await expectLinearTime({
         sizes: [size, size * 4],
         input: make,
         run: walk,
-        // A folder and its file per level or per folder.
-        check: (entries, folders) => expect(entries).toBe(folders * 2),
-        maxRatio,
+        // A folder and its file per level of each chain, or per folder.
+        check: (entries, count) => expect(entries).toBe(count * folders * 2),
+        maxRatio: 8,
         backstop: 5_000,
       });
     },

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
@@ -15,9 +16,10 @@ import { dirname, join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { FileNotFoundError, type FileSystemAdapter } from '../fs/adapter.js';
 import { loadModel } from '../model/load.js';
+import { findModels } from '../project/find.js';
 import { writeModel } from '../model/write.js';
 import { exampleFiles, type Files, replaceOnce } from '../testing/example.js';
-import { createNodeFileSystem } from './fs.js';
+import { MAX_PATH_DEPTH, createNodeFileSystem } from './fs.js';
 
 const ENTITY = (id: string) => `id: ${id}\nname: ${id}\nattributes: []\n`;
 
@@ -476,4 +478,234 @@ describe('node adapter: dictionary folders that cannot exist', () => {
       expect(model.layouts).toHaveLength(2);
     },
   );
+});
+
+const tooDeep = (path: string) =>
+  new TypeError(`Cannot write ${path}: its path has more than 32 folders`);
+
+describe('node adapter: at most 32 folders below the opened folder', () => {
+  const folders = (count: number) => Array(count).fill('d').join('/');
+
+  test('32 folders: read, list, write and remove work', async () => {
+    const { root } = await besideOutside();
+    const fs = createNodeFileSystem(root);
+    const path = `${folders(MAX_PATH_DEPTH)}/f.yaml`;
+    await fs.writeText(path, 'x\n');
+    expect(await fs.readText(path)).toBe('x\n');
+    expect(await fs.list(folders(MAX_PATH_DEPTH))).toEqual([
+      { name: 'f.yaml', kind: 'file' },
+    ]);
+    await fs.remove(path);
+    expect(await fs.list(folders(MAX_PATH_DEPTH))).toEqual([]);
+  });
+
+  test('33 folders: read missing, list empty, remove no-op, write refused before any folder is made', async () => {
+    const { root } = await besideOutside();
+    // Made by hand: the adapter does not go this deep.
+    const deep = join(root, ...Array(33).fill('d'));
+    await mkdir(deep, { recursive: true });
+    await writeFile(join(deep, 'f.yaml'), 'x\n', 'utf8');
+    const fs = createNodeFileSystem(root);
+    const path = `${folders(33)}/f.yaml`;
+    expect(await rejection(fs.readText(path))).toEqual(
+      new FileNotFoundError(path),
+    );
+    expect(await fs.list(folders(33))).toEqual([]);
+    await fs.remove(path);
+    expect(await readdir(deep)).toEqual(['f.yaml']);
+    expect(await rejection(fs.writeText(`new/${path}`, 'x'))).toEqual(
+      tooDeep(`new/${path}`),
+    );
+    expect(await exists(join(root, 'new'))).toBe(false);
+    // Leading `..` and parts normalized away do not count; names after `..` do.
+    const listed = [{ name: 'd', kind: 'directory' }];
+    expect(await fs.list(`../root/${folders(31)}`)).toEqual(listed);
+    expect(await fs.list(`../root/${folders(32)}`)).toEqual([]);
+    expect(await fs.list(`${'x/../'.repeat(40)}${folders(32)}`)).toEqual(
+      listed,
+    );
+  });
+
+  test('a path string of 1 MB or of more than 4096 characters is impossible, without a stack error', async () => {
+    const { root } = await besideOutside();
+    const fs = createNodeFileSystem(root);
+    for (const path of ['a/'.repeat(500_000) + 'f', `${'n'.repeat(4097)}`]) {
+      expect(await rejection(fs.readText(path))).toEqual(
+        new FileNotFoundError(path),
+      );
+      expect(await fs.list(path)).toEqual([]);
+      await fs.remove(path);
+      const error = await rejection(fs.writeText(path, 'x'));
+      expect(error).toBeInstanceOf(TypeError);
+      expect((error as Error).message).toBe(
+        `Cannot write ${path.slice(0, 200)}…: its path is longer than 4096 characters`,
+      );
+    }
+    expect(await readdir(root)).toEqual(['real']);
+  });
+
+  test('a missing opened folder is made for a write', async () => {
+    const { root } = await besideOutside();
+    const missing = join(root, 'not', 'yet');
+    const fs = createNodeFileSystem(missing);
+    await fs.writeText('model.yaml', 'x\n');
+    expect(await readFile(join(missing, 'model.yaml'), 'utf8')).toBe('x\n');
+    const other = createNodeFileSystem(join(root, 'other'));
+    await other.writeText('a/b/c.yaml', 'y\n');
+    expect(
+      await readFile(join(root, 'other', 'a', 'b', 'c.yaml'), 'utf8'),
+    ).toBe('y\n');
+  });
+});
+
+describe.skipIf(process.platform === 'win32')(
+  'node adapter: links that cannot be followed are never entered',
+  () => {
+    test('a linked folder at depth 5: read missing, list empty, remove and write change nothing', async () => {
+      const { root, outside } = await besideOutside();
+      await mkdir(join(root, 'a', 'b', 'c', 'd'), { recursive: true });
+      await symlink(outside, join(root, 'a', 'b', 'c', 'd', 'e'));
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.readText('a/b/c/d/e/customer.yaml'))).toEqual(
+        new FileNotFoundError('a/b/c/d/e/customer.yaml'),
+      );
+      expect(await fs.list('a/b/c/d/e')).toEqual([]);
+      await fs.remove('a/b/c/d/e/customer.yaml');
+      expect(
+        await rejection(fs.writeText('a/b/c/d/e/customer.yaml', 'x')),
+      ).toEqual(onTheWay('a/b/c/d/e/customer.yaml'));
+      expect(await readdir(outside)).toEqual(['customer.yaml']);
+      expect(await readFile(join(outside, 'customer.yaml'), 'utf8')).toBe(
+        'keep\n',
+      );
+    });
+
+    test('a linked folder whose target cannot be entered: missing, not EACCES', async () => {
+      const { root, outside } = await besideOutside();
+      await symlink(outside, join(root, 'locked'));
+      await chmod(outside, 0o000);
+      try {
+        const fs = createNodeFileSystem(root);
+        expect(await rejection(fs.readText('locked/customer.yaml'))).toEqual(
+          new FileNotFoundError('locked/customer.yaml'),
+        );
+        expect(await fs.list('locked')).toEqual([]);
+        await fs.remove('locked/customer.yaml');
+        expect(await rejection(fs.writeText('locked/x/y.yaml', 'x'))).toEqual(
+          onTheWay('locked/x/y.yaml'),
+        );
+      } finally {
+        await chmod(outside, 0o755);
+      }
+    });
+
+    test('a looping link on the way: write refused as a link, not ELOOP', async () => {
+      const { root } = await besideOutside();
+      await symlink('loop', join(root, 'loop'));
+      const fs = createNodeFileSystem(root);
+      expect(await rejection(fs.writeText('loop/a.yaml', 'x'))).toEqual(
+        onTheWay('loop/a.yaml'),
+      );
+      expect(await rejection(fs.writeText('loop', 'x'))).toEqual(
+        new Error('Cannot write loop: it is a symbolic link'),
+      );
+      expect(await rejection(fs.readText('loop/a.yaml'))).toEqual(
+        new FileNotFoundError('loop/a.yaml'),
+      );
+      expect(await fs.list('loop')).toEqual([]);
+    });
+
+    test('a real folder that cannot be entered: the error surfaces', async () => {
+      const { root } = await besideOutside();
+      await chmod(join(root, 'real'), 0o000);
+      try {
+        const fs = createNodeFileSystem(root);
+        expect(errorCode(await rejection(fs.readText('real/in.yaml')))).toBe(
+          'EACCES',
+        );
+        expect(errorCode(await rejection(fs.list('real')))).toBe('EACCES');
+      } finally {
+        await chmod(join(root, 'real'), 0o755);
+      }
+    });
+  },
+);
+
+const errorCode = (error: unknown) =>
+  (error as { code?: unknown } | null)?.code;
+
+describe('node adapter: walks through a tree deeper than the limit end quietly', () => {
+  /** `entity-<k>.yaml` in the folder `k` levels below `top`, for k = 1 to 40. */
+  const deepEntities = (top: string): Files =>
+    Object.fromEntries(
+      Array.from({ length: 40 }, (_, i) => [
+        `${top}/${Array(i + 1)
+          .fill('d')
+          .join('/')}/entity-${i + 1}.yaml`,
+        ENTITY(`deep${i + 1}`),
+      ]),
+    );
+  /** The files of `deepEntities(top)` the adapter reaches: at most 32 folders, `top` included. */
+  const reached = (top: string) =>
+    Object.keys(deepEntities(top))
+      .filter((path) => path.split('/').length - 1 <= MAX_PATH_DEPTH)
+      .sort();
+
+  test('entities: the files up to 32 folders deep are read, the rest is left out', async () => {
+    const root = await folder(deepEntities('entities'));
+    const { model, issues } = await loadModel(createNodeFileSystem(root), '');
+    expect(issues).toEqual([]);
+    expect(
+      model.entities
+        .map((item) => item.file)
+        .filter((file) => file.startsWith('entities/d/')),
+    ).toEqual(reached('entities'));
+    expect(reached('entities')).toHaveLength(MAX_PATH_DEPTH - 1);
+  });
+
+  test('a dictionary folder above the model: the same limit below the folder `..` climbs to', async () => {
+    cases += 1;
+    const top = join(base, String(cases));
+    const files: Files = {
+      ...replaceOnce(
+        exampleFiles(),
+        'model.yaml',
+        'targets:\n',
+        'dictionaries:\n  - ../shared\ntargets:\n',
+      ),
+    };
+    for (const [path, text] of Object.entries(files)) {
+      await mkdir(dirname(join(top, 'model', path)), { recursive: true });
+      await writeFile(join(top, 'model', path), text, 'utf8');
+    }
+    const words = (i: number) =>
+      `words:\n  - id: w${i}\n    name: w${i}\n    englishName: w${i}\n    abbreviation: W${i}\n`;
+    for (let i = 1; i <= 40; i += 1) {
+      const dir = join(top, 'shared', ...Array(i).fill('d'));
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, `dict-${i}.yaml`), words(i), 'utf8');
+    }
+    const { model, issues } = await loadModel(
+      createNodeFileSystem(join(top, 'model')),
+      '',
+    );
+    expect(issues).toEqual([]);
+    // `shared` and 31 folders below it: 32 folders below the folder `..` climbs to.
+    expect(model.dictionaries).toHaveLength(MAX_PATH_DEPTH - 1);
+  });
+
+  test('findModels below a deep folder: a model 32 folders deep is found, one deeper is not', async () => {
+    const { root } = await besideOutside();
+    const at = (depth: number) => Array(depth).fill('d').join('/');
+    const fs = createNodeFileSystem(root);
+    await fs.writeText(`${at(32)}/model.yaml`, 'x\n');
+    const deeper = join(root, ...Array(33).fill('d'), 'e');
+    await mkdir(deeper, { recursive: true });
+    await writeFile(join(deeper, 'model.yaml'), 'x\n', 'utf8');
+    expect(await findModels(fs, at(31))).toEqual({
+      models: [at(32)],
+      issues: [],
+    });
+    expect(await findModels(fs, at(33))).toEqual({ models: [], issues: [] });
+  });
 });
