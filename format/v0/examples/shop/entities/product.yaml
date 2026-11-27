@@ -1,0 +1,45 @@
+id: product
+name: 상품
+physical:
+  name: PRODUCT
+attributes:
+  - id: prod_no
+    name: 상품번호
+    domain: number
+    nullable: false
+    physical:
+      name: PROD_NO
+  - id: prod_nm
+    name: 상품명
+    domain: name
+    nullable: false
+    physical:
+      name: PROD_NM
+  - id: ctgr_no
+    name: 카테고리번호
+    domain: number
+    nullable: false
+    physical:
+      name: CTGR_NO
+    migratedFrom:
+      - relationship: category_classifies_product
+        attribute: ctgr_no
+  - id: price
+    name: 판매가
+    domain: amount
+    nullable: false
+    physical:
+      name: PRICE
+  - id: spec
+    name: 상품사양
+    type:
+      base: json
+    physical:
+      name: SPEC
+      types:
+        postgresql: jsonb
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - prod_no

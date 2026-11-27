@@ -1,0 +1,22 @@
+{
+  "formatVersion": "0.1",
+  "subjectArea": "sales",
+  "display": {
+    "level": "attribute",
+    "names": "logical"
+  },
+  "nodes": {
+    "address": { "x": 40, "y": 320 },
+    "customer": { "x": 40, "y": 40 },
+    "order": { "x": 380, "y": 40, "width": 240 },
+    "order_item": { "x": 720, "y": 40 },
+    "product": { "x": 720, "y": 320, "color": "#eef3ff" }
+  },
+  "edges": {
+    "order_bills_to": {
+      "parentSide": "right",
+      "childSide": "bottom",
+      "waypoints": [{ "x": 520, "y": 380 }]
+    }
+  }
+}

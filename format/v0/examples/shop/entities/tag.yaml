@@ -1,0 +1,26 @@
+id: tag
+name: 태그
+physical:
+  name: TAG
+attributes:
+  - id: tag_no
+    name: 태그번호
+    domain: number
+    nullable: false
+    physical:
+      name: TAG_NO
+  - id: tag_nm
+    name: 태그명
+    domain: name
+    nullable: false
+    physical:
+      name: TAG_NM
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - tag_no
+  - id: ak_tag_nm
+    kind: alternate
+    attributes:
+      - tag_nm

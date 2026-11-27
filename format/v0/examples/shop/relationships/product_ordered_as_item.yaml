@@ -1,0 +1,4 @@
+id: product_ordered_as_item
+kind: non-identifying
+parent: product
+child: order_item

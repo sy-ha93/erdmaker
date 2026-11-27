@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:relationship",
+  "title": "Relationship (relationships/*.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "parent",
+    "child"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "kind": {
+      "enum": [
+        "identifying",
+        "non-identifying",
+        "many-to-many"
+      ]
+    },
+    "parent": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "child": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "name": {
+      "type": "string"
+    },
+    "definition": {
+      "type": "string"
+    },
+    "verbPhrase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "parentToChild": {
+          "type": "string"
+        },
+        "childToParent": {
+          "type": "string"
+        }
+      }
+    },
+    "cardinality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "parent": {
+          "enum": [
+            "one",
+            "zero-or-one"
+          ],
+          "default": "one"
+        },
+        "child": {
+          "enum": [
+            "zero-or-more",
+            "one-or-more",
+            "zero-or-one",
+            "exactly"
+          ],
+          "default": "zero-or-more"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "if": {
+        "properties": {
+          "child": {
+            "const": "exactly"
+          }
+        },
+        "required": [
+          "child"
+        ]
+      },
+      "then": {
+        "required": [
+          "count"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "count"
+          ]
+        }
+      }
+    },
+    "parentKey": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+      "description": "Key of the parent that migrates. Defaults to the primary key."
+    },
+    "referentialIntegrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "parentInsert": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        },
+        "parentUpdate": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        },
+        "parentDelete": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        },
+        "childInsert": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        },
+        "childUpdate": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        },
+        "childDelete": {
+          "enum": [
+            "cascade",
+            "restrict",
+            "set-null",
+            "set-default",
+            "none"
+          ]
+        }
+      }
+    },
+    "resolvedBy": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+      "description": "many-to-many only: the association entity that resolves it in the physical model."
+    },
+    "scope": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+    },
+    "physical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FK constraint name."
+        }
+      }
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "identifying"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cardinality": {
+            "properties": {
+              "parent": {
+                "const": "one"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "many-to-many"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cardinality": false,
+          "parentKey": false,
+          "referentialIntegrity": false,
+          "physical": false
+        }
+      },
+      "else": {
+        "properties": {
+          "resolvedBy": false
+        }
+      }
+    }
+  ]
+}

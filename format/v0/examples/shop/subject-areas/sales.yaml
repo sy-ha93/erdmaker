@@ -1,0 +1,8 @@
+id: sales
+name: 주문
+entities:
+  - address
+  - customer
+  - order
+  - order_item
+  - product

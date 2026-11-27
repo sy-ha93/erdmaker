@@ -1,0 +1,12 @@
+id: customer_places_order
+kind: non-identifying
+parent: customer
+child: order
+verbPhrase:
+  parentToChild: 주문한다
+  childToParent: 주문된다
+referentialIntegrity:
+  parentDelete: restrict
+  parentUpdate: restrict
+physical:
+  name: FK_ORDERS_CUSTOMER

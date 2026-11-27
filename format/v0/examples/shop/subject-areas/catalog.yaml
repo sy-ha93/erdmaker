@@ -1,0 +1,7 @@
+id: catalog
+name: 상품
+entities:
+  - category
+  - product
+  - product_tag
+  - tag

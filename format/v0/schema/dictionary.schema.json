@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:dictionary",
+  "title": "Dictionary file (<dictionary dir>/*.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "englishName": {
+            "type": "string"
+          },
+          "abbreviation": {
+            "type": "string"
+          },
+          "definition": {
+            "type": "string"
+          },
+          "classifier": {
+            "type": "boolean",
+            "default": false,
+            "description": "true for class words that end a term and imply a domain category (번호, 금액, 일자 ...)."
+          },
+          "synonyms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "forbiddenWords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "ext": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+          }
+        }
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+            },
+            "minItems": 1,
+            "description": "Word ids in order."
+          },
+          "physicalName": {
+            "type": "string"
+          },
+          "domain": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "definition": {
+            "type": "string"
+          },
+          "synonyms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "ext": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+          }
+        }
+      }
+    },
+    "domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/dataType"
+          },
+          "physicalTypes": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/physicalTypes"
+          },
+          "validValues": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/validValues"
+          },
+          "default": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/defaultValue"
+          },
+          "definition": {
+            "type": "string"
+          },
+          "ext": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+          }
+        }
+      }
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  }
+}

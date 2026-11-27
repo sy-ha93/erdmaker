@@ -1,0 +1,31 @@
+id: category
+name: 카테고리
+physical:
+  name: CATEGORY
+attributes:
+  - id: ctgr_no
+    name: 카테고리번호
+    domain: number
+    nullable: false
+    physical:
+      name: CTGR_NO
+  - id: ctgr_nm
+    name: 카테고리명
+    domain: name
+    nullable: false
+    physical:
+      name: CTGR_NM
+  - id: parent_ctgr_no
+    name: 상위카테고리번호
+    domain: number
+    physical:
+      name: PARENT_CTGR_NO
+    migratedFrom:
+      - relationship: category_has_subcategory
+        attribute: ctgr_no
+    rolenamed: true
+keys:
+  - id: pk
+    kind: primary
+    attributes:
+      - ctgr_no

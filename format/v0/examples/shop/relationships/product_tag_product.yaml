@@ -1,0 +1,7 @@
+id: product_tag_product
+kind: identifying
+parent: product
+child: product_tag
+referentialIntegrity:
+  parentDelete: cascade
+scope: physical

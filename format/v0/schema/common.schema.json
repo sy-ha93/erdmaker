@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:common",
+  "title": "Shared definitions",
+  "$defs": {
+    "id": {
+      "description": "Stable identifier. Assigned once (usually derived from the first name) and never changed, even when the object is renamed.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$"
+    },
+    "scope": {
+      "description": "both = exists in the logical and the physical model; logical = logical only; physical = physical only.",
+      "enum": [
+        "both",
+        "logical",
+        "physical"
+      ],
+      "default": "both"
+    },
+    "dbms": {
+      "description": "Target DBMS key, e.g. postgresql, mysql. Open set: dialect plugins add their own.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*$"
+    },
+    "dataType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base"
+      ],
+      "properties": {
+        "base": {
+          "enum": [
+            "string",
+            "integer",
+            "decimal",
+            "float",
+            "boolean",
+            "date",
+            "time",
+            "datetime",
+            "binary",
+            "json",
+            "uuid"
+          ]
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "precision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "description": "DBMS-neutral logical data type. The core maps it to a physical type per target DBMS."
+    },
+    "physicalTypes": {
+      "description": "Physical type override per DBMS, written exactly as it goes into DDL.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/dbms"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "validValues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "meaning": {
+            "type": "string"
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "defaultValue": {
+      "description": "Default value. A string is a literal; use {expression} for SQL expressions such as CURRENT_TIMESTAMP.",
+      "oneOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expression"
+          ],
+          "properties": {
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "ext": {
+      "description": "Free-form data owned by plugins and importers. The core preserves it and never interprets it.",
+      "type": "object"
+    }
+  }
+}

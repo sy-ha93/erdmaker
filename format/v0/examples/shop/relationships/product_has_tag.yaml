@@ -1,0 +1,9 @@
+id: product_has_tag
+kind: many-to-many
+parent: product
+child: tag
+verbPhrase:
+  parentToChild: 붙는다
+  childToParent: 붙인다
+resolvedBy: product_tag
+scope: logical

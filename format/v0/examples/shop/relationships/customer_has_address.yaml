@@ -1,0 +1,9 @@
+id: customer_has_address
+kind: non-identifying
+parent: customer
+child: address
+verbPhrase:
+  parentToChild: 등록한다
+  childToParent: 등록된다
+referentialIntegrity:
+  parentDelete: cascade

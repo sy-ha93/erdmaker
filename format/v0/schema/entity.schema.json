@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:entity",
+  "title": "Entity (entities/*.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "attributes"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Logical name."
+    },
+    "definition": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+    },
+    "nameSource": {
+      "enum": [
+        "manual",
+        "comment",
+        "dictionary",
+        "inferred"
+      ]
+    },
+    "physical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "attributes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/attribute"
+      },
+      "description": "Ordered. The order is the column order."
+    },
+    "keys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/key"
+      }
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  },
+  "$defs": {
+    "attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical name. For a migrated attribute with rolenamed=true this is the rolename."
+        },
+        "definition": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+        },
+        "term": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+          "description": "Dictionary term this attribute follows."
+        },
+        "domain": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+          "description": "Dictionary domain id."
+        },
+        "type": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/dataType"
+        },
+        "nullable": {
+          "type": "boolean",
+          "default": true
+        },
+        "default": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/defaultValue"
+        },
+        "validValues": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/validValues"
+        },
+        "physical": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "types": {
+              "$ref": "urn:erdmaker:format:0.1:common#/$defs/physicalTypes"
+            }
+          }
+        },
+        "migratedFrom": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "relationship",
+              "attribute"
+            ],
+            "properties": {
+              "relationship": {
+                "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+                "description": "Relationship id or subtype member id."
+              },
+              "attribute": {
+                "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+                "description": "Attribute id in the parent entity."
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "Present on foreign-key attributes. More than one entry means the attribute is unified from several relationships."
+        },
+        "rolenamed": {
+          "type": "boolean",
+          "default": false,
+          "description": "true: name is a rolename and does not follow renames of the parent attribute."
+        },
+        "nameSource": {
+          "enum": [
+            "manual",
+            "comment",
+            "dictionary",
+            "inferred"
+          ],
+          "description": "Where the logical name came from."
+        },
+        "ext": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+        }
+      },
+      "not": {
+        "required": [
+          "domain",
+          "type"
+        ]
+      },
+      "dependentRequired": {
+        "rolenamed": [
+          "migratedFrom"
+        ]
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "attributes"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "primary",
+            "alternate",
+            "inversion"
+          ],
+          "description": "primary = PK, alternate = AK (unique), inversion = IE (non-unique index)."
+        },
+        "name": {
+          "type": "string"
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "scope": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/scope"
+        },
+        "physical": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "ext": {
+          "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+        }
+      }
+    }
+  }
+}

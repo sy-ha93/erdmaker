@@ -1,0 +1,9 @@
+id: category_has_subcategory
+kind: non-identifying
+parent: category
+child: category
+verbPhrase:
+  parentToChild: 하위로 둔다
+  childToParent: 상위로 둔다
+cardinality:
+  parent: zero-or-one

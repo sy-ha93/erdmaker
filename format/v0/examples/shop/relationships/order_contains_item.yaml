@@ -1,0 +1,11 @@
+id: order_contains_item
+kind: identifying
+parent: order
+child: order_item
+verbPhrase:
+  parentToChild: 포함한다
+  childToParent: 포함된다
+cardinality:
+  child: one-or-more
+referentialIntegrity:
+  parentDelete: cascade

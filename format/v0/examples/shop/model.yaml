@@ -1,0 +1,10 @@
+formatVersion: "0.1"
+id: shop
+name: 쇼핑몰
+definition: 파일 형식 v0의 모든 개념을 한 번씩 쓰는 예제 모델.
+notation: ie
+targets:
+  - dbms: postgresql
+  - dbms: mysql
+dictionaries:
+  - dictionary

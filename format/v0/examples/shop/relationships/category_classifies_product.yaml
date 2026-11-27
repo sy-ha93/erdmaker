@@ -1,0 +1,4 @@
+id: category_classifies_product
+kind: non-identifying
+parent: category
+child: product

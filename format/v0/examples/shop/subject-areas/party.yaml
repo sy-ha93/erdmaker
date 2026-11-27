@@ -1,0 +1,7 @@
+id: party
+name: 고객
+entities:
+  - address
+  - corporate_customer
+  - customer
+  - personal_customer

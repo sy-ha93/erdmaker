@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erdmaker:format:0.1:layout",
+  "title": "Diagram layout (layouts/*.json)",
+  "description": "Presentation only. Nothing here changes the model or generated DDL. Coordinates are integers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "nodes"
+  ],
+  "properties": {
+    "formatVersion": {
+      "const": "0.1"
+    },
+    "subjectArea": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+      "description": "Omitted for the whole-model diagram."
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "level": {
+          "enum": [
+            "entity",
+            "key",
+            "attribute"
+          ]
+        },
+        "names": {
+          "enum": [
+            "logical",
+            "physical",
+            "both"
+          ]
+        }
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y"
+        ],
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-f]{6}$"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "parentSide": {
+            "enum": [
+              "top",
+              "right",
+              "bottom",
+              "left"
+            ]
+          },
+          "childSide": {
+            "enum": [
+              "top",
+              "right",
+              "bottom",
+              "left"
+            ]
+          },
+          "waypoints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y"
+              ],
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ext": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"
+    }
+  }
+}
