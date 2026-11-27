@@ -188,7 +188,7 @@ function modelFiles(
  *   `Cannot write <file>: <path> is nested more than 256 levels deep`;
  * - the model is not shaped as one: it is not an object, a list is not an
  *   array, an item is not an object, an item's `file` is not a string or
- *   names no file (`''` or `.`);
+ *   normalizes to the opened folder itself (`''`, `.`, `./`, `a/..`, `/`);
  * - two items' `file` normalize to the same path.
  * The `TypeError` is the only error it throws itself; an exception thrown by
  * a getter of the model object (not of its data) passes through unchanged.

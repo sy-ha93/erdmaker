@@ -453,14 +453,38 @@ describe('validateModel: data nested deeper than a file may hold', () => {
           },
         ],
       };
-      const tooDeep = validateModel(model).filter((issue) =>
-        issue.message.endsWith(TOO_DEEP),
-      );
-      expect(tooDeep.map((issue) => [issue.file, issue.path])).toEqual([
-        ['a.yaml', `/attributes${'/0'.repeat(255)}`],
-        ['b.yaml', `/attributes/0/default${'/0'.repeat(253)}`],
-        ['c.yaml', '/0'.repeat(256)],
-        ['l.json', `/nodes/n${'/0'.repeat(254)}`],
+      const deep = (file: string, path: string) =>
+        schemaIssue(file, path, `${path} ${TOO_DEEP}`);
+      // The whole list: one depth issue per item, and the schema is still
+      // checked down to the limit.
+      expect(validateModel(model)).toEqual([
+        schemaIssue(
+          'a.yaml',
+          '/attributes/0',
+          '/attributes/0 must NOT be valid',
+        ),
+        schemaIssue('a.yaml', '/attributes/0', '/attributes/0 must be object'),
+        deep('a.yaml', `/attributes${'/0'.repeat(255)}`),
+        schemaIssue(
+          'b.yaml',
+          '/attributes/0/default',
+          '/attributes/0/default must be object',
+        ),
+        schemaIssue(
+          'b.yaml',
+          '/attributes/0/default',
+          '/attributes/0/default must be string,number,boolean',
+        ),
+        schemaIssue(
+          'b.yaml',
+          '/attributes/0/default',
+          '/attributes/0/default must match exactly one schema in oneOf',
+        ),
+        deep('b.yaml', `/attributes/0/default${'/0'.repeat(253)}`),
+        schemaIssue('c.yaml', '', '/ must be object'),
+        deep('c.yaml', '/0'.repeat(256)),
+        schemaIssue('l.json', '/nodes/n', '/nodes/n must be object'),
+        deep('l.json', `/nodes/n${'/0'.repeat(254)}`),
       ]);
     },
   );

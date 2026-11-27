@@ -14,7 +14,7 @@ export interface LinearTime<Input, Result> {
   readonly input: (size: number) => Input | Promise<Input>;
   /** The code that is timed. */
   readonly run: (input: Input) => Result | Promise<Result>;
-  /** Checks the result of every run, warm-up included; not timed. */
+  /** Checks the result of every run, the warm-up included; not timed. */
   readonly check?: (result: Result, size: number) => void;
   /** The large size's best time over the small size's must stay below this. */
   readonly maxRatio: number;
@@ -30,7 +30,8 @@ export const ATTEMPTS = 3;
 /**
  * Measures `spec` and fails unless the large size's best time over the small
  * size's is below `maxRatio` and below `backstop` milliseconds. One untimed
- * warm-up run of each size first (code compiled, caches filled), then
+ * warm-up run of the small size first (code compiled, caches filled; a
+ * large warm-up would only add the slowest run to every test), then
  * `ROUNDS` rounds that time each size once, alternating which goes first, so
  * that a slow moment of the machine falls on both sizes alike; the best time
  * of each size counts. A measurement whose ratio is at the limit or above is
@@ -52,7 +53,6 @@ export async function expectLinearTime<Input, Result>(
     return elapsed;
   };
   await once(0);
-  await once(1);
 
   const measured: string[] = [];
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {

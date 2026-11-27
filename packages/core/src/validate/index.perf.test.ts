@@ -106,23 +106,29 @@ describe('validateModel: data nested deeper than a file may hold', () => {
         };
       };
       const path = `/ext/k${'/0'.repeat(MAX_NESTING - 2)}`;
-      await expectLinearTime({
-        sizes: [50_000, 200_000],
-        input: deepModel,
-        run: validateModel,
-        check: (issues) =>
-          expect(issues).toEqual([
-            {
-              rule: 'schema',
-              severity: 'error',
-              file: 'entities/e.yaml',
-              path,
-              message: `${path} is nested more than ${MAX_NESTING} levels deep`,
-            },
-          ]),
-        maxRatio: 8,
-        backstop: 10_000,
-      });
+      const measure = (sizes: readonly [number, number]) =>
+        expectLinearTime({
+          sizes,
+          input: deepModel,
+          run: validateModel,
+          check: (issues) =>
+            expect(issues).toEqual([
+              {
+                rule: 'schema',
+                severity: 'error',
+                file: 'entities/e.yaml',
+                path,
+                message: `${path} is nested more than ${MAX_NESTING} levels deep`,
+              },
+            ]),
+          maxRatio: 8,
+          backstop: 10_000,
+        });
+      // Small sizes first: a quadratic walk fails here in seconds, whereas at
+      // the large sizes it would hang, as Vitest's timeout cannot interrupt
+      // synchronous code.
+      await measure([5_000, 20_000]);
+      await measure([50_000, 200_000]);
     },
   );
 });
