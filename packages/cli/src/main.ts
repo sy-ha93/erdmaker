@@ -12,16 +12,16 @@ export interface Output {
   err(line: string): void;
 }
 
-const processOutput: Output = {
-  out: (line) => void process.stdout.write(`${line}\n`),
-  err: (line) => void process.stderr.write(`${line}\n`),
-};
-
 const USAGE = 'Usage: erdmaker validate <dir>';
 
-/** C0 controls, DEL, NEL, and the Unicode line and paragraph separators. */
-// eslint-disable-next-line no-control-regex
-const LINE_BREAKING = /[\u0000-\u001f\u007f\u0085\u2028\u2029]/g;
+/**
+ * C0 controls, DEL, C1 controls, the Unicode line and paragraph separators,
+ * the bidirectional embedding, override and isolate controls, and (with the
+ * `u` flag a pair is one character) lone surrogates.
+ */
+const LINE_BREAKING =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f-\u009f\u2028-\u202e\u2066-\u2069\ud800-\udfff]/gu;
 const SHORT_ESCAPES: Readonly<Record<string, string>> = {
   '\n': '\\n',
   '\r': '\\r',
@@ -42,13 +42,26 @@ export function oneLine(text: string): string {
   );
 }
 
-/** An error's message, or the value as a string; never throws. */
+/** The most code points of a message the CLI prints (spec FR-11). */
+export const MAX_MESSAGE = 500;
+
+/**
+ * An error's message, or the value as a string, cut to `MAX_MESSAGE` code
+ * points with `…` after it when longer; never throws.
+ */
 export function describeError(error: unknown): string {
+  let text: string;
   try {
-    return error instanceof Error ? error.message : String(error);
+    text = error instanceof Error ? String(error.message) : String(error);
   } catch {
     return 'unknown error';
   }
+  let count = 0;
+  for (let index = 0; index < text.length; count += 1) {
+    if (count === MAX_MESSAGE) return `${text.slice(0, index)}…`;
+    index += text.codePointAt(index)! > 0xffff ? 2 : 1;
+  }
+  return text;
 }
 
 /** `<file>:<line>:<column>: <message> [<rule>]`, `warning: ` before the message of a warning. */
@@ -65,11 +78,17 @@ function issueLine(issue: Issue): string {
 const inFolder = (dir: string, file: string) =>
   dir === '' || file.startsWith(`${dir}/`);
 
-async function isFolder(path: string): Promise<boolean> {
+/** Why `path` cannot be opened as a folder, or `undefined` when it can. */
+async function folderProblem(path: string): Promise<string | undefined> {
   try {
-    return (await stat(path)).isDirectory();
-  } catch {
-    return false;
+    return (await stat(path)).isDirectory()
+      ? undefined
+      : `Not a folder: ${path}`;
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    return code === 'ENOENT' || code === 'ENOTDIR'
+      ? `Not a folder: ${path}`
+      : `Cannot read ${path}: ${describeError(error)}`;
   }
 }
 
@@ -78,14 +97,15 @@ async function isFolder(path: string): Promise<boolean> {
  * project folder (spec FR-11). Returns the exit code: 0 when no model has an
  * error (warnings do not count), 1 when a model has an error, 2 when the
  * check could not run: a usage error (no or unknown command), `dir` not a
- * folder, no model found, or a failure to read the folder (the adapter
- * rejected, e.g. `EACCES`; reported as `Cannot read <dir>: <message>`, with
- * nothing on stdout). Every line written is escaped by `oneLine`, so one
+ * folder, no model found, or a failure to read the folder (`stat` of `dir`
+ * failed other than with `ENOENT` or `ENOTDIR`, or the adapter rejected,
+ * e.g. `EACCES`; reported as `Cannot read <dir>: <message>`, with nothing on
+ * stdout). Every line written is escaped by `oneLine`, so one
  * record is one line. `open` makes the adapter over `dir`.
  */
 export async function main(
   args: readonly string[],
-  output: Output = processOutput,
+  output: Output,
   open: (dir: string) => FileSystemAdapter = createNodeFileSystem,
 ): Promise<number> {
   const out = (line: string) => output.out(oneLine(line));
@@ -99,8 +119,9 @@ export async function main(
     err(USAGE);
     return 2;
   }
-  if (!(await isFolder(dir))) {
-    err(`Not a folder: ${dir}`);
+  const problem = await folderProblem(dir);
+  if (problem !== undefined) {
+    err(problem);
     return 2;
   }
   let project;
@@ -142,4 +163,54 @@ export async function main(
     return 1;
   }
   return 0;
+}
+
+/** What `cli` writes to and how it ends the process; `process` is one. */
+export interface Stdio {
+  readonly stdout: NodeJS.WritableStream;
+  readonly stderr: NodeJS.WritableStream;
+  exitCode?: number | string | null | undefined;
+  exit(code: number): void;
+}
+
+/**
+ * Runs `main` on the process's streams (spec FR-11). Listens for stream
+ * errors before `main` starts. `EPIPE` (the reader closed the pipe, as
+ * `| head -1` does) stops all writing and exits quietly with `main`'s exit
+ * code, or 2 while `main` has not returned yet. Any other stream error
+ * stops all writing, prints `Unexpected error: <message>` on stderr unless
+ * stderr failed, and exits 2. An exception out of `main` is that same line
+ * and 2. Nothing prints a stack.
+ */
+export async function cli(
+  args: readonly string[],
+  stdio: Stdio = process,
+): Promise<void> {
+  let code: number | undefined;
+  let stopped = false;
+  const unexpected = (error: unknown) =>
+    `${oneLine(`Unexpected error: ${describeError(error)}`)}\n`;
+  const onError = (failed: 'stdout' | 'stderr') => (error: unknown) => {
+    if (stopped) return;
+    stopped = true;
+    if ((error as { code?: unknown } | null)?.code === 'EPIPE') {
+      stdio.exit(code ?? 2);
+      return;
+    }
+    if (failed === 'stdout') stdio.stderr.write(unexpected(error));
+    stdio.exit(2);
+  };
+  stdio.stdout.on('error', onError('stdout'));
+  stdio.stderr.on('error', onError('stderr'));
+  const output: Output = {
+    out: (line) => void (stopped || stdio.stdout.write(`${line}\n`)),
+    err: (line) => void (stopped || stdio.stderr.write(`${line}\n`)),
+  };
+  try {
+    code = await main(args, output);
+  } catch (error) {
+    if (!stopped) stdio.stderr.write(unexpected(error));
+    code = 2;
+  }
+  if (!stopped) stdio.exitCode = code;
 }

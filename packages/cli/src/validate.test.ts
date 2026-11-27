@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import {
   chmod,
   copyFile,
@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -309,5 +310,60 @@ describe.skipIf(process.getuid?.() === 0)('validate: unreadable', () => {
     await example(join(project, 'a'));
     await mkdir(join(project, 'notes'));
     expectCannotRead(await runLocked(project, join(project, 'notes')), project);
+  });
+
+  test('the parent of the folder: 2 and one line, not "Not a folder"', async () => {
+    const parent = await folder();
+    const dir = await example(join(parent, 'm'));
+    expectCannotRead(await runLocked(dir, parent), dir);
+  });
+
+  test('a dictionary folder outside the model: 2 and one line', async () => {
+    const project = await folder();
+    const dir = await example(join(project, 'm'), {
+      file: 'model.yaml',
+      search: 'targets:\n',
+      replace: 'dictionaries:\n  - ../dictionary\ntargets:\n',
+    });
+    await rename(join(dir, 'dictionary'), join(project, 'dictionary'));
+    expectCannotRead(await runLocked(dir, join(project, 'dictionary')), dir);
+  });
+});
+
+describe('validate: closed output', () => {
+  test('stdout closed after the first chunk: no stack, and the exit code of the rule', async () => {
+    // Long folder names, so that the OK lines (about 128 KB) exceed a pipe's buffer.
+    const project = await folder();
+    const manifest = await readFile(join(EXAMPLE_DIR, 'model.yaml'), 'utf8');
+    expect(manifest.split('id: shop\n')).toHaveLength(2);
+    for (let i = 0; i < 400; i += 1) {
+      const dir = join(project, `m${i}-${'x'.repeat(200)}`);
+      await mkdir(dir);
+      await writeFile(
+        join(dir, 'model.yaml'),
+        manifest.replace('id: shop\n', `id: shop_${i}\n`),
+      );
+    }
+    const child = spawn(process.execPath, [bin, 'validate', project], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let chunks = 0;
+    child.stdout.on('data', () => {
+      chunks += 1;
+      child.stdout.destroy();
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (text: string) => (stderr += text));
+    const [code, signal] = await new Promise<[number | null, string | null]>(
+      (done) => child.on('close', (...end) => done(end)),
+    );
+    expect(chunks).toBe(1);
+    expect(stderr).not.toContain('node:events');
+    expect(stderr).not.toMatch(/^\s*at /m);
+    expect(stderr).toBe('');
+    expect(signal).toBeNull();
+    // Every model is clean: 0 if the run had ended when the pipe closed, 2 if not.
+    expect([0, 2]).toContain(code);
   });
 });

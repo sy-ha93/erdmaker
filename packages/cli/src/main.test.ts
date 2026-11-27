@@ -1,10 +1,23 @@
+import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import type { FileSystemAdapter } from '@erdmaker/core';
 import { describe, expect, test } from 'vitest';
-import { describeError, main, oneLine } from './main.js';
+import {
+  MAX_MESSAGE,
+  type Stdio,
+  cli,
+  describeError,
+  main,
+  oneLine,
+} from './main.js';
 
 /** A real folder, so `main` gets past its folder check to the adapter. */
 const DIR = fileURLToPath(new URL('.', import.meta.url));
+const EXAMPLE = fileURLToPath(
+  new URL('../../../format/v0/examples/shop', import.meta.url),
+);
+const OK =
+  'OK: 10 entities, 11 relationships, 1 subtype clusters, 3 subject areas, 2 layouts, 5 words, 4 terms, 8 domains';
 
 /** An adapter whose every call rejects with `reason`. */
 function failing(reason: unknown): FileSystemAdapter {
@@ -54,6 +67,122 @@ describe('validate: main', () => {
     expect(describeError(Symbol('s'))).toBe('Symbol(s)');
     expect(describeError(null)).toBe('null');
   });
+
+  test(`describeError keeps ${MAX_MESSAGE} code points and cuts a longer message with …`, () => {
+    expect(MAX_MESSAGE).toBe(500);
+    const full = 'a'.repeat(500);
+    expect(describeError(new Error(full))).toBe(full);
+    expect(describeError(new Error(`${full}b`))).toBe(`${full}…`);
+    // A pair of surrogates is one code point and is never split.
+    const pairs = '😀'.repeat(500);
+    expect(describeError(`${pairs}😀`)).toBe(`${pairs}…`);
+    expect(describeError(`x${pairs}`)).toBe(`x${'😀'.repeat(499)}…`);
+  });
+
+  test('a long rejection: the message part is cut, the line stays one', async () => {
+    const { code, out, err } = await capture(new Error('m\n'.repeat(10_000)));
+    expect({ code, out }).toEqual({ code: 2, out: [] });
+    expect(err).toEqual([`Cannot read ${DIR}: ${'m\\n'.repeat(250)}…`]);
+  });
+});
+
+/** A stream that keeps what is written and can be made to fail. */
+class FakeStream extends EventEmitter {
+  readonly written: string[] = [];
+  constructor(private readonly onWrite?: (stream: FakeStream) => void) {
+    super();
+  }
+  write(text: string): boolean {
+    this.written.push(text);
+    this.onWrite?.(this);
+    return true;
+  }
+}
+
+const epipe = () => Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+
+function stdio(stdout = new FakeStream(), stderr = new FakeStream()) {
+  const exits: number[] = [];
+  const io = {
+    stdout: stdout as unknown as Stdio['stdout'],
+    stderr: stderr as unknown as Stdio['stderr'],
+    exitCode: undefined as Stdio['exitCode'],
+    exit: (code: number) => void exits.push(code),
+  };
+  return { io, exits, stdout, stderr };
+}
+
+describe('validate: cli', () => {
+  test('a clean run: the lines and the exit code, no exit call', async () => {
+    const { io, exits, stdout, stderr } = stdio();
+    await cli(['validate', EXAMPLE], io);
+    expect(stdout.written).toEqual([`${OK}\n`]);
+    expect(stderr.written).toEqual([]);
+    expect({ code: io.exitCode, exits }).toEqual({ code: 0, exits: [] });
+  });
+
+  test('EPIPE before main returns: nothing more is written, exit 2', async () => {
+    const stdout = new FakeStream((s) => s.emit('error', epipe()));
+    const { io, exits, stderr } = stdio(stdout);
+    await cli(['validate', EXAMPLE], io);
+    expect(stdout.written).toEqual([`${OK}\n`]);
+    expect(stderr.written).toEqual([]);
+    expect({ code: io.exitCode, exits }).toEqual({
+      code: undefined,
+      exits: [2],
+    });
+  });
+
+  test('EPIPE after main returned: exit with its code, nothing written', async () => {
+    const { io, exits, stdout, stderr } = stdio();
+    await cli(['validate', DIR], io);
+    expect(io.exitCode).toBe(2);
+    stderr.emit('error', epipe());
+    stdout.emit('error', epipe());
+    expect(exits).toEqual([2]);
+    expect(stderr.written).toEqual([`No model found in ${DIR}\n`]);
+
+    const clean = stdio();
+    await cli(['validate', EXAMPLE], clean.io);
+    clean.stdout.emit('error', epipe());
+    expect(clean.exits).toEqual([0]);
+    expect(clean.stderr.written).toEqual([]);
+  });
+
+  test('another stdout error: one Unexpected error line on stderr, exit 2', async () => {
+    const stdout = new FakeStream((s) =>
+      s.emit('error', new Error('disk\nfull')),
+    );
+    const { io, exits, stderr } = stdio(stdout);
+    await cli(['validate', EXAMPLE], io);
+    expect(stderr.written).toEqual(['Unexpected error: disk\\nfull\n']);
+    expect({ code: io.exitCode, exits }).toEqual({
+      code: undefined,
+      exits: [2],
+    });
+  });
+
+  test('a stderr error: nothing more is written, exit 2', async () => {
+    const stderr = new FakeStream((s) => s.emit('error', new Error('gone')));
+    const { io, exits, stdout } = stdio(undefined, stderr);
+    await cli(['validate', DIR], io);
+    expect(stderr.written).toEqual([`No model found in ${DIR}\n`]);
+    expect(stdout.written).toEqual([]);
+    expect({ code: io.exitCode, exits }).toEqual({
+      code: undefined,
+      exits: [2],
+    });
+  });
+
+  test('an exception out of main: one Unexpected error line, cut, exit 2', async () => {
+    const stdout = new FakeStream(() => {
+      throw new Error('x'.repeat(600));
+    });
+    const { io, exits, stderr } = stdio(stdout);
+    await cli(['validate', EXAMPLE], io);
+    expect(stderr.written).toEqual([`Unexpected error: ${'x'.repeat(500)}…\n`]);
+    expect({ code: io.exitCode, exits }).toEqual({ code: 2, exits: [] });
+  });
 });
 
 describe('validate: oneLine', () => {
@@ -70,7 +199,23 @@ describe('validate: oneLine', () => {
     );
   });
 
+  test('C1 controls, bidirectional controls and lone surrogates are visible escapes', () => {
+    expect(
+      oneLine(
+        'a\u0080b\u009fc\u202ad\u202ee\u2066f\u2069g\ud800h\udfffi\udc00\ud800',
+      ),
+    ).toBe(
+      'a\\u{80}b\\u{9f}c\\u{202a}d\\u{202e}e\\u{2066}f\\u{2069}g\\u{d800}h\\u{dfff}i\\u{dc00}\\u{d800}',
+    );
+  });
+
+  test('neighbours of the escaped ranges and a surrogate pair are unchanged', () => {
+    const text = '\u00a0\u2027\u202f\u2065\u206a😀\ud83d\ude00';
+    expect(oneLine(text)).toBe(text);
+  });
+
   test('a long text of controls is escaped in one pass', () => {
     expect(oneLine('\n'.repeat(100_000))).toBe('\\n'.repeat(100_000));
+    expect(oneLine('\ud800'.repeat(100_000))).toBe('\\u{d800}'.repeat(100_000));
   });
 });

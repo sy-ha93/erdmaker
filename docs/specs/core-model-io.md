@@ -173,9 +173,10 @@
 - 출력:
   - 오류는 stderr에 한 줄씩 `<file>:<line>:<column>: <message> [<rule>]`, 끝에 빈 줄과 `<n> error(s)`. 경고는 같은 줄 모양에 메시지 앞에 `warning: `을 붙이고, 개수에 세지 않는다.
   - 오류가 없는 모델은(경고만 있어도) stdout에 `OK: <n> entities, <n> relationships, <n> subtype clusters, <n> subject areas, <n> layouts, <n> words, <n> terms, <n> domains`. `<dir>`이 모델 폴더가 아니면 줄 앞에 `<모델 폴더>: `를 붙인다. `P01`·`P02`는 다른 오류와 같은 줄 모양으로 그 `file`과 함께 찍고 오류 개수와 종료 코드 1에 센다. `P01`이 난 모델과 `P02`의 안쪽 `model.yaml`을 품은 모델은 OK 줄을 내지 않는다.
-  - 종료 2의 이유는 stderr에 한 줄이다: `Usage: erdmaker validate <dir>`(인자 없음, 폴더 없는 `validate`, 인자가 셋 이상), `Unknown command: <명령>. Usage: erdmaker validate <dir>`, `Not a folder: <dir>`, `No model found in <dir>`, `Cannot read <dir>: <메시지>`. `<dir>`은 사용자가 적은 그대로다.
-  - **읽기 실패**: 모델 찾기나 검증 중에 어댑터가 거부하면(`EACCES` 등, FR-02) 그 예외를 잡아 stderr에 `Cannot read <dir>: <메시지>` 한 줄만 찍고 stdout에는 아무것도 내지 않으며 종료 코드는 2다. `<메시지>`는 `Error`이면 그 `message`, 아니면 `String(값)`이다(그것도 던지면 `unknown error`). 모델 찾기는 읽지 못하는 폴더를 건너뛰지 않고 거기서 멈춘다. 모델이 아닌 폴더라도 같다(그 아래에 모델이 있는지 알 수 없어서다). `bin.ts`도 예외를 스택으로 내보내지 않는다: `main` 밖으로 나온 예외는 `Unexpected error: <메시지>` 한 줄과 종료 코드 2다.
-  - **한 기록은 한 줄**: CLI가 찍는 줄은 모두(경로, `<dir>`, 메시지 조각 포함) C0 제어 문자(U+0000~U+001F), U+007F, U+0085, U+2028, U+2029를 보이는 이스케이프로 바꾼다. 줄바꿈·복귀·탭은 `\n`, `\r`, `\t`, 나머지는 `\u{<16진수>}`(소문자, 앞의 0 없음. 예: `\u{1b}`, `\u{2028}`)다. 역슬래시를 포함해 다른 글자는 그대로라 보통의 경로는 바이트까지 전과 같다. 이름에 줄바꿈이 든 모델 폴더 `a<줄바꿈>b`의 OK 줄은 `a\nb: OK: …` 한 줄이다.
+  - 종료 2의 이유는 stderr에 한 줄이다: `Usage: erdmaker validate <dir>`(인자 없음, 폴더 없는 `validate`, 인자가 셋 이상), `Unknown command: <명령>. Usage: erdmaker validate <dir>`, `Not a folder: <dir>`(`<dir>`이 없거나(`ENOENT`, `ENOTDIR`) 폴더가 아님), `No model found in <dir>`, `Cannot read <dir>: <메시지>`. `<dir>`은 사용자가 적은 그대로다.
+  - **읽기 실패**: `<dir>`의 `stat`이 `ENOENT`, `ENOTDIR` 말고 다른 이유로 실패하거나(예: 부모 폴더의 권한이 없어 `EACCES`), 모델 찾기나 검증 중에 어댑터가 거부하면(`EACCES` 등, FR-02) 그 예외를 잡아 stderr에 `Cannot read <dir>: <메시지>` 한 줄만 찍고 stdout에는 아무것도 내지 않으며 종료 코드는 2다. `<메시지>`는 `Error`이면 그 `message`, 아니면 `String(값)`이다(그것도 던지면 `unknown error`). `<메시지>`가 코드 포인트 500개보다 길면 앞의 500개 뒤에 `…`를 붙여 자른다(`Unexpected error: <메시지>`도 같다). 모델 찾기는 읽지 못하는 폴더를 건너뛰지 않고 거기서 멈춘다. 모델이 아닌 폴더라도 같다(그 아래에 모델이 있는지 알 수 없어서다). `bin.ts`도 예외를 스택으로 내보내지 않는다: `main` 밖으로 나온 예외는 `Unexpected error: <메시지>` 한 줄과 종료 코드 2다.
+  - **출력이 닫힘**: `main`을 부르기 전에 stdout과 stderr에 `error` 처리기를 단다. `EPIPE`(읽는 쪽이 파이프를 닫음. 예: `erdmaker validate <dir> | head -1`)면 더 쓰지 않고 조용히 끝낸다. 종료 코드는 `main`이 이미 돌려줬으면 그 코드, 아직이면 2다. 다른 스트림 오류면 더 쓰지 않고, stderr가 쓸 수 있으면(오류가 stderr의 것이 아니면) `Unexpected error: <메시지>` 한 줄을 찍고 종료 2다. 어느 경우에도 스택을 찍지 않는다.
+  - **한 기록은 한 줄**: CLI가 찍는 줄은 모두(경로, `<dir>`, 메시지 조각 포함) C0 제어 문자(U+0000~U+001F), U+007F, C1 제어 문자(U+0080~U+009F), U+2028, U+2029, 양방향 제어 문자(U+202A~U+202E, U+2066~U+2069), 짝 없는 서로게이트(U+D800~U+DFFF 중 짝을 이루지 않은 것)를 보이는 이스케이프로 바꾼다. 짝을 이룬 서로게이트(이모지 등)는 그대로다. 줄바꿈·복귀·탭은 `\n`, `\r`, `\t`, 나머지는 `\u{<16진수>}`(소문자, 앞의 0 없음. 예: `\u{1b}`, `\u{2028}`, `\u{d800}`)다. 한 번 훑어 바꾸므로 줄 길이에 선형이다. 역슬래시를 포함해 다른 글자는 그대로라 보통의 경로는 바이트까지 전과 같다. 이름에 줄바꿈이 든 모델 폴더 `a<줄바꿈>b`의 OK 줄은 `a\nb: OK: …` 한 줄이다.
 - 종료 코드:
 
   | 코드 | 경우                                                                                           |
@@ -184,7 +185,7 @@
   | 1    | 모델에 오류가 하나 이상                                                                        |
   | 2    | 검사를 하지 못함: 인자 없음, 모르는 명령, `<dir>`이 폴더가 아님, 모델을 하나도 못 찾음, 읽기 실패. stderr에 이유 한 줄, stdout은 비어 있다 |
 
-- 명령 처리는 종료 코드를 돌려주는 함수로 두고 `bin.ts`는 그 함수만 부른다(예외를 한 줄로 바꾸는 것 말고는 하지 않는다). 수용 테스트는 `package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행한다.
+- 명령 처리는 종료 코드를 돌려주는 함수(`main`)로 두고, 스트림 오류 처리와 예외를 한 줄로 바꾸는 것은 그 함수를 감싸는 함수(`cli`)에 둔다. `bin.ts`는 `cli`만 부른다. 수용 테스트는 `package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행한다.
 
 ### FR-12 테스트 파일 타입 검사
 
@@ -222,7 +223,7 @@
 | AC-10 | FR-01         | `cli` 테스트 "브라우저 번들"                              | 6.1                                                                                                                                                                                                                                                    |
 | AC-11 | FR-01         | `pnpm --filter @erdmaker/core exec tsc --showConfig`      | `lib`가 `["es2022"]`이고 `types`가 `[]`다                                                                                                                                                                                                              |
 | AC-12 | FR-03         | `core` 테스트 "스키마 동기화"                             | `format/v0/schema`의 파일 8개를 파싱한 값과 생성 모듈의 값이 개수가 같고, 파일마다 `JSON.stringify` 결과가 같다(키 순서까지 본다) |
-| AC-13 | FR-11         | `cli` 테스트 "validate"                                   | `packages/cli/package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행해 종료 코드, stdout, stderr를 각각 단언한다. 예제: 0과 6.2의 요약 줄. `format/v0/examples`: 0과 `shop: `이 앞에 붙은 같은 줄. 규칙 사례 하나를 푼 임시 폴더: 1, stderr에 `<file>:<line>:<column>: <message> [<rule>]` 줄과 `1 error(s)`. 주석만 넣은 사례: 0, stderr에 `warning: `이 든 줄, stdout에 요약 줄. `id`가 같은 모델 둘과 모델 안의 `model.yaml`이 있는 임시 프로젝트: 1, stderr에 `P01` 줄 둘과 `P02` 줄 하나가 각자의 `model.yaml` 경로로 나오고, stdout에 그 모델들의 OK 줄이 없다. 모델이 없는 폴더, 없는 경로, 인자 없음, 모르는 명령: 각각 2. 권한을 없앤(`chmod 000`) 엔터티 파일, 모델 폴더, 프로젝트 안의 모델이 아닌 폴더: 각각 2, stdout은 비고 stderr는 `Cannot read <dir>: `로 시작하는 정확히 한 줄(root로 돌면 건너뛴다). 이름에 줄바꿈이 든 모델 폴더와 파일: 각자 한 줄이고 줄바꿈은 `\n`이다 |
+| AC-13 | FR-11         | `cli` 테스트 "validate"                                   | `packages/cli/package.json`의 `bin.erdmaker`가 가리키는 파일을 자식 프로세스로 실행해 종료 코드, stdout, stderr를 각각 단언한다. 예제: 0과 6.2의 요약 줄. `format/v0/examples`: 0과 `shop: `이 앞에 붙은 같은 줄. 규칙 사례 하나를 푼 임시 폴더: 1, stderr에 `<file>:<line>:<column>: <message> [<rule>]` 줄과 `1 error(s)`. 주석만 넣은 사례: 0, stderr에 `warning: `이 든 줄, stdout에 요약 줄. `id`가 같은 모델 둘과 모델 안의 `model.yaml`이 있는 임시 프로젝트: 1, stderr에 `P01` 줄 둘과 `P02` 줄 하나가 각자의 `model.yaml` 경로로 나오고, stdout에 그 모델들의 OK 줄이 없다. 모델이 없는 폴더, 없는 경로, 인자 없음, 모르는 명령: 각각 2. 권한을 없앤(`chmod 000`) 엔터티 파일, 모델 폴더, 프로젝트 안의 모델이 아닌 폴더, `<dir>`의 부모 폴더, 모델 밖의 사전 폴더(`dictionaries: [../dictionary]`): 각각 2, stdout은 비고 stderr는 `Cannot read <dir>: `로 시작하는 정확히 한 줄(root로 돌면 건너뛴다). stdout을 넘칠 만큼(파이프 버퍼보다 큰) OK 줄을 내는 프로젝트에서 첫 덩어리를 받은 뒤 stdout을 닫으면: stderr에 `node:events`도 `at ` 스택 줄도 없고, 신호로 끝나지 않으며 종료 코드는 규칙대로(0 또는 2)다. 이름에 줄바꿈이 든 모델 폴더와 파일: 각자 한 줄이고 줄바꿈은 `\n`이다 |
 | AC-14 | FR-11, FR-13  | 6.2                                                       | `npm run validate:format`과 `pnpm validate:format`이 선언된 bin 파일을 실행하고, 종료 코드 0과 같은 요약 줄을 낸다. 옛 도구 파일이 없다 |
 | AC-15 | FR-12         | 6.3                                                       | 테스트 파일에 타입 오류가 있으면 `pnpm lint`가 그 오류로 실패한다 |
 | AC-16 | FR-13         | 대조 테스트가 든 커밋의 CI (`gh run list --commit <sha>`) | 성공이다. PR 설명에 그 커밋의 해시를 적는다                                                                                                                                                                                                            |
@@ -306,6 +307,7 @@ if (Object.keys(c.dependencies).sort().join() !== 'ajv,yaml') process.exit(1);"
 - `pnpm build`는 `dist/bin.js`에 실행 권한을 주지 않는다. `node packages/cli/dist/bin.js`로 부르거나 패키지 관리자가 만든 `bin` 링크로 부른다.
 - 브라우저 번들 테스트(AC-10)는 번들 안에서 검증 경로(`validateProject`와 메모리 어댑터)만 실행한다. 쓰기(`serializeModel`, `writeModel`)가 번들에서 도는지는 확인하지 않는다.
 - CLI는 읽지 못하는 폴더나 파일이 하나라도 있으면 나머지 모델도 검사하지 않고 종료 2로 끝난다(FR-11).
+- CLI의 출력이 닫혀 끝날 때(`EPIPE`) `main`이 아직 돌고 있었으면 종료 코드는 검사 결과와 상관없이 2다(FR-11).
 - `get` 트랩이 던지는 Proxy인 데이터는 `validateModel`이 `/ must be a JSON value`로 보고하지만, `serializeModel`은 속성 서술자로 읽으므로 그대로 쓴다. 아무것도 던지지 않고 잃는 데이터도 없다.
 
 ## 부록 A. 규칙 메시지와 사례
