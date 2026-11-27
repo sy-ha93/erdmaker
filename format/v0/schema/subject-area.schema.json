@@ -20,6 +20,15 @@
     "definition": {
       "type": "string"
     },
+    "group": {
+      "$ref": "urn:erdmaker:format:0.1:common#/$defs/id",
+      "description": "Id of an entry in the manifest's areaGroups."
+    },
+    "order": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Display order within the group (or among ungrouped areas). Ties and missing values sort by id."
+    },
     "entities": {
       "type": "array",
       "items": {

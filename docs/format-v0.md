@@ -17,6 +17,31 @@
 
 예제는 `format/v0/examples/shop/`에 있고, `npm run validate:format`으로 검사한다.
 
+## 프로젝트, 모델, 주제영역
+
+묶는 단위는 세 단계다(2026-11-27 확정).
+
+| 단계 | 무엇인가 | 어디에 적는가 |
+| --- | --- | --- |
+| 프로젝트 | Git 저장소 하나. 모델 폴더를 여러 개 담는다(시스템이나 사이트별) | 따로 적는 파일이 없다. `model.yaml`이 있는 폴더가 모델이다 |
+| 모델 | 관계로 이어지는 한 덩어리. DB 스키마 여러 개를 다룰 수 있다 | `model.yaml`의 `schemas`, 엔터티의 `physical.schema` |
+| 주제영역 | 화면의 탭 하나. 상위 분류로 한 번 묶을 수 있다 | `model.yaml`의 `areaGroups`, 주제영역의 `group`과 `order` |
+
+- 도구는 연 폴더 아래 3단계까지 `model.yaml`을 찾는다. 점으로 시작하는 폴더와 `node_modules`는 건너뛴다. 모델 폴더 안에 다른 모델을 두지 않는다.
+- 한 프로젝트 안에서 모델 `id`는 유일하다.
+- 사전은 프로젝트에 하나 두고 여러 모델이 함께 쓸 수 있다. 모델마다 `dictionaries: [../dictionary]`처럼 경로로 가리킨다.
+- 모델 사이에는 관계를 두지 않는다. 관계가 필요한 테이블은 같은 모델에 넣고, 남의 시스템 스키마는 `role: linked`로 표시한다.
+- 주제영역 묶음은 한 단계뿐이다. 묶음 안에 묶음을 두지 않는다.
+
+```
+<프로젝트 폴더>/
+  dictionary/standard.yaml     여러 모델이 함께 쓰는 사전
+  billing/model.yaml           모델 하나
+  billing/entities/...
+  member/model.yaml            다른 모델
+  member/entities/...
+```
+
 ## 설계 결정
 
 | 결정                                                                                                            | 이유                                                                                                                                                                          |
@@ -36,11 +61,12 @@
 
 ### model.yaml
 
-`formatVersion`(지금은 `"0.1"`), `id`, `name`, `notation`(`ie` 기본, `idef1x`), `targets`(대상 DBMS 목록, 첫 항목이 DDL 생성 기본값), `dictionaries`(사전 디렉터리 목록, 기본 `dictionary`).
+`formatVersion`(지금은 `"0.1"`), `id`, `name`, `notation`(`ie` 기본, `idef1x`), `targets`(대상 DBMS 목록, 첫 항목이 DDL 생성 기본값), `dictionaries`(사전 디렉터리 목록, 기본 `dictionary`. 모델 폴더 밖을 가리킬 수 있다), `schemas`(이 모델이 다루는 DB 스키마 목록. 항목은 `name`, `role`(`main` 기본, `linked`는 다른 시스템의 스키마), `definition`), `areaGroups`(주제영역 묶음 목록. 항목은 `id`, `name`, `definition`이고 목록 순서가 표시 순서다).
 
 ### 엔터티
 
 - `id`, `name`(논리명), `definition`, `note`, `scope`, `physical.name`(테이블명), `physical.schema`.
+  - 서로 다른 스키마에 같은 이름의 테이블이 있으면, 나중에 만드는 쪽의 ID 앞에 스키마 이름을 붙인다(`dormant_member`). 겹치지 않으면 이름만으로 만든다.
 - `attributes`: 순서가 있는 목록이고 이 순서가 컬럼 순서다.
   - `id`는 엔터티 안에서만 유일하면 된다.
   - 타입은 `domain`(사전 도메인 ID) 또는 `type`(`base`, `length`, `precision`, `scale`) 중 하나다. 초기 ERD 단계에서는 둘 다 비워 둘 수 있다.
@@ -67,7 +93,7 @@
 
 ### 주제영역과 배치
 
-- 주제영역: `id`, `name`, `entities`(ID 순 정렬). 엔터티 하나가 여러 주제영역에 들어갈 수 있다.
+- 주제영역: `id`, `name`, `group`(`areaGroups`의 ID, 없으면 묶음 밖), `order`(묶음 안의 표시 순서, 없거나 같으면 ID 순), `entities`(ID 순 정렬). 엔터티 하나가 여러 주제영역에 들어갈 수 있다.
 - 배치: `subjectArea`(없으면 모델 전체 다이어그램), `display.level`(`entity`/`key`/`attribute`), `display.names`, `nodes`(엔터티 ID → `x`, `y`, `width`, `height`, `color`), `edges`(관계 ID → 붙는 변, 꺾임점). 좌표는 정수다. 노드가 없는 엔터티는 자동 배치한다. 확대 비율과 스크롤 위치는 개인 상태라 저장하지 않는다.
 
 ### 사전
@@ -103,6 +129,9 @@
 7. 재귀 관계로 이주된 속성은 롤네임이 있어야 한다.
 8. 속성과 관계의 `scope`는 소속 엔터티의 범위를 넘지 못한다.
 9. 배치의 노드는 해당 주제영역에 속한 엔터티만, 엣지는 실제 관계만 가리킨다. 주제영역 하나에 배치 파일은 하나다.
+10. `schemas`가 있으면 스키마 이름은 유일하고, 엔터티의 `physical.schema`는 그 목록에 있어야 한다.
+11. 같은 스키마 안에서 테이블명(`physical.name`)은 유일하다. 논리 전용 엔터티는 세지 않는다.
+12. `areaGroups`의 ID는 유일하고, 주제영역의 `group`은 그 목록에 있어야 한다.
 
 ## v0에 넣지 않은 것
 
@@ -114,6 +143,7 @@
 - 추정 관계 후보와 근거 등급(승인 전에는 모델 밖에 둔다)
 - 댓글, 검토 상태
 - 논리 모델 하나에 물리 모델 여럿
+- 모델 사이의 관계, 3단 이상의 주제영역 묶음
 
 ## 열린 질문
 

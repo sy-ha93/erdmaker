@@ -50,6 +50,34 @@
       "minItems": 1,
       "description": "Target DBMS list. The first entry is the default for DDL generation."
     },
+    "schemas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "enum": [
+              "main",
+              "linked"
+            ],
+            "default": "main"
+          },
+          "definition": {
+            "type": "string"
+          }
+        }
+      },
+      "minItems": 1,
+      "description": "Database schemas (namespaces) this model covers. When present, every entity's physical.schema must be one of them. 'linked' marks a schema that belongs to another system and is included only for the tables this model refers to."
+    },
     "dictionaries": {
       "type": "array",
       "items": {
@@ -61,6 +89,30 @@
         "dictionary"
       ],
       "description": "Dictionary directories, relative to model.yaml, searched in order."
+    },
+    "areaGroups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "urn:erdmaker:format:0.1:common#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "definition": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Groups of subject areas, one level only. List order is display order."
     },
     "ext": {
       "$ref": "urn:erdmaker:format:0.1:common#/$defs/ext"

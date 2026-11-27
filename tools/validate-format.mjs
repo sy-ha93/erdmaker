@@ -139,6 +139,38 @@ const areas = index(
 );
 const layouts = loadAll('layouts', '.json', 'layout');
 
+// Manifest-level lists: database schemas and subject area groups.
+const schemaNames = new Set();
+for (const s of manifest?.data.schemas ?? []) {
+  if (schemaNames.has(s.name))
+    err(manifestFile, `duplicate schema "${s.name}"`);
+  schemaNames.add(s.name);
+}
+const groupIds = new Set();
+for (const g of manifest?.data.areaGroups ?? []) {
+  if (groupIds.has(g.id))
+    err(manifestFile, `duplicate area group id "${g.id}"`);
+  groupIds.add(g.id);
+}
+const tableNames = new Map();
+for (const { file, data: e } of entities.values()) {
+  const schema = e.physical?.schema;
+  if (schema !== undefined && schemaNames.size && !schemaNames.has(schema))
+    err(file, `physical.schema "${schema}" is not listed in model.yaml`);
+  if ((e.scope ?? 'both') === 'logical' || !e.physical?.name) continue;
+  const key = `${schema ?? ''}\u0000${e.physical.name}`;
+  if (tableNames.has(key))
+    err(
+      file,
+      `table name "${e.physical.name}" is already used by "${tableNames.get(key)}" in the same schema`,
+    );
+  else tableNames.set(key, e.id);
+}
+for (const { file, data } of areas.values()) {
+  if (data.group !== undefined && !groupIds.has(data.group))
+    err(file, `unknown area group "${data.group}"`);
+}
+
 // A "link" is anything that migrates a key: a relationship or a subtype member.
 const links = new Map();
 for (const { file, data } of relationships.values()) {

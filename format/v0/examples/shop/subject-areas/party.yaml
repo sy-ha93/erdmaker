@@ -1,5 +1,6 @@
 id: party
 name: 고객
+group: master
 entities:
   - address
   - corporate_customer

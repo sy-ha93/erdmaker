@@ -1,5 +1,6 @@
 id: sales
 name: 주문
+group: trade
 entities:
   - address
   - customer
