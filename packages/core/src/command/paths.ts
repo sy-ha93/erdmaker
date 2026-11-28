@@ -167,11 +167,11 @@ export interface FileSpace {
   otherCase(path: string): string | undefined;
 }
 
-/** A `FileSpace` over sets: `used` holds the keys of the paths in use. */
+/** A `FileSpace` over sets: `used` answers for the keys of the paths in use. */
 export function fileSpace(places: {
   dir: string;
   folder: NewItemFolder;
-  used: ReadonlySet<string>;
+  used: { has(key: string): boolean };
   initial: InitialPaths;
   dictionaryFolders: readonly string[];
 }): FileSpace {

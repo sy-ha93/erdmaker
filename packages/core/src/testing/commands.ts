@@ -1,4 +1,5 @@
 import type { Command } from '../command/types.js';
+import type { ReadonlyModel } from '../model/types.js';
 
 /**
  * Inputs `execute` must refuse with `invalid-command` (spec AC-11, the
@@ -38,7 +39,34 @@ export interface SampleCommand {
   start: 'example' | 'empty';
   /** Commands run on the start model first. */
   before?: readonly Command[];
+  /**
+   * The data of the items the command touches, by file, made from the
+   * model just before the command (after `before`); `null` where no item
+   * has that file any more (spec AC-06). Filled in phase by phase.
+   */
+  items?: (model: ReadonlyModel) => Readonly<Record<string, unknown>>;
 }
+
+/** The data of the item at `file` in any list of `model`; throws when there is none. */
+export function dataAt(model: ReadonlyModel, file: string): unknown {
+  for (const list of [
+    model.entities,
+    model.relationships,
+    model.subtypes,
+    model.subjectAreas,
+    model.layouts,
+  ] as const) {
+    for (const item of list) if (item.file === file) return item.data;
+  }
+  throw new Error(`No item at ${file}`);
+}
+
+/** The data at `file` with `fields` put over it. */
+const patched = (
+  model: ReadonlyModel,
+  file: string,
+  fields: Record<string, unknown>,
+): unknown => ({ ...(dataAt(model, file) as object), ...fields });
 
 const MAX_VALUES = 100_000;
 const MAX_TEXT = 1_000_000;
@@ -500,6 +528,19 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
   {
     start: 'example',
     command: { type: 'entity.create', name: '배송', subjectArea: 'sales' },
+    items: (model) => ({
+      'entities/baesong.yaml': { id: 'baesong', name: '배송', attributes: [] },
+      'subject-areas/sales.yaml': patched(model, 'subject-areas/sales.yaml', {
+        entities: [
+          'address',
+          'customer',
+          'order',
+          'order_item',
+          'product',
+          'baesong',
+        ],
+      }),
+    }),
   },
   {
     start: 'example',
@@ -508,11 +549,17 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'order',
       set: { definition: '고객이 한 번에 결제하는 주문.' },
     },
+    items: (model) => ({
+      'entities/order.yaml': patched(model, 'entities/order.yaml', {
+        definition: '고객이 한 번에 결제하는 주문.',
+      }),
+    }),
   },
   {
     start: 'empty',
     before: [{ type: 'entity.create', id: 'a', name: 'A' }],
     command: { type: 'entity.delete', id: 'a' },
+    items: () => ({ 'entities/a.yaml': null }),
   },
   {
     start: 'example',

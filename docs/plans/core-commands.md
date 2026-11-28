@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 4/8 완료)
+**상태**: 진행 중 (단계 5/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -291,9 +291,9 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 5: 편집기와 `entity.*`
 
 **목표**: 편집기가 모듈 안에 있고 `entity.create`·`update`·`delete`와 `batch`가 실행, 검증, 실행 취소된다. `index.ts`는 바뀌지 않는다(결정 2).
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-14 · **요구사항**: FR-01, FR-02, FR-04, FR-08, FR-07(`entity.*`와 그 연쇄), FR-10(일의 수)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-14 · **요구사항**: FR-01, FR-02, FR-04, FR-08, FR-07(`entity.*`와 그 연쇄), FR-10(일의 수)
 
-- [ ] 5.1 **테스트**(구현 전에 모두 쓴다. `./editor.js`에서 가져온다. `entity.*`로 되지 않는 줄은 `test.todo`로 이름만 두고 단계 6에서 채운다. 감시를 비우는 자리는 2장 제약 그대로다).
+- [x] 5.1 **테스트**(구현 전에 모두 쓴다. `./editor.js`에서 가져온다. `entity.*`로 되지 않는 줄은 `test.todo`로 이름만 두고 단계 6에서 채운다. 감시를 비우는 자리는 2장 제약 그대로다).
   - `command/editor.test.ts`, `describe('편집기 만들기')`: AC-14 전부(`internal`은 재진입으로 낸다). 덧붙여 처음 경로가 상태임을 보인다: `entities/Customer.yaml`을 읽어 그 엔터티를 지운 편집기와, 그 결과 모델로 새로 만든 편집기는 `id: customer`의 `entity.create`에 다른 결과를 낸다(FR-01, FR-06).
   - `command/history.test.ts`, `describe('이력')`: AC-12 가운데 `entity.*`로 되는 것(마지막 문장은 `test.todo`)과 AC-15의 뒷부분(`undo`·`redo`에서 `validateModel` 0번, 모델과 `issues`가 스냅숏의 것과 `toBe`).
   - `command/batch.test.ts`, `describe('묶음')`: AC-13 가운데 `entity.*`로 되는 것(실패의 순서 셋, 봉투, 묶음 안의 묶음, 끝의 비교, 지우기만과 그 저장, `ids`, `validateModel` 호출 수).
@@ -302,10 +302,10 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
   - `command/hostile.test.ts`, `describe('믿을 수 없는 입력')`·`describe('거부 문구')`: 단계 2의 두 표를 `execute`로(모델이 전과 `toBe`), 재진입, 실행 뒤 명령 객체를 고쳐도 모델이 그대로.
   - `command/handler-throws.test.ts`: `./handlers/entity.js`를 바꿔치기해 `internal`과 `Unexpected error: <메시지>`, `Error`가 아닌 값, `String()`도 던지는 값(`unknown error`), 그 뒤의 호출이 `busy`가 아님.
   - `command/handlers.test.ts` `describe('명령 동작')`, `command/cascade.test.ts` `describe('연쇄와 대상')`: `entity.*`의 줄(AC-06의 엔터티 부분, AC-10의 첫 문장과 엔터티의 `not-found`·`ambiguous-target`).
-- [ ] 5.2 **구현**: `command/work.ts`, `working.ts`, `find.ts`, `changes.ts`, `handlers/entity.ts`, `registry.ts`, `editor.ts`. 지킬 것: 결정 8·9의 설계 제약, 분석 4.6의 E1~E8, 4.9, 권고 8과 2장의 권고 9 줄. 단일 명령은 하위 명령 하나의 묶음과 같은 길로 돈다. `busy`는 `try/finally`로 푼다. 모델·`issues`·이력은 끝에 한꺼번에 바꾼다. `createEditor`의 조건은 단계 4의 `checkEditable`이다.
-- [ ] 5.3 `SAMPLE_COMMANDS`의 `entity.*` 기대값을 채운다.
-- [ ] 5.4 **검증**: 5장의 단계 관문. `-t '편집기 만들기'`에서 통과가 1개 이상이고 `editor.test.ts`에 `todo`가 없다.
-- [ ] 5.5 커밋한다(`Add the editor: execute, undo, redo, batch and the entity commands`).
+- [x] 5.2 **구현**: `command/work.ts`, `working.ts`, `find.ts`, `changes.ts`, `handlers/entity.ts`, `registry.ts`, `editor.ts`. 지킬 것: 결정 8·9의 설계 제약, 분석 4.6의 E1~E8, 4.9, 권고 8과 2장의 권고 9 줄. 단일 명령은 하위 명령 하나의 묶음과 같은 길로 돈다. `busy`는 `try/finally`로 푼다. 모델·`issues`·이력은 끝에 한꺼번에 바꾼다. `createEditor`의 조건은 단계 4의 `checkEditable`이다.
+- [x] 5.3 `SAMPLE_COMMANDS`의 `entity.*` 기대값을 채운다.
+- [x] 5.4 **검증**: 5장의 단계 관문. `-t '편집기 만들기'`에서 통과가 1개 이상이고 `editor.test.ts`에 `todo`가 없다.
+- [x] 5.5 커밋한다(`Add the editor: execute, undo, redo, batch and the entity commands`).
 
 ### 단계 6: 나머지 처리 13종과 공개
 
@@ -566,7 +566,32 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
   8. **부모 폴더**: 마지막 `/` 앞이고, `/`가 없는 경로의 부모는 연 폴더(`""`)다. 나열한 이름은 `pathKey`한 집합으로 들고 새 경로의 마지막 구성요소의 키를 찾는다.
 - 계획과 달라진 점: (1) `model-shape.ts`가 `checkEditable` 말고 `readModelShape`와 `SAVED_LISTS`도 내보낸다. `writeChanges`가 검사한 값을 다시 읽지 않으려면 읽은 자리가 필요하다. 단계 5의 `createEditor`는 `checkEditable`을 쓰면 된다. (2) 4.3의 "같은 글의 파일"은 나열에 보이는 것과 읽기에서만 보이는 것 둘로 넣었다(나열에 보이면 읽기 전에 걸려 "같은 글이면 통과" 변이를 잡지 못한다). (3) AC-05 가운데 명령으로 만드는 사례(예제의 `attribute.update`·`subjectArea.*`, `listReservedFiles`를 준 편집기)는 계획대로 단계 7이다. `definiton` 사례와 `Customer.yaml` 세 파일 사례는 손으로 만든 `after`로 여기에 넣었다.
 
+### 단계 5 (2026-11-28)
+
+- 앞선 커밋 `d1ddb1f`(`Close the Phase 3 review`)가 단계 3 리뷰의 경고 1건과 메모 6건을 닫았다: 슬러그가 NFKC 전에 256 코드 단위를 자르는 사례 둘과 호환 자모 사례, 연 폴더이거나 그 위인 사전 폴더(`.`, `..`, `../..`)는 모든 경로를 품음, `reservedPaths`가 글의 배열만 받고 그 밖에는 `TypeError('Cannot edit the model: reservedFiles is not a list of paths')` 하나만 던짐(빈 글로 정규화되는 항목은 무시), 스펙 FR-01·FR-03·FR-05·FR-06의 문장. 그래서 단계 3 기록의 "정한 것" 6(`reservedFiles`의 글이 아닌 값)은 스펙이 정했고, 이 단계의 `createEditor`가 그 도우미를 부른다. FR-01의 서명도 `reservedFiles?: readonly string[]`로 맞췄다.
+- 5.1: 테스트 파일 여덟, 테스트 110개와 `test.todo` 11개(모두 단계 6의 종류가 필요한 줄. `editor.test.ts`에는 없다). 구현 전에 돌려 모듈이 없어 실패하는 것을 봤다. 테스트 도우미 `testing/editing.ts`(예제의 글 맵을 파일마다 한 번 읽음, 빈 모델, 손으로 만든 모델, `succeeded`)를 더했다.
+  - `editor.test.ts` "편집기 만들기" 7개: FR-01의 이유 아홉(`TypeError`와 문구), 밖의 사전 하나, 오류가 있는 모델, `reservedFiles`의 계약(`Set`, 글, 글이 아닌 항목, 던지는 getter, `options: null`, 모델의 이유가 먼저, 빈 항목 무시), 거부 코드 여덟마다 `model`·`issues`·`canUndo`·`canRedo`가 그대로(`canUndo`와 `canRedo`가 둘 다 참인 상태에서), 같은 두 편집기의 결과가 호출마다 `toEqual`(`undo`·`redo` 포함 13번), 처음 경로가 상태임(`entities/Customer.yaml`을 지운 편집기는 `id: customer`를 다섯째 이유로 거부하고, 그 모델로 새로 만든 편집기는 받는다).
+  - `history.test.ts` "이력" 6개 + todo 1(AC-12의 마지막 문장). AC-15의 뒷부분: 모델을 바꾸는 `execute`가 `validateModel` 정확히 1번, 그 뒤 `undo`·`redo`가 각각 0번이고 `model`·`issues`가 스냅숏의 것과 `toBe`.
+  - `batch.test.ts` "묶음" 10개 + todo 3. 실패의 순서 셋(`not-found` `index` 1 → 바꾸면 `invalid-command` `index` 1 → 봉투의 모르는 키), 묶음 안의 묶음(안쪽이 스키마에 어긋나도 이 문구), 한 줄 처리 전의 접두, 끝이 오류면 `index` 없는 `validation`, 가운데 상태는 보지 않음, `ids`와 `validateModel` 1번과 `undo` 한 번, 만들고 지우기(`ids` `[baesong, null]`, 같은 모델, 이력·검증 없음), 지우고 다시 만들기, 지우기만과 그 저장, 일의 수.
+  - `policy.test.ts` "검증 정책" 8개 + todo 2, `hostile.test.ts` "믿을 수 없는 입력"·"거부 문구" 56개 + todo 3, `handler-throws.test.ts` 7개, `handlers.test.ts` "명령 동작" 11개 + todo 1, `cascade.test.ts` "연쇄와 대상" 5개 + todo 1.
+- 5.2: `work.ts`(`noteWork`), `working.ts`(`Working`: 목록마다 처음 고칠 때 한 번 복사하고, 지운 자리는 구멍으로 남겨 위치가 바뀌지 않는다. ID 색인 `entities`·`subjectAreas`와 경로 키의 개수 맵은 처음 물을 때 한 번 만들고 고칠 때마다 이어 고친다. 항목은 처음 고칠 때 새 항목으로 복사해 이 상태가 가지고, 그 뒤로는 제자리에서 고친다. 주제영역의 `entities`는 처음 고칠 때 `Set`을 함께 만든다), `changes.ts`(끝의 비교 `endModel`, `errorCount`, 술어 (가) `rejectionIssues`, 술어 (나) `reuseIssues`), `find.ts`, `handlers/entity.ts`, `registry.ts`, `editor.ts`. 단일 명령도 하위 명령 하나의 길로 돈다. 처리 모듈은 목록에 `slice`·펼치기·`filter`·`find`를 쓰지 않는다(목록과 색인은 모두 `Working`의 도우미를 거친다).
+- 5.3: `SampleCommand.items`(명령 직전 모델에서 만드는 기대 데이터, `null`은 그 파일의 항목이 없음)를 더하고 `entity.*` 셋을 채웠다.
+- 5.4: 단계 관문 `exit=0`. 58개 파일 1056개 통과, todo 11개, `pnpm test` 75.62초(단계 4의 74.66초 + 약 1초. 새 여덟 파일은 따로 돌리면 1.52초). `-t '편집기 만들기'`에서 16개 통과(모델의 조건 9 + 편집기 7), `editor.test.ts`에 `todo`가 없다.
+- **일의 수**: T(250) = 5501, T(500) = 6001, T(1000) = 7001(Δ250 = 500, Δ500 = 1000. 하위 명령 하나에 2칸: 더하기 1, 끝의 훑기 1). `'index-build'`는 세 n 모두 3번(엔터티 색인, 경로 키, 끝의 비교의 파일 맵), `validateModel` 1번, `serializeItem` 0번. 고른 값: `tolerance` = 2, `c` = 4. 변이 (1) 더할 때마다 엔터티 목록 전체를 복사: `|Δ500 − 2·Δ250|` = 187500 > 2로 실패, 그 단언을 빼면 `Δ500` = 875250 > 2000으로 실패. 변이 (2) 찾을 때마다 색인을 다시 만듦: `'index-build'`가 n = 250에서 252번, 500에서 502번이라 실패. 둘 다 되돌렸다.
+- 깨뜨려 확인한 것(각각 되돌림. 실패한 테스트 수): 검증 전에 모델을 바꿈(5), 거부된 명령에 이력(3), 바뀐 것이 없는 명령에 이력(2), 오류가 하나 늘어도 받음(3), 묶음의 하위 명령마다 검증(6), 바뀐 것이 없는 묶음에 새 모델 객체(3), 재진입 허용(2), 거부된 명령이 다시 실행 목록을 비움(2), 이력 101칸(1), 부르는 쪽의 명령 객체를 처리에 넘김(2). 덧붙여: `Issue`를 다시 쓰지 않음(2), 네 필드로 다시 씀(2), 끝의 비교에서 원래 항목으로 되돌리지 않음(3), 거부의 `issues`에 모든 오류(2), 비운 `physical`을 남김(1), 주제영역에 같은 ID를 두 번 붙임(1). 살아남은 변이는 없다.
+- 스펙과 계획이 정하지 않아 정한 것:
+  1. **하위 명령의 처리가 던진 예외**: 그 하위 명령의 거부로 보고 `internal`에 `index`와 `commands[<i>]: ` 접두를 붙인다(`commands[1]: Unexpected error: boom`). 부록 B의 "`batch`의 하위 명령이 낸 거부는 위 문구 앞에 접두가 붙는다"를 `internal`에도 적용했다. 처리 밖(끝의 비교, 검증)에서 난 예외는 `index` 없는 `internal`이다. 단일 명령에는 접두가 없다.
+  2. **`options`**: `undefined`이면 예약 경로가 없다. `reservedFiles` 읽기가 던지면(던지는 getter, `options: null`) `reservedFiles is not a list of paths`의 `TypeError`다. 모델의 조건을 먼저 본다.
+  3. **거부의 `issues`**: `validation`이 아닌 거부와 재진입은 새 빈 배열이다. 바뀐 것이 없는 성공도 `id`·`ids`를 돌려준다.
+  4. **묶음 안의 묶음**: 하위 명령 사본의 자기 속성 `type`이 `'batch'`이면 그 스키마 검사 전에 거부하고 `index`를 붙인다(리드의 결정 그대로).
+  5. **술어 (가)의 "전 목록"**: `editor.issues` 전부(경고 포함)의 `rule`, `file`, `path`, `message`와 비교한다. 거부의 `issues`에는 오류만 든다.
+  6. **사전 폴더**: 편집기를 만들 때 매니페스트의 `dictionaries`(글인 항목만, 배열이 아니면 없는 것)로 한 번 정한다. F03의 명령은 매니페스트를 바꾸지 않는다.
+  7. **색인의 수명**: `execute` 한 번의 작업 상태가 만들고 버린다. 모델마다 캐시하지 않는다(이력의 칸이 색인을 붙들지 않게. 계획 2장 권고 9).
+  8. **`physical`의 정리**: `unset`이 실제로 키를 지웠고 끝에 `physical`이 비었을 때만 지운다. 없는 키의 `unset`은 건드리지 않은 것으로 본다.
+  9. **처리가 없는 종류**: 이 단계에서 스키마를 통과한 나머지 13종은 `internal`(`Unexpected error: no handler for <type>`)이다. 공개하지 않으므로 밖에서 보이지 않고 단계 6이 채운다.
+- 계획과 달라진 점: (1) 테스트 도우미 `testing/editing.ts`를 더했다(모듈 표에 없다. 빌드에서 빠진다). (2) 술어 둘과 오류 수는 따로 파일을 두지 않고 `changes.ts`에서 내보낸다. (3) AC-13의 "지우고 다시 만들면서 `order.ord_dtm`의 `definition`도 바꾸는 묶음"은 `attribute.update`가 단계 6이라, 같은 조건을 `entity.update`(`order`의 `note`)로 시험하고 스펙의 줄은 todo로 남겼다. (4) `paths.ts`의 `fileSpace`가 `used`로 `has`만 있는 객체를 받는다(작업 상태의 경로 키 개수 맵). (5) `ACCEPTED_INPUTS` 가운데 `subjectArea.create`의 두 줄은 todo다.
+
 ---
 
-마지막 수정: 2026-11-28 10:10
-상태: 진행 중 (단계 4/8 완료)
+마지막 수정: 2026-11-28 11:00
+상태: 진행 중 (단계 5/8 완료)
