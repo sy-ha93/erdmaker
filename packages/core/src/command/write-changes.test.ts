@@ -167,6 +167,22 @@ describe('저장의 조건', () => {
           emptyModel({ layouts: [null as never] }),
           'layouts[0] is not an item',
         ],
+        [
+          emptyModel({ dir: '..' }),
+          emptyModel({
+            dir: '..',
+            entities: [entity('../../x.yaml', 'x')],
+          }),
+          '../../x.yaml is outside the model folder',
+        ],
+        [
+          emptyModel({
+            dir: '..',
+            entities: [entity('../../x.yaml', 'x')],
+          }),
+          emptyModel({ dir: '..' }),
+          '../../x.yaml is outside the model folder',
+        ],
       ];
       for (const [before, after, reason] of cases) {
         let saving: Promise<unknown> | undefined;
@@ -979,6 +995,27 @@ describe('저장의 조건', () => {
       const result = await writeChanges(fs, before, after);
       expect(result).toEqual({ written: ['x.yaml'], removed: [] });
       expect(fs.paths('list')).toEqual([]);
+    });
+
+    test("a path after's manifest or a dictionary holds is not removed", async () => {
+      const text = textOf(entity('x.yaml', 'x'));
+      for (const place of ['manifest', 'dictionary'] as const) {
+        const fs = recordingFileSystem({ 'x.yaml': text });
+        const before = emptyModel({ entities: [entity('x.yaml', 'x')] });
+        const held = { file: 'x.yaml', data: {} };
+        const after = emptyModel(
+          place === 'manifest'
+            ? { manifest: held as never }
+            : { dictionaries: [held as never] },
+        );
+        ready(fs);
+        await expect(writeChanges(fs, before, after)).resolves.toEqual({
+          written: [],
+          removed: [],
+        });
+        expect(fs.calls).toEqual([]);
+        expect(await fs.readText('x.yaml')).toBe(text);
+      }
     });
 
     test('manifest and dictionaries are never read, written or removed', async () => {

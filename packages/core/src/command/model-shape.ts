@@ -60,17 +60,25 @@ function isObject(value: unknown): value is object {
   return typeof value === 'object' && value !== null;
 }
 
-/** The items of a list, or `undefined` when its length or an index throws. */
-function listItems(list: unknown[]): unknown[] | undefined {
-  try {
-    const { length } = list;
-    if (!Number.isSafeInteger(length) || length < 0) return undefined;
-    const out: unknown[] = [];
-    for (let i = 0; i < length; i += 1) out.push(read(list, String(i)));
-    return out;
-  } catch {
-    return undefined;
-  }
+/**
+ * The longest list taken: no array can be longer, so only a Proxy reports
+ * more, and walking it could take forever.
+ */
+const MAX_LIST_LENGTH = 2 ** 32 - 1;
+
+/**
+ * The length of a list, or `undefined` when reading it throws or it is not
+ * a whole number from 0 to `MAX_LIST_LENGTH`. Reads nothing else: a list's
+ * entries are walked only after every list passed.
+ */
+function listLength(list: unknown[]): number | undefined {
+  const length = read(list, 'length');
+  return typeof length === 'number' &&
+    Number.isInteger(length) &&
+    length >= 0 &&
+    length <= MAX_LIST_LENGTH
+    ? length
+    : undefined;
 }
 
 /** The item's `file` when it is an object whose `file` is a string. */
@@ -82,12 +90,16 @@ function itemFile(item: unknown): string | undefined {
 
 /**
  * Whether `file` is inside `dir`, component by component: `dir` is a
- * leading part of it, shorter than it. Both are normalized, so `..` only
- * leads.
+ * leading part of it, shorter than it, and the component right after `dir`
+ * is not `..`. Both are normalized, so `..` only leads: with `dir: '..'`,
+ * `../../a.yaml` starts with `dir` but lies above it.
  */
 function isInside(file: string, dir: string): boolean {
-  if (dir === '') return file !== '..' && !file.startsWith('../');
-  return file.startsWith(`${dir}/`);
+  let rest: string;
+  if (dir === '') rest = file;
+  else if (file.startsWith(`${dir}/`)) rest = file.slice(dir.length + 1);
+  else return false;
+  return rest !== '..' && !rest.startsWith('../');
 }
 
 /**
@@ -107,12 +119,12 @@ export function readModelShape(
     return { reason: 'dir is not a normalized path' };
   }
 
-  const lists = new Map<ListName, unknown[]>();
+  const lists = new Map<ListName, { list: unknown[]; length: number }>();
   for (const name of LISTS) {
     const list = read(model, name);
-    const items = isList(list) ? listItems(list) : undefined;
-    if (!items) return { reason: `${name} is not a list` };
-    lists.set(name, items);
+    const length = isList(list) ? listLength(list) : undefined;
+    if (length === undefined) return { reason: `${name} is not a list` };
+    lists.set(name, { list: list as unknown[], length });
   }
 
   let manifest: ShapeItem<'manifest'> | undefined;
@@ -130,9 +142,12 @@ export function readModelShape(
   const items: ShapeItem<SavedList>[] = [];
   const dictionaries: ShapeItem<'dictionaries'>[] = [];
   for (const name of LISTS) {
-    const list = lists.get(name)!;
-    for (let index = 0; index < list.length; index += 1) {
-      const item = list[index];
+    // One index at a time, stopping at the first entry that is not an item:
+    // the work is linear in the items present, however long the list says
+    // it is (a sparse array has no entry at all).
+    const { list, length } = lists.get(name)!;
+    for (let index = 0; index < length; index += 1) {
+      const item = read(list, String(index));
       const file = itemFile(item);
       if (file === undefined)
         return { reason: `${name}[${index}] is not an item` };

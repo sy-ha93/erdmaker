@@ -196,10 +196,26 @@ describe('편집기 만들기: 모델의 조건', () => {
     expect(outside('m/n', 'm/a.yaml')).toBe(
       'm/a.yaml is outside the model folder',
     );
+    // Above dir: the component right after dir is `..`.
+    expect(outside('..', '../../precious.yaml')).toBe(
+      '../../precious.yaml is outside the model folder',
+    );
+    expect(outside('..', '../../m/a.yaml')).toBe(
+      '../../m/a.yaml is outside the model folder',
+    );
+    expect(outside('../..', '../../../a.yaml')).toBe(
+      '../../../a.yaml is outside the model folder',
+    );
+    expect(outside('..', '../..')).toBe('../.. is outside the model folder');
+    expect(outside('', '../../a.yaml')).toBe(
+      '../../a.yaml is outside the model folder',
+    );
     expect(outside('', 'a.yaml')).toBeUndefined();
     expect(outside('m', 'm/a.yaml')).toBeUndefined();
     expect(outside('..', '../a.yaml')).toBeUndefined();
     expect(outside('../m', '../m/e/a.yaml')).toBeUndefined();
+    expect(outside('..', '../..a/b.yaml')).toBeUndefined();
+    expect(outside('', '..a/b.yaml')).toBeUndefined();
     for (const list of [
       'relationships',
       'subtypes',
@@ -310,6 +326,81 @@ describe('편집기 만들기: 모델의 조건', () => {
     expect(reads).toBe(1);
     expect(dirReads).toBe(1);
     if ('shape' in read) expect(read.shape.items[0]!.item).toBe(item);
+  });
+
+  test('a sparse list stops at its first entry that is not an item', () => {
+    for (const length of [2 ** 32 - 1, 1e8]) {
+      const sparse: unknown[] = [];
+      sparse.length = length;
+      expect(checkEditable(model({ entities: sparse }))).toBe(
+        'entities[0] is not an item',
+      );
+      const late: unknown[] = [entity('e/a.yaml'), entity('e/b.yaml', 'b')];
+      late.length = length;
+      expect(checkEditable(model({ layouts: late }))).toBe(
+        'layouts[2] is not an item',
+      );
+    }
+    // Every list is a list before any item is looked at.
+    const sparse: unknown[] = [];
+    sparse.length = 2 ** 32 - 1;
+    expect(checkEditable(model({ entities: sparse, dictionaries: 'x' }))).toBe(
+      'dictionaries is not a list',
+    );
+  });
+
+  test('reads the indexes of a list one by one, only up to the first that fails', () => {
+    const counted = (target: unknown[], length: number) => {
+      const reads: string[] = [];
+      const proxy = new Proxy(target, {
+        get(on, key, receiver) {
+          if (typeof key === 'string') reads.push(key);
+          if (key === 'length') return length;
+          return Reflect.get(on, key, receiver);
+        },
+      });
+      return { proxy, reads };
+    };
+    const items = [entity('e/a.yaml'), entity('e/b.yaml', 'b')];
+    const holes = counted([...items], 2 ** 32 - 1);
+    expect(checkEditable(model({ entities: holes.proxy }))).toBe(
+      'entities[2] is not an item',
+    );
+    expect(holes.reads).toEqual(['length', '0', '1', '2']);
+
+    // Nothing of a list is read before every list passed: a later list that
+    // is not one is found with no index read.
+    const early = counted([...items], 2);
+    expect(
+      checkEditable(model({ entities: early.proxy, layouts: undefined })),
+    ).toBe('layouts is not a list');
+    expect(early.reads).toEqual(['length']);
+  });
+
+  test('a list longer than any array can be is not a list, with no index read', () => {
+    const reads: PropertyKey[] = [];
+    const endless = new Proxy([entity('e/a.yaml')], {
+      get(on, key, receiver) {
+        reads.push(key);
+        if (key === 'length') return 2 ** 53 - 1;
+        // Every index is an item: only the length bound stops the walk.
+        if (typeof key === 'string' && /^\d+$/.test(key)) {
+          return entity(`e/${key}.yaml`, `e${key}`);
+        }
+        return Reflect.get(on, key, receiver);
+      },
+    });
+    expect(checkEditable(model({ subjectAreas: endless }))).toBe(
+      'subjectAreas is not a list',
+    );
+    expect(reads).toEqual(['length']);
+    const justOver = new Proxy([], {
+      get: (on, key, receiver) =>
+        key === 'length' ? 2 ** 32 : Reflect.get(on, key, receiver),
+    });
+    expect(checkEditable(model({ entities: justOver }))).toBe(
+      'entities is not a list',
+    );
   });
 
   test('a large model is checked in one pass', () => {

@@ -81,7 +81,8 @@ const occupied = (path: string) =>
  * lists (entities, relationships, subtypes, subject areas, layouts) whose
  * object is not the one `before` has at that `file`, when their text differs
  * from the file there, and removes the files `before` had that `after` does
- * not. The manifest and dictionaries are never read, written or removed.
+ * not (nor its manifest or dictionaries hold). The manifest and
+ * dictionaries are never read, written or removed.
  * Which item owns a path is decided by the `file` values alone.
  *
  * Five checks come first, in this order, each stopping at its first
@@ -133,8 +134,13 @@ export async function writeChanges(
     });
   }
   writes.sort((a, b) => compareCodeUnits(a.file, b.file));
+  // A path any item of `after` holds is not removed, the manifest's and the
+  // dictionaries' included; only the five lists count for letter case (2).
+  const held = new Set(kept);
+  if (next.manifest) held.add(next.manifest.file);
+  for (const { file } of next.dictionaries) held.add(file);
   const removals: string[] = [];
-  for (const file of owned.keys()) if (!kept.has(file)) removals.push(file);
+  for (const file of owned.keys()) if (!held.has(file)) removals.push(file);
   removals.sort(compareCodeUnits);
 
   // (2)

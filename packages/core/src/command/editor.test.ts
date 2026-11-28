@@ -64,6 +64,10 @@ describe('편집기 만들기', () => {
         'billing-old/entities/a.yaml is outside the model folder',
       ],
       [
+        handModel({ dir: '..', entities: [entity('../../precious.yaml')] }),
+        '../../precious.yaml is outside the model folder',
+      ],
+      [
         handModel({
           entities: [entity('entities/a.yaml'), entity('entities/a.yaml', 'b')],
         }),
