@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest';
+import { serializeModel } from '../model/serialize.js';
+import { serializeItem } from '../model/serialize-item.js';
 import type { ReadonlyModel } from '../model/types.js';
 import { deepFreeze, exampleModel, snapshotOf } from '../testing/editing.js';
 import { Random } from '../testing/generate.js';
@@ -10,6 +12,29 @@ const RUNS = 2500;
 
 /** The steps the editor keeps (spec FR-08). */
 const HISTORY = 100;
+
+const LISTS = [
+  ['entities', 'entity'],
+  ['relationships', 'relationship'],
+  ['subtypes', 'subtype'],
+  ['subjectAreas', 'subject-area'],
+  ['layouts', 'layout'],
+  ['dictionaries', 'dictionary'],
+] as const;
+
+/**
+ * Serializes the items of `model` that `previous` does not hold: what
+ * `serializeModel(model)` adds to the work of `serializeModel(previous)`.
+ * Throws when it would.
+ */
+function serializeNewItems(previous: ReadonlyModel, model: ReadonlyModel) {
+  for (const [list, schema] of LISTS) {
+    const old = new Set<object>(previous[list]);
+    for (const item of model[list]) {
+      if (!old.has(item)) serializeItem(item.file, item.data, schema);
+    }
+  }
+}
 
 /** An id from `ids`, sometimes one that is not there. */
 const anyId = (random: Random, ids: readonly string[]): string =>
@@ -40,7 +65,12 @@ function subCommand(random: Random, model: ReadonlyModel): object {
       return {
         type: 'entity.update',
         id: entity,
-        set: { note: name, ...(random.chance(0.3) ? { scope: 'both' } : {}) },
+        set: {
+          note: name,
+          ...(random.chance(0.3) ? { scope: 'both' } : {}),
+          // A number outside the safe integers: a schema error once stored.
+          ...(random.chance(0.1) ? { ext: { wide: 2 ** 53 } } : {}),
+        },
         unset: maybe(['definition']),
       };
     case 2:
@@ -241,6 +271,7 @@ function walk(
   let accepted = 0;
   for (let run = 0; run < runs; run += 1) {
     const roll = random.next();
+    const before = editor.model;
     const result =
       roll < 0.1
         ? mirror.undo()
@@ -249,6 +280,15 @@ function walk(
           : mirror.execute(command(random, editor));
     if (result.ok) accepted += 1;
     else seen.add(result.code);
+    // The walk starts with no error: every model it reaches can be saved.
+    // The items it shares with the model before were serialized already, so
+    // each step serializes the new ones, and now and then the whole model.
+    if (result.ok && result.model !== before) {
+      expect(() => serializeNewItems(before, editor.model)).not.toThrow();
+    }
+    if (run % 100 === 0) {
+      expect(() => serializeModel(editor.model)).not.toThrow();
+    }
     expect(
       result.ok || result.code !== 'internal',
       JSON.stringify(result),
@@ -260,7 +300,7 @@ function walk(
 }
 
 describe('명령 동작: 무작위', () => {
-  test('a deep-frozen example under random commands of every kind, undo and redo: nothing throws, errors never grow, history by identity', async () => {
+  test('a deep-frozen example under random commands of every kind, undo and redo: nothing throws, errors never grow, every model serializes, history by identity', async () => {
     const model = deepFreeze(await exampleModel());
     const before = snapshotOf(model);
     const editor = createEditor(model);

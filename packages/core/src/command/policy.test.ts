@@ -384,6 +384,97 @@ describe('검증 정책', () => {
     expect(editor.issues).toEqual([]);
   });
 
+  test('AC-07 (바): a file-local error that hides an R02 is refused although the count stays', () => {
+    // The key refers to a missing attribute: one R02. A new schema error in
+    // the entity leaves it out of the cross-file rules, so the R02 goes and
+    // the count stays one; the model could no longer be saved.
+    const editor = createEditor(
+      handModel({
+        entities: [
+          entityItem('a', {
+            keys: [{ id: 'k', kind: 'primary', attributes: ['missing'] }],
+          }),
+        ],
+      }),
+    );
+    expect(rules(editor)).toEqual(['R02']);
+    const model = editor.model;
+    const before = editor.issues;
+    const added = error(
+      'schema',
+      'entities/a.yaml',
+      '/ext/wide',
+      '/ext/wide must be a JSON value',
+    );
+    expect(
+      editor.execute({
+        type: 'entity.update',
+        id: 'a',
+        set: { ext: { wide: 2 ** 53 } },
+      }),
+    ).toEqual({
+      ok: false,
+      code: 'validation',
+      message: `The command would break the model: entities/a.yaml: ${added.message}`,
+      issues: [added],
+    });
+    expect(editor.model).toBe(model);
+    expect(editor.issues).toBe(before);
+    expect(editor.canUndo).toBe(false);
+  });
+
+  test('a model with a schema error takes an edit that adds none', () => {
+    const editor = createEditor(
+      handModel({
+        entities: [
+          entityItem('a', { ext: { wide: 2 ** 53 } }),
+          entityItem('b'),
+        ],
+      }),
+    );
+    expect(rules(editor)).toEqual(['schema']);
+    const result = editor.execute({
+      type: 'entity.update',
+      id: 'b',
+      set: { note: 'n' },
+    });
+    expect(result.ok).toBe(true);
+    expect(rules(editor)).toEqual(['schema']);
+  });
+
+  test('a batch that fixes one schema error and adds another is refused with the new one', () => {
+    const editor = createEditor(
+      handModel({
+        entities: [
+          entityItem('a', { ext: { wide: 2 ** 53 } }),
+          entityItem('b'),
+        ],
+      }),
+    );
+    const model = editor.model;
+    const added = error(
+      'schema',
+      'entities/b.yaml',
+      '/ext/wide',
+      '/ext/wide must be a JSON value',
+    );
+    expect(
+      editor.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.update', id: 'a', unset: ['ext'] },
+          { type: 'entity.update', id: 'b', set: { ext: { wide: 2 ** 53 } } },
+        ],
+      }),
+    ).toEqual({
+      ok: false,
+      code: 'validation',
+      message: `The command would break the model: entities/b.yaml: ${added.message}`,
+      issues: [added],
+    });
+    expect(editor.model).toBe(model);
+  });
+
   test('a refusal on a model with errors lists only the new errors', () => {
     const editor = createEditor(
       handModel({

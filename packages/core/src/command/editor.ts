@@ -1,6 +1,7 @@
 import type { Issue, ReadonlyModel } from '../model/types.js';
 import { validateModel } from '../validate/index.js';
 import {
+  addsSchemaError,
   endModel,
   errorCount,
   rejectionIssues,
@@ -222,7 +223,11 @@ class ModelEditor implements Editor {
       return { ok: true, model, issues: before.issues, ...made }; // work-ok: the id or ids field of the result record
     }
     const found: Issue[] = validateModel(model);
-    if (errorCount(found) > errorCount(before.issues)) {
+    // Both must hold (spec FR-04): no new `schema` error, and no more errors.
+    if (
+      addsSchemaError(before.issues, found) ||
+      errorCount(found) > errorCount(before.issues)
+    ) {
       const issues = rejectionIssues(before.issues, found);
       const first = issues[0]!;
       return refuse(

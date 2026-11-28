@@ -122,6 +122,31 @@ const issueKey = (issue: Readonly<Issue>): string =>
     issue.column,
   ]);
 
+/** The keys of the errors of `issues`. */
+function errorKeys(issues: Issues): Set<string> {
+  const keys = new Set<string>();
+  for (const issue of issues) {
+    if (issue.severity === 'error') keys.add(errorKey(issue));
+  }
+  return keys;
+}
+
+/**
+ * Whether `next` has a `schema` error that is new against `previous` (spec
+ * FR-04, condition 1): no error of `previous` has its rule, file, path and
+ * message. An item with a file-local error is left out of the cross-file
+ * rules, so such an error can hide another and leave the count as it was.
+ */
+export function addsSchemaError(previous: Issues, next: Issues): boolean {
+  let known: Set<string> | undefined;
+  for (const issue of next) {
+    if (issue.severity !== 'error' || issue.rule !== 'schema') continue;
+    known ??= errorKeys(previous);
+    if (!known.has(errorKey(issue))) return true;
+  }
+  return false;
+}
+
 /**
  * The issues of a `validation` refusal (spec FR-04): the errors of `next`
  * with no error of `previous` of the same rule, file, path and message, in
@@ -131,10 +156,7 @@ export function rejectionIssues(
   previous: Issues,
   next: Issues,
 ): Readonly<Issue>[] {
-  const known = new Set<string>();
-  for (const issue of previous) {
-    if (issue.severity === 'error') known.add(errorKey(issue));
-  }
+  const known = errorKeys(previous);
   const fresh: Readonly<Issue>[] = [];
   const errors: Readonly<Issue>[] = [];
   for (const issue of next) {
