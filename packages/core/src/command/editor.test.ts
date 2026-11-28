@@ -3,7 +3,7 @@ import type { Model } from '../model/types.js';
 import { validateModel } from '../validate/index.js';
 import { entityItem, exampleModel, handModel } from '../testing/editing.js';
 import { createEditor } from './editor.js';
-import { dictionaryFolders } from './paths.js';
+import { dictionaryFolders, newItemFile } from './paths.js';
 import type { CommandResult, Editor } from './types.js';
 
 const NOT_A_LIST =
@@ -213,8 +213,9 @@ describe('편집기 만들기', () => {
 
   test('an enormous dictionaries entry is left out instead of joined, and createEditor does not throw', () => {
     // Codex: joining one entry of the longest string length threw a
-    // RangeError out of createEditor. Entries over 4096 characters (the
-    // adapters' path limit) are left out on the editor side.
+    // RangeError out of createEditor. A folder over 4096 characters (the
+    // adapters' path limit) once normalized is left out on the editor side;
+    // an entry that normalizes to a short folder is kept (final review).
     const plain = { formatVersion: '0.1', id: 'm', name: 'M' };
     const segment = 'x'.repeat(2 ** 20);
     const entries = [
@@ -233,19 +234,58 @@ describe('편집기 만들기', () => {
           } as never,
         });
         expect(() => createEditor(model)).not.toThrow();
-        expect(dictionaryFolders(dir, model.manifest)).toEqual([
-          `${dir}/entities`,
-        ]);
+        // Under a model folder of 2²⁰ characters every folder is longer
+        // than the limit, and so is every new item path.
+        const expected =
+          dir === segment
+            ? []
+            : entry === `${segment}/../entities`
+              ? ['m/entities', 'm/entities']
+              : ['m/entities'];
+        expect(dictionaryFolders(dir, model.manifest)).toEqual(expected);
       }
     }
-    // 4096 characters is still an entry.
-    const longest = 'y'.repeat(4096);
-    expect(
-      dictionaryFolders('m', {
-        file: 'm/model.yaml',
-        data: { ...plain, dictionaries: [longest] },
-      }),
-    ).toEqual([`m/${longest}`]);
+    expect(newItemFile(segment, 'entities', 'a').length).toBeGreaterThan(4096);
+    // A folder of 4096 characters is still a folder; one more is not.
+    const longest = 'y'.repeat(4094);
+    const naming = (entry: string) => ({
+      file: 'm/model.yaml',
+      data: { ...plain, dictionaries: [entry] },
+    });
+    expect(dictionaryFolders('m', naming(longest))).toEqual([`m/${longest}`]);
+    expect(dictionaryFolders('m', naming(`${longest}y`))).toEqual([]);
+  });
+
+  test('a long dictionaries entry that normalizes to a short folder still keeps new entities out', () => {
+    // Final review: the editor dropped an entry over 4096 characters before
+    // normalizing it, while loadModel normalizes it, so `entity.create`
+    // wrote a file the next load read as a dictionary.
+    const plain = { formatVersion: '0.1', id: 'm', name: 'M' };
+    const entries = [
+      `entities${'/'.repeat(5000)}`,
+      `entities${'/'.repeat(6000)}`,
+      `${'a/'.repeat(2100)}${'../'.repeat(2100)}entities`,
+    ];
+    expect(entries.map((entry) => entry.length)).toEqual([5008, 6008, 10508]);
+    for (const entry of entries) {
+      const editor = createEditor(
+        handModel({
+          manifest: {
+            file: 'model.yaml',
+            data: { ...plain, dictionaries: [entry] },
+          } as never,
+        }),
+      );
+      expect(
+        editor.execute({ type: 'entity.create', name: 'customer' }),
+      ).toEqual({
+        ok: false,
+        code: 'id-taken',
+        message:
+          'entity id "customer" cannot be used: entities/customer.yaml is inside the dictionary folder entities',
+        issues: [],
+      });
+    }
   });
 
   test('reservedFiles that is not an array of strings throws one TypeError', () => {

@@ -39,6 +39,20 @@ const clearSpies = () => {
 };
 
 /**
+ * The cells the working state reported since the spies were cleared, by
+ * kind. A growth assertion over these says nothing when nothing reports, so
+ * each workload first asserts a lower bound per kind (final review), as
+ * cascade-work.test.ts does.
+ */
+const workByKind = () => {
+  const work = { copy: 0, scan: 0, 'index-build': 0 };
+  for (const [kind, entries] of vi.mocked(noteWork).mock.calls) {
+    work[kind] += entries;
+  }
+  return work;
+};
+
+/**
  * Set from the green run (plan decision 9, section 7): T(250) = 5501,
  * T(500) = 6001, T(1000) = 7001, two cells per create.
  */
@@ -607,6 +621,12 @@ describe('묶음', () => {
       let cells = 0;
       for (const [, entries] of calls) cells += entries;
       expect(validateModel).toHaveBeenCalledTimes(1);
+      // The entity list is copied and indexed by id once, and each create
+      // looks at it.
+      const done = workByKind();
+      expect(done.copy).toBeGreaterThanOrEqual(1000);
+      expect(done['index-build']).toBeGreaterThanOrEqual(1000);
+      expect(done.scan).toBeGreaterThanOrEqual(n);
       work.push(
         cells +
           vi.mocked(serializeItem).mock.calls.length +
@@ -650,6 +670,12 @@ describe('묶음', () => {
       expect(result.ok, JSON.stringify(result)).toBe(true);
       expect(editor.model.entities.length).toBe(1000);
       expect(validateModel).toHaveBeenCalledTimes(1);
+      // The entity list is copied and indexed by id once, and each of the
+      // n / 5 deletes scans for its entity.
+      const done = workByKind();
+      expect(done.copy).toBeGreaterThanOrEqual(1000);
+      expect(done['index-build']).toBeGreaterThanOrEqual(1000);
+      expect(done.scan).toBeGreaterThanOrEqual(n / 5);
       let cells = 0;
       for (const [, entries] of vi.mocked(noteWork).mock.calls)
         cells += entries;
@@ -750,6 +776,12 @@ describe('묶음', () => {
         ],
       });
 
+      // The entity and subject area lists are each copied and indexed by
+      // id once, and each of the n / 11 groups scans.
+      const done = workByKind();
+      expect(done.copy).toBeGreaterThanOrEqual(1000);
+      expect(done['index-build']).toBeGreaterThanOrEqual(2000);
+      expect(done.scan).toBeGreaterThanOrEqual(n / 11);
       const calls = vi.mocked(noteWork).mock.calls;
       let cells = 0;
       for (const [, entries] of calls) cells += entries;

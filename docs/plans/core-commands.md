@@ -700,6 +700,15 @@ D-11의 수정(`7ad6528`)을 Codex가 다시 봤다(심각 1, 경고 6, 메모 1
 - 9: `source-guard.test.ts`에서 `for…of`·`for…in`·`new Set(`·`new Map(` 꼴을 뺐다. 머리 주석에 보는 것(한 식으로 목록을 훑거나 복사하는 꼴)과 고리는 검사 밖이라는 것을 적었다. 그 꼴만 필요하던 표시 35개를 지워 **표시는 27개**다(`changes.ts` 1, `editor.ts` 3, `ids.ts` 1, `model-shape.ts` 4, `paths.ts` 3, `write-changes.ts` 11, `handlers/update.ts` 4).
 - 스펙은 386줄이다(392줄 이하).
 
+### 마지막 리뷰 대응 (2026-11-28)
+
+F03의 마지막 리뷰(`b0d2740`, 심각 0, 경고 1, 메모 4. 무작위 약 336,000걸음에서 밝힌 보장이 깨진 것은 없음)를 한 커밋 `Close the final review`에 넣었다. 코드를 고치기 전에 실패하는 테스트를 먼저 썼고 고치기 전 코드에서 실패를 봤다(새 테스트 4개 실패). 단계 관문 `exit=0`, 71개 파일 1277개 통과(1270 + 편집기 만들기 1, 사전 폴더 3, 새 파일 경로 1, 너무 큰 글 2), `pnpm test` 76.82초(81.99초 이하. 이 기록을 쓴 뒤 다시 돌린 관문은 77.10초). 시간 테스트 15번 `exit=0`. AC-16 스크립트, 8.3의 `diff` 판정, `dependencies` 확인 모두 `exit=0`.
+
+- 1(경고): 편집기가 4096자보다 긴 `dictionaries` 항목을 정규화하기 **전에** 뺐고 `loadModel`은 같은 항목을 정규화해 읽어, `entities` 뒤에 `/` 5000개를 붙인 항목에서 `entity.create`가 받아들여지고 다시 읽으면 그 파일이 사전이 되었다(스키마 오류 3개). `paths.ts`의 `dictionaryFolders`: 항목마다 `normalizePath`(로더와 같은 함수)를 따로 하고, `model.dir`도 한 번 정규화한다. 이은 폴더의 길이는 잇기 전에 셈한다: 정규화한 항목의 앞쪽 `..`만 `dir`의 구성요소를 지우므로(`dir`이 `..`만 남으면 더한다), `dir`을 한 번 구성요소로 나눠 둔 표로 길이를 바로 안다. 4096자 안일 때만 잇고, 넘으면 뺀다(그 안의 경로는 더 길어 어댑터가 쓰지 않는다). 리뷰가 제안한 "`dir`과 합친 길이가 한도 안일 때만 잇기"는 `..`가 긴 `dir`의 구성요소를 지웠다 다시 적는 항목(합친 길이 4500자쯤, 폴더는 `dir/entities`)을 빼 같은 불일치를 남겨, 실제 길이로 판정했다. 정규화가 `RangeError`를 내면 그 항목(`dir`이면 모든 항목)을 뺀다. 일은 `dir`과 항목들의 길이에 선형이다. 테스트: `editor.test.ts`에 5008/6008/10508자 항목 셋이 `id-taken`과 사전 폴더 문구(`... inside the dictionary folder entities`), `dictionary-entries.test.ts`의 "loadModel and the editor take the same folders" 표에 같은 셋, `paths.test.ts`에 `dir` 여섯과 항목 열(위의 `..` 사례 포함)마다 결과가 `joinPath(dir, entry)`(4096자 이하) 또는 빈 목록, 새 파일 `paths-range.test.ts`(`normalizePath`가 긴 글에 `RangeError`를 내게 모킹: 그 항목만 빠짐, `dir`이면 모두 빠짐, 던지지 않음). **기존 "enormous" 테스트의 기대값 셋을 고쳤다**(규칙이 바뀐 결과다): `${segment}/../entities`는 `loadModel`처럼 `m/entities`(그래서 `['m/entities', 'm/entities']`), `dir`이 2²⁰자인 모델은 모든 폴더가 한도를 넘어 빈 목록(그 모델의 새 항목 경로도 4096자를 넘는다는 단언을 더함), 경계는 항목 4096자에서 **폴더** 4096자(`m/` + 4094자는 남고 4095자는 빠짐)로 옮겼다. 스펙 FR-06의 한도 문장.
+- 2(메모, 스펙만): 8장에 "쓸 수 없는 항목을 다루는 명령" 줄 둘: 자기 오류가 파일 간 오류를 가리던 항목을 고치면 가려진 오류가 돌아와 거부될 수 있고 `batch` 하나로 함께 고치면 된다(손으로 만든 모델에서만), 쓸 수 없는 항목을 건드린 명령은 언제나 바뀐 것으로 쳐 다음 `writeChanges`가 실패한다. FR-04 (가)에 이 기능의 공개 입력으로는 (가)를 일으킬 수 없고 뒤 처리(F04의 관계 이주)를 위한 방어라는 문장, 결정 기록 D-12의 타당성에 같은 문장.
+- 3(메모): `batch.test.ts`의 선형 일 테스트 셋이 `noteWork` 호출을 모두 빼도 통과했다(센 칸이 0이어도 `serializeItem`·`validateModel` 수만으로 선형). 증가 단언 앞에 종류별 하한을 두었다(`workByKind`): 만들기는 `copy`·`index-build` 1000 이상, `scan` n 이상, 섞인 묶음은 `copy`·`index-build` 1000 이상, `scan` n / 5 이상, 멤버·주제영역 묶음은 `copy` 1000, `index-build` 2000, `scan` n / 11 이상. 확인: `working.ts`와 `changes.ts`의 `noteWork(` 호출 모두를 `void (`로 바꾸면 세 테스트가 실패했고 되돌렸다.
+- 스펙은 389줄이다(392줄 이하).
+
 ---
 
 마지막 수정: 2026-11-28 13:40

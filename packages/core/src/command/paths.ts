@@ -101,26 +101,118 @@ export function reservedPaths(
   return [...kept]; // work-ok: the reserved paths, once when the editor is made
 }
 
-/** The longest path the adapters take; a longer dictionary entry is left out. */
-const MAX_ENTRY_LENGTH = 4096;
+/** The longest path the adapters take; a longer dictionary folder is left out. */
+const MAX_FOLDER_LENGTH = 4096;
+
+/**
+ * `normalizePath(path)`, or `undefined` when the string is too large to
+ * split or join (a `RangeError`): such a path is left out like a long one.
+ */
+function normalizedOrNone(path: string): string | undefined {
+  try {
+    return normalizePath(path);
+  } catch (error) {
+    if (error instanceof RangeError) return undefined;
+    throw error;
+  }
+}
+
+/** A normalized path cut into segments once: where each ends, and its `..` lead. */
+interface Segmented {
+  readonly path: string;
+  /** The offset just past each segment. */
+  readonly ends: readonly number[];
+  /** How many leading segments are `..` (a normalized path has no other). */
+  readonly ups: number;
+}
+
+const SLASH = 0x2f;
+
+/** Whether the segment of `path` at `start` is `..`, ending the path or followed by `/`. */
+const isUp = (path: string, start: number): boolean =>
+  path.startsWith('..', start) &&
+  (start + 2 === path.length || path.charCodeAt(start + 2) === SLASH);
+
+/** `path` (normalized) cut into segments, in one pass over its characters. */
+function segmented(path: string): Segmented {
+  const ends: number[] = [];
+  let ups = 0;
+  if (path === '') return { path, ends, ups };
+  let start = 0;
+  for (let at = 0; at <= path.length; at += 1) {
+    if (at < path.length && path.charCodeAt(at) !== SLASH) continue;
+    if (ups === ends.length && at - start === 2 && isUp(path, start)) ups += 1;
+    ends.push(at);
+    start = at + 1;
+  }
+  return { path, ends, ups };
+}
+
+/**
+ * `joinPath(base.path, folder)` for a normalized `folder`, or `undefined`
+ * when that is longer than `limit`. Only the leading `..` of `folder` take
+ * segments off `base` (once nothing but `..` is left, they add to it), so
+ * the length is known before anything is joined: the work is the length of
+ * `folder` plus at most `limit`.
+ */
+function joinWithin(
+  base: Segmented,
+  folder: string,
+  limit: number,
+): string | undefined {
+  let ups = 0;
+  let at = 0;
+  while (at < folder.length && isUp(folder, at)) {
+    ups += 1;
+    at += 3;
+  }
+  const popped = Math.min(ups, base.ends.length - base.ups);
+  const kept = base.ends.length - popped;
+  const head = kept === 0 ? 0 : base.ends[kept - 1]!;
+  const climbs = ups - popped;
+  const restLength = Math.max(folder.length - at, 0);
+  let length = head;
+  for (const part of [climbs === 0 ? 0 : climbs * 3 - 1, restLength]) {
+    if (part > 0) length += length === 0 ? part : part + 1;
+  }
+  if (length > limit) return undefined;
+  // work-ok: one dictionary folder, built only within the 4096 limit
+  let joined = base.path.slice(0, head);
+  for (let i = 0; i < climbs; i += 1) joined += joined === '' ? '..' : '/..';
+  if (restLength > 0) {
+    // work-ok: one dictionary folder, built only within the 4096 limit
+    const rest = folder.slice(at);
+    joined += joined === '' ? rest : `/${rest}`;
+  }
+  return joined;
+}
 
 /**
  * The dictionary folders of a model (spec FR-06): `dictionaryEntries` of
  * the manifest item's `data` (read as an own data property; anything else
  * is no manifest), the rule `loadModel` reads them by, each joined to the
- * model folder and normalized. The opened folder itself is `""`. On the
- * editor side only, an entry longer than 4096 characters is left out
- * before it is joined (no adapter takes such a path, and joining an
- * enormous one could throw). Never throws.
+ * model folder and normalized, as `loadModel` does. The opened folder
+ * itself is `""`. On the editor side only, a folder whose normalized path
+ * is longer than 4096 characters is left out: every path inside it is
+ * longer still, so no adapter writes a new item there. Each entry is
+ * normalized on its own first (that never joins), and the folder is built
+ * only when its length is within the limit, so the work is linear in the
+ * lengths of `dir` and the entries. Never throws.
  */
 export function dictionaryFolders(
   dir: string,
   manifest: object | undefined,
 ): string[] {
   const data = field(manifest, 'data');
+  const normalizedDir = normalizedOrNone(dir);
+  if (normalizedDir === undefined) return [];
+  const base = segmented(normalizedDir);
   const folders: string[] = [];
   for (const entry of dictionaryEntries(data)) {
-    if (entry.length <= MAX_ENTRY_LENGTH) folders.push(joinPath(dir, entry));
+    const folder = normalizedOrNone(entry);
+    if (folder === undefined) continue;
+    const joined = joinWithin(base, folder, MAX_FOLDER_LENGTH);
+    if (joined !== undefined) folders.push(joined);
   }
   return folders;
 }

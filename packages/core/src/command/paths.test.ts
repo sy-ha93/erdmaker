@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { createMemoryFileSystem } from '../fs/memory.js';
+import { joinPath } from '../fs/path.js';
 import {
   EMPTY_MANIFEST,
   entityItem,
@@ -155,6 +156,41 @@ describe('새 파일 경로', () => {
     expect(dictionaryFolders('', manifestNaming(['.']))).toEqual(['']);
     expect(dictionaryFolders('m', manifestNaming(['..']))).toEqual(['']);
     expect(dictionaryFolders('', manifestNaming([]))).toEqual([]);
+  });
+
+  test('dictionary folders: joinPath(dir, entry) when that is 4096 characters or fewer, else left out', () => {
+    // Final review: the limit is on the folder as loadModel names it, so
+    // a long entry that normalizes short is kept, and `..` that climb out
+    // of a long model folder are counted, not guessed.
+    const deep = 'a/'.repeat(1000).slice(0, -1); // 1999 characters
+    const dirs = ['', 'm', 'm/./n/', '../up', deep, `x/../${'y'.repeat(4090)}`];
+    const entries = [
+      'entities',
+      `entities${'/'.repeat(5000)}`,
+      `${'a/'.repeat(2100)}${'../'.repeat(2100)}entities`,
+      '..',
+      '../..',
+      `${'../'.repeat(1001)}z`,
+      `${'../'.repeat(500)}${'a/'.repeat(500)}entities`, // climbs back into `deep`
+      'y'.repeat(4096),
+      'y'.repeat(4097),
+      `${'y'.repeat(4000)}/${'z'.repeat(200)}/..`,
+    ];
+    for (const dir of dirs) {
+      for (const entry of entries) {
+        const joined = joinPath(dir, entry);
+        expect(
+          dictionaryFolders(dir, manifestNaming([entry])),
+          `${dir.length} ${entry.length}`,
+        ).toEqual(joined.length <= 4096 ? [joined] : []);
+      }
+    }
+    // The combined length is over the limit and the folder is not.
+    const replay = `${'../'.repeat(500)}${'a/'.repeat(500)}entities`;
+    expect(deep.length + 1 + replay.length).toBeGreaterThan(4096);
+    expect(dictionaryFolders(deep, manifestNaming([replay]))).toEqual([
+      `${deep}/entities`,
+    ]);
   });
 
   test('inside a dictionary folder: leading components compared by key; the opened folder holds every path', () => {

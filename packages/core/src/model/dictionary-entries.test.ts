@@ -44,6 +44,19 @@ const CASES: [string, string][] = [
     'formatVersion: "0.1"\nid: m\ndictionaries: [entities]\n',
   ],
   ['an unknown key', `${VALID}dictionaries: [entities]\nextra: 1\n`],
+  // Over 4096 characters as written, short once normalized (final review).
+  [
+    'an entry of 5008 characters',
+    `${VALID}dictionaries: ["entities${'/'.repeat(5000)}"]\n`,
+  ],
+  [
+    'an entry of 6008 characters',
+    `${VALID}dictionaries: ["entities${'/'.repeat(6000)}"]\n`,
+  ],
+  [
+    'an entry of 10508 characters',
+    `${VALID}dictionaries: ["${'a/'.repeat(2100)}${'../'.repeat(2100)}entities"]\n`,
+  ],
 ];
 
 describe('사전 폴더: 읽기와 편집기가 같은 규칙', () => {
