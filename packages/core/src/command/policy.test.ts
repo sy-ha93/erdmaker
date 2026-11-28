@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
+import { serializeModel } from '../model/serialize.js';
 import type { Issue } from '../model/types.js';
 import { entityItem, exampleModel, handModel } from '../testing/editing.js';
 import { rejectionIssues, reuseIssues } from './changes.js';
 import { createEditor } from './editor.js';
+import { MOVE_ONTO_OLD_PLACE } from '../testing/commands.js';
 
 const error = (
   rule: Issue['rule'],
@@ -384,10 +386,10 @@ describe('검증 정책', () => {
     expect(editor.issues).toEqual([]);
   });
 
-  test('AC-07 (바): a file-local error that hides an R02 is refused although the count stays', () => {
-    // The key refers to a missing attribute: one R02. A new schema error in
-    // the entity leaves it out of the cross-file rules, so the R02 goes and
-    // the count stays one; the model could no longer be saved.
+  test('AC-07 (바): an unsafe integer for an entity with an R02 is refused by the input copy', () => {
+    // Codex's first case. The key refers to a missing attribute: one R02.
+    // `2 ** 53` is no JSON value F02 can write; the copy refuses it before
+    // any handler runs (FR-03), so the R02 cannot be hidden by it.
     const editor = createEditor(
       handModel({
         entities: [
@@ -400,12 +402,6 @@ describe('검증 정책', () => {
     expect(rules(editor)).toEqual(['R02']);
     const model = editor.model;
     const before = editor.issues;
-    const added = error(
-      'schema',
-      'entities/a.yaml',
-      '/ext/wide',
-      '/ext/wide must be a JSON value',
-    );
     expect(
       editor.execute({
         type: 'entity.update',
@@ -414,16 +410,77 @@ describe('검증 정책', () => {
       }),
     ).toEqual({
       ok: false,
-      code: 'validation',
-      message: `The command would break the model: entities/a.yaml: ${added.message}`,
-      issues: [added],
+      code: 'invalid-command',
+      message: '/set/ext/wide must be a JSON value',
+      issues: [],
     });
     expect(editor.model).toBe(model);
     expect(editor.issues).toBe(before);
     expect(editor.canUndo).toBe(false);
   });
 
-  test('a model with a schema error takes an edit that adds none', () => {
+  test('AC-07: the batch that moves a value onto the place of an old unwritable one is refused by the input copy', () => {
+    // The re-check's case 1: `a.ext.wide` is undefined (unwritable); the
+    // batch repairs `a`, moves `b` before it and gives `b` an unsafe integer.
+    const editor = createEditor(
+      handModel({
+        entities: [
+          entityItem('x', {
+            attributes: [
+              { id: 'a', name: 'A', ext: { wide: undefined as never } },
+              { id: 'b', name: 'B' },
+            ],
+          }),
+        ],
+      }),
+    );
+    const model = editor.model;
+    expect(editor.execute(MOVE_ONTO_OLD_PLACE)).toEqual({
+      ok: false,
+      code: 'invalid-command',
+      message: '/commands/2/set/ext/wide must be a JSON value',
+      issues: [],
+    });
+    expect(editor.model).toBe(model);
+  });
+
+  test('AC-07: deleting an attribute before an old schema error moves the error and is accepted', () => {
+    // The re-check's case 2: `bad.name` is 3 (a schema error a file can
+    // still hold). Deleting `good` moves it from /attributes/1/name to
+    // /attributes/0/name; the item is writable and the count stays.
+    const editor = createEditor(
+      handModel({
+        entities: [
+          entityItem('x', {
+            attributes: [
+              { id: 'good', name: 'G' },
+              { id: 'bad', name: 3 as never },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(editor.issues.map((issue) => issue.path)).toEqual([
+      '/attributes/1/name',
+    ]);
+    const result = editor.execute({
+      type: 'attribute.delete',
+      entity: 'x',
+      id: 'good',
+    });
+    expect(result.ok).toBe(true);
+    expect(editor.issues).toEqual([
+      error(
+        'schema',
+        'entities/x.yaml',
+        '/attributes/0/name',
+        '/attributes/0/name must be string',
+      ),
+    ]);
+    expect(() => serializeModel(editor.model)).not.toThrow();
+  });
+
+  test('a model with an unwritable item takes an edit of another item', () => {
     const editor = createEditor(
       handModel({
         entities: [
@@ -442,37 +499,23 @@ describe('검증 정책', () => {
     expect(rules(editor)).toEqual(['schema']);
   });
 
-  test('a batch that fixes one schema error and adds another is refused with the new one', () => {
+  test('an item that cannot be written is changed when a command touches it, even with the same values (FR-02)', () => {
+    // Its data is a new object and no text compares it with the old one.
     const editor = createEditor(
-      handModel({
-        entities: [
-          entityItem('a', { ext: { wide: 2 ** 53 } }),
-          entityItem('b'),
-        ],
-      }),
+      handModel({ entities: [entityItem('a', { ext: { wide: 2 ** 53 } })] }),
     );
     const model = editor.model;
-    const added = error(
-      'schema',
-      'entities/b.yaml',
-      '/ext/wide',
-      '/ext/wide must be a JSON value',
-    );
-    expect(
-      editor.execute({
-        type: 'batch',
-        commands: [
-          { type: 'entity.update', id: 'a', unset: ['ext'] },
-          { type: 'entity.update', id: 'b', set: { ext: { wide: 2 ** 53 } } },
-        ],
-      }),
-    ).toEqual({
-      ok: false,
-      code: 'validation',
-      message: `The command would break the model: entities/b.yaml: ${added.message}`,
-      issues: [added],
+    const result = editor.execute({
+      type: 'entity.update',
+      id: 'a',
+      set: { name: 'a' },
     });
-    expect(editor.model).toBe(model);
+    expect(result.ok).toBe(true);
+    expect(editor.model).not.toBe(model);
+    expect(editor.model.entities[0]).not.toBe(model.entities[0]);
+    expect(editor.canUndo).toBe(true);
+    // It was unwritable before, so (a) of FR-04 leaves it to the caller.
+    expect(rules(editor)).toEqual(['schema']);
   });
 
   test('a refusal on a model with errors lists only the new errors', () => {

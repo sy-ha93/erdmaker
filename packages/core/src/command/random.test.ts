@@ -68,7 +68,7 @@ function subCommand(random: Random, model: ReadonlyModel): object {
         set: {
           note: name,
           ...(random.chance(0.3) ? { scope: 'both' } : {}),
-          // A number outside the safe integers: a schema error once stored.
+          // A number outside the safe integers: the input copy refuses it.
           ...(random.chance(0.1) ? { ext: { wide: 2 ** 53 } } : {}),
         },
         unset: maybe(['definition']),

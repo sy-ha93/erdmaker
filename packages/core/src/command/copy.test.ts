@@ -11,6 +11,7 @@ import {
   randomJson,
   randomString,
 } from '../testing/generate.js';
+import { jsonValueIssues } from '../validate/json-value.js';
 import { copyCommand } from './copy.js';
 import { readCommand } from './check.js';
 import { oneLineMessage } from './message.js';
@@ -46,7 +47,7 @@ describe('믿을 수 없는 입력: 복사', () => {
   );
 
   test('the refused table has a row for each kind of failure of steps 1 and 2', () => {
-    expect(copyRows.length).toBe(29);
+    expect(copyRows.length).toBe(31);
   });
 
   test.each(copyRows.map((row) => [row.name, row] as const))(
@@ -115,16 +116,54 @@ describe('믿을 수 없는 입력: 복사', () => {
     }
   });
 
-  test('keeps -0, finite numbers and a null prototype object as plain data', () => {
+  test('keeps -0, finite numbers a file can hold and a null prototype object as plain data', () => {
     const copied = copyCommand(
-      withExt({ z: -0, big: 1e300, tiny: 5e-324, none: Object.create(null) }),
+      withExt({
+        z: -0,
+        big: Number.MAX_SAFE_INTEGER,
+        tiny: 5e-324,
+        none: Object.create(null),
+      }),
     );
     if (!copied.ok) throw new Error(copied.message);
     const ext = copied.value.ext as Record<string, unknown>;
     expect(Object.is(ext.z, -0)).toBe(true);
-    expect(ext.big).toBe(1e300);
+    expect(ext.big).toBe(Number.MAX_SAFE_INTEGER);
     expect(ext.tiny).toBe(5e-324);
     expect(ext.none).toEqual({});
+  });
+
+  test("takes a number exactly when F02's JSON-value check does", () => {
+    const numbers = [
+      0,
+      -0,
+      1,
+      0.1,
+      -1.5,
+      5e-324,
+      1.7976931348623157e308,
+      Number.MAX_SAFE_INTEGER,
+      -Number.MAX_SAFE_INTEGER,
+      2 ** 53,
+      -(2 ** 53),
+      2 ** 53 + 2,
+      1e300,
+      -1e21,
+      Infinity,
+      -Infinity,
+      NaN,
+    ];
+    for (const value of numbers) {
+      const f02 = jsonValueIssues('f', value).length === 0;
+      expect(copyCommand(withExt({ v: value })).ok, String(value)).toBe(f02);
+    }
+    // Both refuse the integers outside the safe range, however written.
+    expect(refusal(withExt({ v: 2 ** 53 }))).toBe(
+      '/ext/v must be a JSON value',
+    );
+    expect(refusal(withExt({ v: [1e300] }))).toBe(
+      '/ext/v/0 must be a JSON value',
+    );
   });
 
   test.each([

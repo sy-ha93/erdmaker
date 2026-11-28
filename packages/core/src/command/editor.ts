@@ -1,7 +1,6 @@
 import type { Issue, ReadonlyModel } from '../model/types.js';
 import { validateModel } from '../validate/index.js';
 import {
-  addsSchemaError,
   endModel,
   errorCount,
   rejectionIssues,
@@ -56,15 +55,30 @@ function refuse(
     : { ok: false, code, message: text, issues, index };
 }
 
+/** A thrown value's text: an `Error`'s message, else `String`, else `unknown error`. */
+function errorText(error: unknown): string {
+  try {
+    return error instanceof Error ? String(error.message) : String(error);
+  } catch {
+    return 'unknown error';
+  }
+}
+
 /** `Unexpected error: <message>` for a thrown value (spec appendix B). */
 function unexpected(error: unknown, index?: number): Rejection {
-  let text: string;
-  try {
-    text = error instanceof Error ? String(error.message) : String(error);
-  } catch {
-    text = 'unknown error';
+  return refuse('internal', `Unexpected error: ${errorText(error)}`, index);
+}
+
+const BROKEN = 'The command would break the model: ';
+
+/** The `schema` issues of `file` in `issues`, in their order. */
+function schemaIssuesOf(issues: Issues, file: string): Readonly<Issue>[] {
+  const kept: Readonly<Issue>[] = [];
+  // work-ok: the issues of one validation, once for a refusal
+  for (const issue of issues) {
+    if (issue.rule === 'schema' && issue.file === file) kept.push(issue);
   }
-  return refuse('internal', `Unexpected error: ${text}`, index);
+  return kept;
 }
 
 const BUSY: Rejection = {
@@ -208,21 +222,28 @@ class ModelEditor implements Editor {
 
     const made = inBatch ? { ids } : id === undefined ? {} : { id };
     const before = this.current;
-    const model = endModel(working);
+    const { model, unwritable } = endModel(working);
     if (model === before.model) {
       return { ok: true, model, issues: before.issues, ...made }; // work-ok: the id or ids field of the result record
     }
     const found: Issue[] = validateModel(model);
-    // Both must hold (spec FR-04): no new `schema` error, and no more errors.
-    if (
-      addsSchemaError(before.issues, found) ||
-      errorCount(found) > errorCount(before.issues)
-    ) {
+    // Both must hold (spec FR-04). (a) Every item the command changed or
+    // made can be written, unless the same item could not be before.
+    if (unwritable) {
+      return refuse(
+        'validation',
+        `${BROKEN}${errorText(unwritable.error)}`,
+        undefined,
+        schemaIssuesOf(found, unwritable.file),
+      );
+    }
+    // (b) No more errors than before.
+    if (errorCount(found) > errorCount(before.issues)) {
       const issues = rejectionIssues(before.issues, found);
       const first = issues[0]!;
       return refuse(
         'validation',
-        `The command would break the model: ${first.file}: ${first.message}`,
+        `${BROKEN}${first.file}: ${first.message}`,
         undefined,
         issues,
       );

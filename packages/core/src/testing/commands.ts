@@ -209,6 +209,20 @@ export const REJECTED_INPUTS: readonly RejectedInput[] = [
     message: '/ext/n must be a JSON value',
   },
   {
+    // F02's JSON-value check refuses an integer outside the safe range
+    // however it is written; the copy uses the same predicate (FR-03).
+    name: 'an unsafe integer in ext',
+    step: 'copy',
+    input: () => withExt({ n: 2 ** 53 }),
+    message: '/ext/n must be a JSON value',
+  },
+  {
+    name: '1e300 in ext',
+    step: 'copy',
+    input: () => withExt({ n: [1, 1e300] }),
+    message: '/ext/n/1 must be a JSON value',
+  },
+  {
     name: 'an array with a hole',
     step: 'copy',
     // eslint-disable-next-line no-sparse-arrays
@@ -841,3 +855,22 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
     }),
   },
 ];
+
+/**
+ * The re-check's case 1 of FR-04 (AC-07), for entity `x` with attributes
+ * `[a, b]`: repairs `a.ext`, moves `b` before `a` and gives `b` an unsafe
+ * integer, so the new unwritable value sits where the old one was.
+ */
+export const MOVE_ONTO_OLD_PLACE = {
+  type: 'batch',
+  commands: [
+    { type: 'attribute.update', entity: 'x', id: 'a', unset: ['ext'] },
+    { type: 'attribute.move', entity: 'x', id: 'b', before: 'a' },
+    {
+      type: 'attribute.update',
+      entity: 'x',
+      id: 'b',
+      set: { ext: { wide: 2 ** 53 } },
+    },
+  ],
+} as const;

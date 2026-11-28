@@ -1,4 +1,5 @@
 import { escapePointerToken } from '../parse/pointer.js';
+import { isJsonNumber } from '../validate/json-value.js';
 
 /** The deepest a container may be; the command object is level 1 (spec FR-03). */
 const MAX_DEPTH = 32;
@@ -37,7 +38,8 @@ function kindOf(value: unknown): Kind {
     case 'boolean':
       return 'scalar';
     case 'number':
-      return Number.isFinite(value) ? 'scalar' : 'bad';
+      // F02's rule: finite, and an integer within the safe range.
+      return isJsonNumber(value) ? 'scalar' : 'bad';
     case 'object': {
       if (value === null) return 'scalar';
       try {

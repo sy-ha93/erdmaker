@@ -20,30 +20,43 @@ const SCHEMAS: ReadonlyMap<ListName, SchemaName> = new Map([
   ['dictionaries', 'dictionary'],
 ]);
 
-/** Whether two items at one file write the same text; one that cannot be written differs. */
-function sameText(a: Item, b: Item, schema: SchemaName): boolean {
+/** An item's text as `serializeItem` writes it, or what it threw. */
+type Written = { text: string } | { error: unknown };
+
+function written(item: Item, schema: SchemaName): Written {
   try {
-    return (
-      serializeItem(a.file, a.data, schema) ===
-      serializeItem(b.file, b.data, schema)
-    );
-  } catch {
-    return false;
+    return { text: serializeItem(item.file, item.data, schema) };
+  } catch (error) {
+    return { error };
   }
+}
+
+/**
+ * A touched item `serializeItem` refuses although the item of its list and
+ * file before the command did not (spec FR-04 (a)), and what it threw.
+ */
+export interface Unwritable {
+  readonly file: string;
+  readonly error: unknown;
 }
 
 /**
  * One changed list at the end (spec FR-08, "끝의 비교"): holes dropped, and
  * each item this state made that writes the same text as the start item of
  * its file replaced by that start item. `same` when the result is the start
- * list's set of items.
+ * list's set of items. Each item this state made is serialized once, and
+ * the start item of its file at most once (for the comparison, or to learn
+ * whether it could be written); no other item is. One that cannot be
+ * written is changed: its data is a new object and no text says it is the
+ * same (spec FR-02). The first of those whose start item could be written,
+ * or that is new, is `unwritable`.
  */
 function endList(
   working: Working,
   start: readonly Item[],
   cells: Cells,
   schema: SchemaName,
-): { items: Item[]; same: boolean } {
+): { items: Item[]; same: boolean; unwritable: Unwritable | undefined } {
   noteWork('index-build', start.length);
   const byFile = new Map<string, Item>();
   // work-ok: the start items of one changed list, counted above (noteWork)
@@ -51,31 +64,53 @@ function endList(
   noteWork('scan', cells.length);
   const items: Item[] = [];
   let original = true;
-  // work-ok: the cells of one changed list, counted above (noteWork)
-  for (const cell of cells) {
+  let unwritable: Unwritable | undefined;
+  for (let p = 0; p < cells.length; p += 1) {
+    const cell = cells[p];
     if (!cell) continue;
     let item = cell;
     if (working.isOwned(cell)) {
       const before = byFile.get(cell.file);
-      if (before && sameText(before, cell, schema)) item = before;
-      else original = false;
+      const after = written(cell, schema);
+      const old = before && written(before, schema);
+      if ('text' in after) {
+        if (old && 'text' in old && old.text === after.text) item = before!;
+        else original = false;
+      } else {
+        original = false;
+        // Unwritable before too: the command did not cause it.
+        if (!(old && 'error' in old)) {
+          unwritable ??= { file: cell.file, error: after.error };
+        }
+      }
     }
     items.push(item);
   }
   // Files are unique, so as many start items as the start list is that set.
-  return { items, same: original && items.length === start.length };
+  return {
+    items,
+    same: original && items.length === start.length,
+    unwritable,
+  };
 }
 
 /**
  * The model a working state ends with: the start model itself when it holds
  * the same items (spec FR-02, FR-08), otherwise a new model with new arrays
- * for the lists that differ and the start's arrays for the others.
+ * for the lists that differ and the start's arrays for the others. With it,
+ * the first touched item in list order (the six lists in FR-01's order,
+ * then by position) that cannot be written although it could before or is
+ * new (spec FR-04 (a)).
  */
-export function endModel(working: Working): ReadonlyModel {
+export function endModel(working: Working): {
+  model: ReadonlyModel;
+  unwritable: Unwritable | undefined;
+} {
   const start = working.start;
   const changed = working.changedLists();
   const lists = new Map<ListName, readonly Item[]>();
   let same = true;
+  let unwritable: Unwritable | undefined;
   for (const list of LIST_NAMES) {
     const startItems = start[list] as readonly Item[];
     const cells = changed.get(list);
@@ -86,8 +121,9 @@ export function endModel(working: Working): ReadonlyModel {
     const end = endList(working, startItems, cells, SCHEMAS.get(list)!);
     lists.set(list, end.same ? startItems : end.items);
     if (!end.same) same = false;
+    unwritable ??= end.unwritable;
   }
-  if (same) return start;
+  if (same) return { model: start, unwritable: undefined };
   const model = {
     dir: start.dir,
     ...(start.manifest === undefined ? {} : { manifest: start.manifest }), // work-ok: the manifest field of the model record, not a list
@@ -98,7 +134,7 @@ export function endModel(working: Working): ReadonlyModel {
     layouts: lists.get('layouts')!,
     dictionaries: lists.get('dictionaries')!,
   };
-  return model as ReadonlyModel;
+  return { model: model as ReadonlyModel, unwritable };
 }
 
 /** The number of errors in `issues`. */
@@ -109,7 +145,7 @@ export function errorCount(issues: Issues): number {
   return count;
 }
 
-/** Rule, file, path and message: what makes an error new (spec FR-04). */
+/** Rule, file, path and message: what makes an error new in a refusal's issues (spec FR-04). */
 const errorKey = (issue: Readonly<Issue>): string =>
   JSON.stringify([issue.rule, issue.file, issue.path, issue.message]);
 
@@ -136,24 +172,7 @@ function errorKeys(issues: Issues): Set<string> {
 }
 
 /**
- * Whether `next` has a `schema` error that is new against `previous` (spec
- * FR-04, condition 1): no error of `previous` has its rule, file, path and
- * message. An item with a file-local error is left out of the cross-file
- * rules, so such an error can hide another and leave the count as it was.
- */
-export function addsSchemaError(previous: Issues, next: Issues): boolean {
-  let known: Set<string> | undefined;
-  // work-ok: the issues of one validation, once per execute
-  for (const issue of next) {
-    if (issue.severity !== 'error' || issue.rule !== 'schema') continue;
-    known ??= errorKeys(previous);
-    if (!known.has(errorKey(issue))) return true;
-  }
-  return false;
-}
-
-/**
- * The issues of a `validation` refusal (spec FR-04): the errors of `next`
+ * The issues of a `validation` refusal for more errors (spec FR-04 (b)): the errors of `next`
  * with no error of `previous` of the same rule, file, path and message, in
  * the order of `next`; when there is none, every error of `next`.
  */
