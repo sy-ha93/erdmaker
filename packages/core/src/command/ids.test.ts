@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
+import {
+  EMPTY_MANIFEST,
+  emptyModel,
+  entityItem,
+  handModel,
+  loadFiles,
+} from '../testing/editing.js';
 import { AWKWARD_STRINGS, Random, randomString } from '../testing/generate.js';
+import { createEditor } from './editor.js';
 import {
   chooseId,
   idBase,
@@ -560,6 +568,322 @@ describe('ID 만들기', () => {
           'constructor',
         ),
       ).toEqual(chosen('constructor_2'));
+    });
+  });
+});
+
+describe('ID 만들기', () => {
+  describe('편집기에서', () => {
+    /** The id a create of `kind` makes in a fresh editor of the empty model. */
+    async function created(command: Record<string, unknown>): Promise<unknown> {
+      const editor = createEditor(await emptyModel());
+      editor.execute({ type: 'entity.create', id: 'e', name: 'E' });
+      editor.execute({
+        type: 'attribute.create',
+        entity: 'e',
+        id: 'k',
+        name: 'K',
+      });
+      const result = editor.execute(command);
+      expect(editor.issues).toEqual([]);
+      return result.ok ? result.id : result;
+    }
+    const entity = (name: string, extra: object = {}) =>
+      created({ type: 'entity.create', name, ...extra });
+
+    test('names give the ids of AC-08', async () => {
+      const cases: [string, string][] = [
+        ['Order Item', 'order_item'],
+        ['ORD_NO', 'ord_no'],
+        ['고객', 'gogaek'],
+        ['주문번호', 'jumunbeonho'],
+        ['값', 'gaps'],
+        ['닭', 'dalk'],
+        ['읽기', 'ilkgi'],
+        ['엔터티', 'enteoti'],
+        ['  __proto__  ', 'proto'],
+        ['constructor', 'constructor'],
+        ['ＡＢＣ１', 'abc1'],
+        ['café', 'caf'],
+        ['a--b__c', 'a_b_c'],
+        ['123', '123'],
+        ['a'.repeat(70), 'a'.repeat(63)],
+        ['값'.repeat(20), `${'gaps'.repeat(15)}gap`],
+        [`${' '.repeat(256)}abc`, 'entity'],
+      ];
+      for (const [name, id] of cases) expect(await entity(name)).toBe(id);
+    });
+
+    test('names with no letter give the word of their kind', async () => {
+      for (const name of ['漢字', '🙂', '___', '   ']) {
+        expect(await entity(name)).toBe('entity');
+        expect(
+          await created({ type: 'attribute.create', entity: 'e', name }),
+        ).toBe('attribute');
+        expect(await created({ type: 'subjectArea.create', name })).toBe(
+          'area',
+        );
+      }
+      const keys: [string, string][] = [
+        ['primary', 'pk'],
+        ['alternate', 'ak'],
+        ['inversion', 'ie'],
+      ];
+      for (const [kind, id] of keys) {
+        expect(
+          await created({
+            type: 'key.create',
+            entity: 'e',
+            kind,
+            attributes: ['k'],
+          }),
+        ).toBe(id);
+      }
+    });
+
+    test('physical.name first, the name when its slug is empty', async () => {
+      expect(await entity('고객', { physical: { name: 'CUSTOMER_V2' } })).toBe(
+        'customer_v2',
+      );
+      expect(await entity('고객', { physical: { name: '___' } })).toBe(
+        'gogaek',
+      );
+    });
+
+    test('the same name three times, after 63 a, and deleted then made again', async () => {
+      const editor = createEditor(await emptyModel());
+      const make = (name: string) => {
+        const result = editor.execute({ type: 'entity.create', name });
+        return result.ok ? result.id : result;
+      };
+      expect([make('x'), make('x'), make('x')]).toEqual(['x', 'x_2', 'x_3']);
+      expect(make('a'.repeat(63))).toBe('a'.repeat(63));
+      expect(make('a'.repeat(63))).toBe(`${'a'.repeat(61)}_2`);
+      expect(editor.execute({ type: 'entity.delete', id: 'x_2' }).ok).toBe(
+        true,
+      );
+      expect(make('x')).toBe('x_2');
+      expect(editor.issues).toEqual([]);
+    });
+
+    test('CON is con_2 for entities and subject areas, con for attributes', async () => {
+      expect(await entity('CON')).toBe('con_2');
+      expect(await created({ type: 'subjectArea.create', name: 'CON' })).toBe(
+        'con_2',
+      );
+      expect(
+        await created({ type: 'attribute.create', entity: 'e', name: 'CON' }),
+      ).toBe('con');
+    });
+
+    test('an entity and a subject area may share an id', async () => {
+      const editor = createEditor(await emptyModel());
+      expect(
+        editor.execute({ type: 'entity.create', name: 'sales' }),
+      ).toMatchObject({ ok: true, id: 'sales' });
+      expect(
+        editor.execute({ type: 'subjectArea.create', name: 'sales' }),
+      ).toMatchObject({ ok: true, id: 'sales' });
+    });
+
+    describe('스키마 접두', () => {
+      const memberModel = () =>
+        createEditor(
+          handModel({
+            entities: [
+              entityItem('member', {
+                physical: { name: 'MEMBER', schema: 'main' },
+              }),
+            ],
+          }),
+          { reservedFiles: [] },
+        );
+      const make = (
+        physical: object | undefined,
+        reservedFiles: string[] = [],
+        name = 'member',
+      ) => {
+        const editor = createEditor(
+          handModel({
+            entities: [
+              entityItem('member', {
+                physical: { name: 'MEMBER', schema: 'main' },
+              }),
+            ],
+          }),
+          { reservedFiles },
+        );
+        const result = editor.execute({
+          type: 'entity.create',
+          name,
+          ...(physical ? { physical } : {}),
+        });
+        expect(editor.issues).toEqual([]);
+        return result.ok ? result.id : result;
+      };
+
+      test('(가) to (마) of AC-08', () => {
+        expect(make({ name: 'MEMBER', schema: 'dormant' })).toBe(
+          'dormant_member',
+        );
+        expect(
+          make({ name: 'MEMBER', schema: 'dormant' }, [
+            'entities/dormant_member.yaml',
+          ]),
+        ).toBe('dormant_member_2');
+        expect(make({ name: 'MEMBER' })).toBe('member_2');
+        expect(make({ name: 'MEMBER', schema: '!!' })).toBe('member_2');
+        expect(make({ name: 'Member', schema: 'dormant' })).toBe('member_2');
+      });
+
+      test('(바) neither has a table name; (사) a given id is id-taken', () => {
+        const editor = createEditor(
+          handModel({ entities: [entityItem('member')] }),
+        );
+        expect(
+          editor.execute({
+            type: 'entity.create',
+            name: 'member',
+            physical: { schema: 'dormant' },
+          }),
+        ).toMatchObject({ ok: true, id: 'member_2' });
+        expect(
+          memberModel().execute({
+            type: 'entity.create',
+            id: 'member',
+            name: 'member',
+            physical: { name: 'MEMBER', schema: 'dormant' },
+          }),
+        ).toEqual({
+          ok: false,
+          code: 'id-taken',
+          message: 'entity id "member" is already used',
+          issues: [],
+        });
+      });
+
+      test('(아) candidates that come again after cutting: s_4', () => {
+        const s = `${'2_'.repeat(30)}2`;
+        const editor = createEditor(
+          handModel({
+            entities: [
+              entityItem(`${s}_3`, {
+                physical: { name: `${s}_3`, schema: 'main' },
+              }),
+              entityItem(`${s}_2`),
+            ],
+          }),
+        );
+        expect(
+          editor.execute({
+            type: 'entity.create',
+            name: 'x',
+            physical: { name: `${s}_3`, schema: '2' },
+          }),
+        ).toMatchObject({ ok: true, id: `${s}_4` });
+        expect(editor.issues).toEqual([]);
+      });
+    });
+
+    test('a given id: the five reasons in the words of appendix B, the first that applies', async () => {
+      const refusal = (message: string) => ({
+        ok: false,
+        code: 'id-taken',
+        message,
+        issues: [],
+      });
+      const create = (id: string) => ({ type: 'entity.create', id, name: 'N' });
+
+      const used = createEditor(
+        handModel({
+          entities: [
+            entityItem('x'),
+            entityItem('nul'),
+            entityItem('q', {}, 'entities/Y.yaml'),
+          ],
+        }),
+        { reservedFiles: ['entities/r.yaml'] },
+      );
+      expect(used.execute(create('x'))).toEqual(
+        refusal('entity id "x" is already used'),
+      );
+      // Used and a Windows name: reason 1.
+      expect(used.execute(create('nul'))).toEqual(
+        refusal('entity id "nul" is already used'),
+      );
+      expect(used.execute(create('con'))).toEqual(
+        refusal(
+          'entity id "con" cannot be used: it is a reserved file name on Windows',
+        ),
+      );
+      expect(used.execute(create('r'))).toEqual(
+        refusal(
+          'entity id "r" cannot be used: entities/r.yaml is already in use',
+        ),
+      );
+      expect(used.execute(create('y'))).toEqual(
+        refusal(
+          'entity id "y" cannot be used: entities/y.yaml is already in use',
+        ),
+      );
+      expect(used.execute({ type: 'entity.delete', id: 'q' }).ok).toBe(true);
+      expect(used.execute(create('y'))).toEqual(
+        refusal(
+          'entity id "y" cannot be used: a file with another letter case was loaded: entities/Y.yaml',
+        ),
+      );
+      expect(
+        used.execute({
+          type: 'attribute.create',
+          entity: 'x',
+          id: 'a',
+          name: 'A',
+        }).ok,
+      ).toBe(true);
+      expect(
+        used.execute({
+          type: 'attribute.create',
+          entity: 'x',
+          id: 'a',
+          name: 'A',
+        }),
+      ).toEqual(refusal('attribute id "a" is already used in entity "x"'));
+      expect(
+        used.execute({
+          type: 'key.create',
+          entity: 'x',
+          id: 'pk',
+          kind: 'primary',
+          attributes: ['a'],
+        }).ok,
+      ).toBe(true);
+      expect(
+        used.execute({
+          type: 'key.create',
+          entity: 'x',
+          id: 'pk',
+          kind: 'alternate',
+          attributes: ['a'],
+        }),
+      ).toEqual(refusal('key id "pk" is already used in entity "x"'));
+      expect(
+        used.execute({ type: 'subjectArea.create', id: 'prn', name: 'P' }),
+      ).toEqual(
+        refusal(
+          'subject area id "prn" cannot be used: it is a reserved file name on Windows',
+        ),
+      );
+
+      const dictionary = createEditor(
+        await loadFiles({
+          'model.yaml': `${EMPTY_MANIFEST}dictionaries:\n  - entities\n`,
+        }),
+      );
+      expect(dictionary.execute(create('x'))).toEqual(
+        refusal(
+          'entity id "x" cannot be used: entities/x.yaml is inside the dictionary folder entities',
+        ),
+      );
     });
   });
 });

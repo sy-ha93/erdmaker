@@ -84,6 +84,172 @@ const APPENDIX_D: [unknown, Issue[]][] = [
   ],
 ];
 
+/** Appendix D, the rows of the attribute and key commands, in its order. */
+const APPENDIX_D_MEMBERS: [unknown, Issue[]][] = [
+  [
+    { type: 'attribute.delete', entity: 'order', id: 'ord_no' },
+    [
+      error(
+        'R02',
+        'entities/order_item.yaml',
+        '/attributes/0/migratedFrom/0/attribute',
+        'attribute "ord_no": parent "order" has no attribute "ord_no"',
+      ),
+      error(
+        'R04',
+        'relationships/order_contains_item.yaml',
+        '',
+        '"order_contains_item": parent "order" has no primary key to migrate',
+      ),
+    ],
+  ],
+  [
+    { type: 'key.delete', entity: 'order', id: 'pk' },
+    [
+      error(
+        'R04',
+        'relationships/order_contains_item.yaml',
+        '',
+        '"order_contains_item": parent "order" has no primary key to migrate',
+      ),
+    ],
+  ],
+  [
+    { type: 'attribute.delete', entity: 'order', id: 'cust_no' },
+    [
+      error(
+        'R04',
+        'relationships/customer_places_order.yaml',
+        '',
+        '"customer_places_order": customer.cust_no must migrate to exactly one attribute of "order" (found 0)',
+      ),
+    ],
+  ],
+  [
+    {
+      type: 'attribute.update',
+      entity: 'customer',
+      id: 'cust_no',
+      set: { name: '고객ID' },
+    },
+    [
+      'entities/address.yaml',
+      'entities/corporate_customer.yaml',
+      'entities/order.yaml',
+      'entities/personal_customer.yaml',
+    ].map((file) =>
+      error(
+        'R06',
+        file,
+        file === 'entities/address.yaml'
+          ? '/attributes/1/name'
+          : file === 'entities/order.yaml'
+            ? '/attributes/1/name'
+            : '/attributes/0/name',
+        'attribute "cust_no": name differs from customer.cust_no but rolenamed is not set',
+      ),
+    ),
+  ],
+  [
+    {
+      type: 'key.create',
+      entity: 'order',
+      kind: 'primary',
+      attributes: ['ord_dtm'],
+    },
+    [
+      error(
+        'R03',
+        'entities/order.yaml',
+        '/keys/2',
+        'more than one primary key',
+      ),
+    ],
+  ],
+  [
+    {
+      type: 'attribute.update',
+      entity: 'order',
+      id: 'ord_dtm',
+      set: { domain: 'nope' },
+    },
+    [
+      error(
+        'R02',
+        'entities/order.yaml',
+        '/attributes/4/domain',
+        'attribute "ord_dtm": unknown domain "nope"',
+      ),
+    ],
+  ],
+  [
+    { type: 'subjectArea.update', id: 'catalog', set: { group: 'nope' } },
+    [
+      error(
+        'R12',
+        'subject-areas/catalog.yaml',
+        '/group',
+        'unknown area group "nope"',
+      ),
+    ],
+  ],
+];
+
+const rules = (editor: { issues: readonly Issue[] }) =>
+  editor.issues.map((issue) => issue.rule);
+
+/**
+ * AC-07 (가): entity `e` with two primary keys (one R03), and an entity `f`
+ * to change elsewhere. Built from data, with no command.
+ */
+const twoPrimaryKeys = () =>
+  handModel({
+    entities: [
+      entityItem('e', {
+        attributes: ['a', 'b', 'c'].map((id) => ({ id, name: id })),
+        keys: [
+          { id: 'pk', kind: 'primary', attributes: ['a'] },
+          { id: 'pk2', kind: 'primary', attributes: ['b'] },
+        ],
+      }),
+      entityItem('f', { attributes: [{ id: 'x', name: 'x' }] }),
+    ],
+  });
+
+/**
+ * AC-07 (다): the key attribute `p.id` of a parent migrated to three
+ * attributes of child `c` (one R04, found 3).
+ */
+const migratedThrice = () => {
+  const migrated = (id: string) => ({
+    id,
+    name: 'id',
+    migratedFrom: [{ relationship: 'p_has_c', attribute: 'id' }],
+  });
+  return handModel({
+    entities: [
+      entityItem('p', {
+        attributes: [{ id: 'id', name: 'id' }],
+        keys: [{ id: 'pk', kind: 'primary', attributes: ['id'] }],
+      }),
+      entityItem('c', {
+        attributes: [migrated('p_id'), migrated('p_id_2'), migrated('p_id_3')],
+      }),
+    ],
+    relationships: [
+      {
+        file: 'relationships/p_has_c.yaml',
+        data: {
+          id: 'p_has_c',
+          kind: 'non-identifying',
+          parent: 'p',
+          child: 'c',
+        },
+      },
+    ],
+  });
+};
+
 describe('검증 정책', () => {
   test.each(APPENDIX_D)('appendix D: %j', async (command, issues) => {
     const editor = createEditor(await exampleModel());
@@ -102,7 +268,26 @@ describe('검증 정책', () => {
     expect(editor.canUndo).toBe(false);
   });
 
-  test.todo('appendix D: the rows of the attribute and key commands (phase 6)');
+  test.each(APPENDIX_D_MEMBERS)('appendix D: %j', async (command, issues) => {
+    const editor = createEditor(await exampleModel());
+    const model = editor.model;
+    const before = editor.issues;
+    expect(before).toEqual([]);
+    const first = issues[0]!;
+    expect(editor.execute(command)).toEqual({
+      ok: false,
+      code: 'validation',
+      message: `The command would break the model: ${first.file}: ${first.message}`,
+      issues,
+    });
+    expect(editor.model).toBe(model);
+    expect(editor.issues).toBe(before);
+    expect(editor.canUndo).toBe(false);
+  });
+
+  test('appendix D has its ten rows', () => {
+    expect(APPENDIX_D.length + APPENDIX_D_MEMBERS.length).toBe(10);
+  });
 
   test('AC-07 (나): deleting one of three entities with one table name leaves one R11', () => {
     const editor = createEditor(
@@ -118,7 +303,86 @@ describe('검증 정책', () => {
     expect(editor.issues.map((issue) => issue.rule)).toEqual(['R11']);
   });
 
-  test.todo('AC-07 (가), (다), (라), (마) (phase 6)');
+  test('AC-07 (가): a third primary key on an entity with two still gives one R03', () => {
+    const editor = createEditor(twoPrimaryKeys());
+    expect(rules(editor)).toEqual(['R03']);
+    const result = editor.execute({
+      type: 'key.create',
+      entity: 'e',
+      kind: 'primary',
+      id: 'pk3',
+      attributes: ['c'],
+    });
+    expect(result.ok).toBe(true);
+    expect(rules(editor)).toEqual(['R03']);
+  });
+
+  test('AC-07 (다): deleting one of three attributes a parent key attribute migrated to leaves one R04, found 2', () => {
+    const editor = createEditor(migratedThrice());
+    const r04 = () =>
+      editor.issues
+        .filter((issue) => issue.rule === 'R04')
+        .map((i) => i.message);
+    expect(r04()).toEqual([
+      '"p_has_c": p.id must migrate to exactly one attribute of "c" (found 3)',
+    ]);
+    const result = editor.execute({
+      type: 'attribute.delete',
+      entity: 'c',
+      id: 'p_id_2',
+    });
+    expect(result.ok).toBe(true);
+    expect(r04()).toEqual([
+      '"p_has_c": p.id must migrate to exactly one attribute of "c" (found 2)',
+    ]);
+    expect(editor.issues.filter((issue) => issue.rule === 'R04')).toHaveLength(
+      1,
+    );
+  });
+
+  test('AC-07 (라): on the (가) model another entity takes attribute.update; an unknown domain is its one R02', () => {
+    const editor = createEditor(twoPrimaryKeys());
+    expect(
+      editor.execute({
+        type: 'attribute.update',
+        entity: 'f',
+        id: 'x',
+        set: { definition: 'd' },
+      }).ok,
+    ).toBe(true);
+    expect(
+      editor.execute({
+        type: 'attribute.update',
+        entity: 'f',
+        id: 'x',
+        set: { domain: 'nope' },
+      }),
+    ).toEqual({
+      ok: false,
+      code: 'validation',
+      message:
+        'The command would break the model: entities/f.yaml: attribute "x": unknown domain "nope"',
+      issues: [
+        error(
+          'R02',
+          'entities/f.yaml',
+          '/attributes/0/domain',
+          'attribute "x": unknown domain "nope"',
+        ),
+      ],
+    });
+  });
+
+  test('AC-07 (마): deleting one of the two primary keys leaves no issue', () => {
+    const editor = createEditor(twoPrimaryKeys());
+    const result = editor.execute({
+      type: 'key.delete',
+      entity: 'e',
+      id: 'pk2',
+    });
+    expect(result.ok).toBe(true);
+    expect(editor.issues).toEqual([]);
+  });
 
   test('a refusal on a model with errors lists only the new errors', () => {
     const editor = createEditor(

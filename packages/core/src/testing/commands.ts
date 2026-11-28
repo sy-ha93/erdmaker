@@ -1,5 +1,11 @@
 import type { Command } from '../command/types.js';
-import type { ReadonlyModel } from '../model/types.js';
+import type {
+  AttributeData,
+  EntityData,
+  KeyData,
+  LayoutData,
+  ReadonlyModel,
+} from '../model/types.js';
 
 /**
  * Inputs `execute` must refuse with `invalid-command` (spec AC-11, the
@@ -67,6 +73,30 @@ const patched = (
   file: string,
   fields: Record<string, unknown>,
 ): unknown => ({ ...(dataAt(model, file) as object), ...fields });
+
+const ORDER = 'entities/order.yaml';
+
+/** The order entity of `model`, as plain data. */
+const orderOf = (model: ReadonlyModel) => dataAt(model, ORDER) as EntityData;
+
+/** The attributes of order by id, in their order. */
+function orderAttributes(model: ReadonlyModel): Map<string, AttributeData> {
+  const out = new Map<string, AttributeData>();
+  for (const attribute of orderOf(model).attributes) {
+    out.set(attribute.id, attribute);
+  }
+  return out;
+}
+
+/** The attributes of order with these ids, in this order. */
+const attributesOf = (model: ReadonlyModel, ids: readonly string[]) => {
+  const byId = orderAttributes(model);
+  return ids.map((id) => byId.get(id)!);
+};
+
+/** The key of order with this id. */
+const orderKey = (model: ReadonlyModel, id: string): KeyData =>
+  orderOf(model).keys!.find((key) => key.id === id)!;
 
 const MAX_VALUES = 100_000;
 const MAX_TEXT = 1_000_000;
@@ -523,7 +553,7 @@ export const ACCEPTED_INPUTS: readonly AcceptedInput[] = [
   },
 ];
 
-/** One sample or more of each of the 17 kinds (spec section 6). Expected results come in later steps. */
+/** One sample or more of each of the 17 kinds (spec section 6), each with its expected items. */
 export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
   {
     start: 'example',
@@ -571,6 +601,22 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       dataType: { base: 'string', length: 200 },
       before: 'created_at',
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        attributes: [
+          ...attributesOf(model, [
+            'ord_no',
+            'cust_no',
+            'ship_addr_no',
+            'bill_addr_no',
+            'ord_dtm',
+            'total_amt',
+          ]),
+          { id: 'memo', name: '메모', type: { base: 'string', length: 200 } },
+          ...attributesOf(model, ['created_at']),
+        ],
+      }),
+    }),
   },
   {
     start: 'example',
@@ -580,10 +626,31 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'ord_dtm',
       set: { definition: '주문한 시각.' },
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        attributes: orderOf(model).attributes.map((attribute) =>
+          attribute.id === 'ord_dtm'
+            ? { ...attribute, definition: '주문한 시각.' }
+            : attribute,
+        ),
+      }),
+    }),
   },
   {
     start: 'example',
     command: { type: 'attribute.delete', entity: 'order', id: 'total_amt' },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        attributes: attributesOf(model, [
+          'ord_no',
+          'cust_no',
+          'ship_addr_no',
+          'bill_addr_no',
+          'ord_dtm',
+          'created_at',
+        ]),
+      }),
+    }),
   },
   {
     start: 'example',
@@ -593,6 +660,19 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'total_amt',
       before: 'ord_dtm',
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        attributes: attributesOf(model, [
+          'ord_no',
+          'cust_no',
+          'ship_addr_no',
+          'bill_addr_no',
+          'total_amt',
+          'ord_dtm',
+          'created_at',
+        ]),
+      }),
+    }),
   },
   {
     start: 'example',
@@ -603,6 +683,15 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'ak_ord_dtm',
       attributes: ['ord_dtm'],
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        keys: [
+          orderKey(model, 'pk'),
+          orderKey(model, 'ie_ord_dtm'),
+          { id: 'ak_ord_dtm', kind: 'alternate', attributes: ['ord_dtm'] },
+        ],
+      }),
+    }),
   },
   {
     start: 'example',
@@ -612,10 +701,21 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'ie_ord_dtm',
       set: { name: '고객별 주문일시' },
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        keys: [
+          orderKey(model, 'pk'),
+          { ...orderKey(model, 'ie_ord_dtm'), name: '고객별 주문일시' },
+        ],
+      }),
+    }),
   },
   {
     start: 'example',
     command: { type: 'key.delete', entity: 'order', id: 'ie_ord_dtm' },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, { keys: [orderKey(model, 'pk')] }),
+    }),
   },
   {
     start: 'example',
@@ -625,6 +725,11 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'ie_ord_dtm',
       before: 'pk',
     },
+    items: (model) => ({
+      [ORDER]: patched(model, ORDER, {
+        keys: [orderKey(model, 'ie_ord_dtm'), orderKey(model, 'pk')],
+      }),
+    }),
   },
   {
     start: 'example',
@@ -633,14 +738,30 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       name: '배송',
       entities: ['order', 'address'],
     },
+    items: () => ({
+      'subject-areas/baesong.yaml': {
+        id: 'baesong',
+        name: '배송',
+        entities: ['order', 'address'],
+      },
+    }),
   },
   {
     start: 'example',
     command: { type: 'subjectArea.update', id: 'sales', set: { name: '판매' } },
+    items: (model) => ({
+      'subject-areas/sales.yaml': patched(model, 'subject-areas/sales.yaml', {
+        name: '판매',
+      }),
+    }),
   },
   {
     start: 'example',
     command: { type: 'subjectArea.delete', id: 'sales' },
+    items: () => ({
+      'subject-areas/sales.yaml': null,
+      'layouts/sales.json': null,
+    }),
   },
   {
     start: 'example',
@@ -649,6 +770,18 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       id: 'sales',
       entities: ['tag'],
     },
+    items: (model) => ({
+      'subject-areas/sales.yaml': patched(model, 'subject-areas/sales.yaml', {
+        entities: [
+          'address',
+          'customer',
+          'order',
+          'order_item',
+          'product',
+          'tag',
+        ],
+      }),
+    }),
   },
   {
     start: 'example',
@@ -656,6 +789,17 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
       type: 'subjectArea.removeEntities',
       id: 'sales',
       entities: ['order'],
+    },
+    items: (model) => {
+      const layout = dataAt(model, 'layouts/sales.json') as LayoutData;
+      const { order: _order, ...nodes } = layout.nodes;
+      void _order;
+      return {
+        'subject-areas/sales.yaml': patched(model, 'subject-areas/sales.yaml', {
+          entities: ['address', 'customer', 'order_item', 'product'],
+        }),
+        'layouts/sales.json': { ...layout, nodes },
+      };
     },
   },
   {
@@ -680,5 +824,20 @@ export const SAMPLE_COMMANDS: readonly SampleCommand[] = [
         },
       ],
     },
+    items: () => ({
+      'entities/a.yaml': {
+        id: 'a',
+        name: 'A',
+        attributes: [
+          {
+            id: 'a_no',
+            name: 'A 번호',
+            type: { base: 'integer' },
+            nullable: false,
+          },
+        ],
+        keys: [{ id: 'pk', kind: 'primary', attributes: ['a_no'] }],
+      },
+    }),
   },
 ];

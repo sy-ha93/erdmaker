@@ -45,6 +45,14 @@ const clearSpies = () => {
 const TOLERANCE = 2;
 const C = 4;
 
+/**
+ * The mixed batch (entity, attribute and key creates with generated ids,
+ * updates and deletes), set from its green run: T(250) = 5401,
+ * T(500) = 5801, T(1000) = 6601, 1.6 cells per sub-command.
+ */
+const MIXED_TOLERANCE = 2;
+const MIXED_C = 4;
+
 describe('묶음', () => {
   test('the failures come in order: sub-command lookups, shapes, the envelope', async () => {
     const editor = createEditor(await emptyModel());
@@ -227,6 +235,123 @@ describe('묶음', () => {
     expect(succeeded(editor.undo()).model).toBe(model);
   });
 
+  test.each([
+    [
+      'entity.update X, attribute.create X',
+      [
+        { type: 'entity.update', id: 'order', set: { note: 'n' } },
+        { type: 'attribute.create', entity: 'order', id: 'memo', name: 'M' },
+      ],
+    ],
+    [
+      'attribute.update X.a, key.create X',
+      [
+        {
+          type: 'attribute.update',
+          entity: 'order',
+          id: 'ord_dtm',
+          set: { definition: 'd', physical: { name: 'ORD_AT' } },
+        },
+        {
+          type: 'key.create',
+          entity: 'order',
+          kind: 'alternate',
+          attributes: ['ord_dtm'],
+        },
+        {
+          type: 'key.update',
+          entity: 'order',
+          id: 'ie_ord_dtm',
+          set: { attributes: ['ord_dtm'] },
+          unset: ['physical.name'],
+        },
+        { type: 'attribute.delete', entity: 'order', id: 'ord_dtm' },
+      ],
+    ],
+    [
+      'subjectArea.update S, subjectArea.addEntities S',
+      [
+        { type: 'subjectArea.update', id: 'sales', set: { definition: 'd' } },
+        { type: 'subjectArea.addEntities', id: 'sales', entities: ['tag'] },
+        {
+          type: 'subjectArea.removeEntities',
+          id: 'sales',
+          entities: ['order'],
+        },
+      ],
+    ],
+    [
+      'entity.update, entity.delete, entity.create with subjectArea',
+      [
+        { type: 'entity.create', id: 'memo', name: 'M' },
+        { type: 'entity.update', id: 'memo', set: { note: 'n' } },
+        { type: 'entity.delete', id: 'memo' },
+        { type: 'entity.create', id: 'memo2', name: 'M', subjectArea: 'sales' },
+        { type: 'subjectArea.delete', id: 'catalog' },
+      ],
+    ],
+  ])(
+    'on the deep-frozen example, %s: the start model stays as it was and undo gives it back',
+    async (_name, commands) => {
+      const model = deepFreeze(await exampleModel());
+      const before = snapshotOf(model);
+      const editor = createEditor(model);
+      const result = editor.execute(batch(...commands));
+      expect(result.ok, JSON.stringify(result)).toBe(true);
+      expect(editor.model).not.toBe(model);
+      expect(snapshotOf(model)).toEqual(before);
+      expect(succeeded(editor.undo()).model).toBe(model);
+      expect(succeeded(editor.redo()).model).toBe(result.ok && result.model);
+    },
+  );
+
+  test('lookups after an insert, a delete and a move in one batch find the moved attributes', async () => {
+    const editor = createEditor(await exampleModel());
+    const note = (id: string) => ({
+      type: 'attribute.update',
+      entity: 'order',
+      id,
+      set: { note: id },
+    });
+    const result = editor.execute(
+      batch(
+        note('ord_dtm'),
+        {
+          type: 'attribute.create',
+          entity: 'order',
+          id: 'memo',
+          name: 'M',
+          before: 'cust_no',
+        },
+        note('ord_dtm'),
+        note('created_at'),
+        { type: 'attribute.delete', entity: 'order', id: 'total_amt' },
+        note('created_at'),
+        {
+          type: 'attribute.move',
+          entity: 'order',
+          id: 'created_at',
+          before: 'cust_no',
+        },
+        note('bill_addr_no'),
+        note('created_at'),
+      ),
+    );
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    const order = editor.model.entities.find(
+      (item) => item.data.id === 'order',
+    )!.data;
+    expect(order.attributes.map((a) => [a.id, a.note])).toEqual([
+      ['ord_no', undefined],
+      ['memo', undefined],
+      ['created_at', 'created_at'],
+      ['cust_no', undefined],
+      ['ship_addr_no', undefined],
+      ['bill_addr_no', 'bill_addr_no'],
+      ['ord_dtm', 'ord_dtm'],
+    ]);
+  });
+
   test('a create and a delete of it: ok, ids, the same model, no history, no validation', async () => {
     const editor = createEditor(await exampleModel());
     const model = editor.model;
@@ -292,9 +417,40 @@ describe('묶음', () => {
     ]);
   });
 
-  test.todo(
-    'the spec form of the line above: the batch changes order.ord_dtm with attribute.update (phase 6)',
-  );
+  test('the spec form: the batch also changes the definition of order.ord_dtm; only order.yaml is serialized and written', async () => {
+    const fs = createMemoryFileSystem(cachedExampleFiles());
+    const loaded = (await loadModel(fs, '')).model;
+    const setup = createEditor(loaded);
+    const memoCommand = {
+      type: 'entity.create',
+      id: 'memo',
+      name: '메모',
+      definition: '관계 없는 엔터티.',
+    };
+    setup.execute(memoCommand);
+    await writeChanges(fs, loaded, setup.model);
+    const saved = (await loadModel(fs, '')).model;
+    const memo = saved.entities.find((item) => item.data.id === 'memo')!;
+    const editor = createEditor(saved);
+    const result = editor.execute(
+      batch({ type: 'entity.delete', id: 'memo' }, memoCommand, {
+        type: 'attribute.update',
+        entity: 'order',
+        id: 'ord_dtm',
+        set: { definition: '주문한 시각.' },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(editor.model.entities).toContain(memo);
+    vi.mocked(serializeItem).mockClear();
+    expect(await writeChanges(fs, saved, editor.model)).toEqual({
+      written: ['entities/order.yaml'],
+      removed: [],
+    });
+    expect(vi.mocked(serializeItem).mock.calls.map(([file]) => file)).toEqual([
+      'entities/order.yaml',
+    ]);
+  });
 
   test('a batch that only deletes changes the model; saving removes the file and undo brings it back', async () => {
     const fs = createMemoryFileSystem(emptyFiles());
@@ -324,12 +480,66 @@ describe('묶음', () => {
     expect(await fs.readText('entities/b.yaml')).toBe(bytes);
   });
 
-  test.todo(
-    'an entity, its attribute and a key in one batch: ids, data, one validation, one undo (phase 6)',
-  );
-  test.todo(
-    'deleting the pk of order and making a primary key of the same attribute again succeeds (phase 6)',
-  );
+  test('an entity, its attribute and a key in one batch: ids, data, one validation, one undo', async () => {
+    const editor = createEditor(await emptyModel());
+    const start = editor.model;
+    clearSpies();
+    const result = editor.execute(
+      batch(
+        { type: 'entity.create', id: 'a', name: 'A' },
+        {
+          type: 'attribute.create',
+          entity: 'a',
+          id: 'a_no',
+          name: 'A 번호',
+          dataType: { base: 'integer' },
+          nullable: false,
+        },
+        {
+          type: 'key.create',
+          entity: 'a',
+          kind: 'primary',
+          attributes: ['a_no'],
+        },
+      ),
+    );
+    expect(result).toMatchObject({ ok: true, ids: ['a', 'a_no', 'pk'] });
+    expect(validateModel).toHaveBeenCalledTimes(1);
+    expect(editor.model.entities[0]!.data).toEqual({
+      id: 'a',
+      name: 'A',
+      attributes: [
+        {
+          id: 'a_no',
+          name: 'A 번호',
+          type: { base: 'integer' },
+          nullable: false,
+        },
+      ],
+      keys: [{ id: 'pk', kind: 'primary', attributes: ['a_no'] }],
+    });
+    expect(succeeded(editor.undo()).model).toBe(start);
+  });
+
+  test('deleting the pk of order and making a primary key of the same attribute again succeeds', async () => {
+    const editor = createEditor(await exampleModel());
+    const remove = { type: 'key.delete', entity: 'order', id: 'pk' };
+    expect(editor.execute(remove)).toMatchObject({
+      ok: false,
+      code: 'validation',
+    });
+    const result = editor.execute(
+      batch(remove, {
+        type: 'key.create',
+        entity: 'order',
+        kind: 'primary',
+        id: 'pk',
+        attributes: ['ord_no'],
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, ids: [null, 'pk'] });
+    expect(editor.issues).toEqual([]);
+  });
 
   test('the work of a batch of creates grows linearly with its size', () => {
     const entities = [];
@@ -369,5 +579,48 @@ describe('묶음', () => {
     expect(indexBuilds[2]).toBe(indexBuilds[0]);
     expect(Math.abs(d500 - 2 * d250)).toBeLessThanOrEqual(TOLERANCE);
     expect(d500).toBeLessThanOrEqual(500 * C);
+  });
+
+  test('the work of a mixed batch grows linearly with its size', () => {
+    const entities = [];
+    for (let i = 0; i < 1000; i += 1) entities.push(entityItem(`e${i}`));
+    const model = handModel({ entities });
+    const work: number[] = [];
+    for (const n of [250, 500, 1000] as const) {
+      const editor = createEditor(model);
+      clearSpies();
+      const commands = [];
+      for (let g = 0; g < n / 5; g += 1) {
+        commands.push(
+          { type: 'entity.create', name: `New ${g}` },
+          { type: 'attribute.create', entity: `new_${g}`, name: 'A' },
+          {
+            type: 'key.create',
+            entity: `new_${g}`,
+            kind: 'primary',
+            attributes: ['a'],
+          },
+          { type: 'entity.update', id: `e${g}`, set: { note: 'n' } },
+          { type: 'entity.delete', id: `e${999 - g}` },
+        );
+      }
+      const result = editor.execute(batch(...commands));
+      expect(result.ok, JSON.stringify(result)).toBe(true);
+      expect(editor.model.entities.length).toBe(1000);
+      expect(validateModel).toHaveBeenCalledTimes(1);
+      let cells = 0;
+      for (const [, entries] of vi.mocked(noteWork).mock.calls)
+        cells += entries;
+      work.push(
+        cells +
+          vi.mocked(serializeItem).mock.calls.length +
+          vi.mocked(validateModel).mock.calls.length,
+      );
+    }
+    const [t250, t500, t1000] = work as [number, number, number];
+    const d250 = t500 - t250;
+    const d500 = t1000 - t500;
+    expect(Math.abs(d500 - 2 * d250)).toBeLessThanOrEqual(MIXED_TOLERANCE);
+    expect(d500).toBeLessThanOrEqual(500 * MIXED_C);
   });
 });

@@ -1,7 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
 import { validateModel } from '../validate/index.js';
 import type { ReadonlyModel } from '../model/types.js';
-import { emptyModel, handModel, succeeded } from '../testing/editing.js';
+import {
+  emptyModel,
+  entityItem,
+  handModel,
+  succeeded,
+} from '../testing/editing.js';
 import { createEditor } from './editor.js';
 
 vi.mock('../validate/index.js', async (importOriginal) => {
@@ -164,7 +169,31 @@ describe('이력', () => {
     expect(editor.issues).toBe(afterIssues);
   });
 
-  test.todo(
-    'AC-07 (가) model: deleting one of the two primary keys and undoing brings R03 back (key.delete, phase 6)',
-  );
+  test('AC-07 (가) model: deleting one of the two primary keys and undoing brings R03 back', () => {
+    const model = handModel({
+      entities: [
+        entityItem('e', {
+          attributes: [
+            { id: 'a', name: 'a' },
+            { id: 'b', name: 'b' },
+          ],
+          keys: [
+            { id: 'pk', kind: 'primary', attributes: ['a'] },
+            { id: 'pk2', kind: 'primary', attributes: ['b'] },
+          ],
+        }),
+      ],
+    });
+    const editor = createEditor(model);
+    const broken = editor.issues;
+    expect(broken.map((issue) => issue.rule)).toEqual(['R03']);
+    expect(
+      editor.execute({ type: 'key.delete', entity: 'e', id: 'pk2' }).ok,
+    ).toBe(true);
+    expect(editor.issues).toEqual([]);
+    const undone = editor.undo();
+    expect(succeeded(undone).model).toBe(model);
+    expect(undone.issues).toBe(broken);
+    expect(editor.issues.map((issue) => issue.rule)).toEqual(['R03']);
+  });
 });

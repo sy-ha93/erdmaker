@@ -1,4 +1,4 @@
-import type { Working } from './working.js';
+import type { Member, Working } from './working.js';
 
 /** The failure of a lookup or of a handler (spec FR-07, appendix B). */
 export interface Refusal {
@@ -42,5 +42,21 @@ export function findSubjectArea(working: Working, id: string): Found {
     working.positions('subjectAreas', id),
     `subject area "${id}" does not exist`,
     `subject area "${id}" is not unique in the model`,
+  );
+}
+
+/** The attribute or key with this id in the entity at `entity` (id `entityId`). */
+export function findMember(
+  working: Working,
+  entity: number,
+  entityId: string,
+  member: Member,
+  id: string,
+): Found {
+  const kind = member === 'attributes' ? 'attribute' : 'key';
+  return only(
+    working.memberPositions(entity, member, id),
+    `${kind} "${id}" does not exist in entity "${entityId}"`,
+    `${kind} "${id}" is not unique in entity "${entityId}"`,
   );
 }

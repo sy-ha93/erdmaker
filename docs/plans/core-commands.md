@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 5/8 완료)
+**상태**: 진행 중 (단계 6/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -310,9 +310,9 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 6: 나머지 처리 13종과 공개
 
 **목표**: 17종이 모두 있고 `@erdmaker/core`가 편집기를 내보낸다. 편집기와 처리에 대한 AC가 닫힌다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: AC-01, AC-04, AC-06, AC-07, AC-08, AC-10, AC-11, AC-12, AC-13 · **요구사항**: FR-07, FR-05·FR-06(편집기를 거쳐), FR-01(공개 이름)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: AC-01, AC-04, AC-06, AC-07, AC-08, AC-10, AC-11, AC-12, AC-13 · **요구사항**: FR-07, FR-05·FR-06(편집기를 거쳐), FR-01(공개 이름)
 
-- [ ] 6.1 **테스트**: 단계 5의 `test.todo`를 모두 채우고 다음을 더한다.
+- [x] 6.1 **테스트**: 단계 5의 `test.todo`를 모두 채우고 다음을 더한다.
   - `handlers.test.ts` "명령 동작": AC-06 전부(17종의 표본 기대값, 바뀐 것이 없는 사례 일곱, 빈 것 정리, `set.physical: {}`).
   - `cascade.test.ts` "연쇄와 대상": AC-10 전부(저장 결과 포함. 배치에 노드를 넣은 모델은 손으로 만들어 새 편집기에 넘긴다. 분석 V18).
   - `rename.test.ts` "이름 변경": AC-04 전부.
@@ -324,9 +324,9 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
   - `hostile.test.ts`: 표본 명령마다 넣은 값이 명령과도 모델의 다른 곳과도 객체를 공유하지 않는다.
   - `serializable.test.ts`, `describe('명령 직렬화')`: AC-01의 왕복 문장, `-0`, 편집기에 대한 `@ts-expect-error` 셋.
   - `packages/cli/src/core-entry.test.ts`, `describe('명령 직렬화: 공개 이름')`: **빌드한 진입점** `@erdmaker/core`에서(패키지의 `exports`를 거쳐) 값 넷이 함수와 얼린 객체로, 타입 다섯이 타입 검사로 가져와진다. F02의 공개 값도 그대로 있다.
-- [ ] 6.2 **구현**: `handlers/attribute.ts`, `key.ts`, `subject-area.ts`(목록을 고치는 일은 결정 9의 도우미로), `registry.ts`에 등록. `SAMPLE_COMMANDS`의 나머지 기대값. `index.ts`에 `createEditor`, `commandSchemas`, 타입 넷.
-- [ ] 6.3 **검증**: 5장의 단계 관문. `command/` 아래에 `test.todo`가 없다(`grep -rn 'test.todo' packages/core/src/command`의 종료 상태가 1이고 출력이 없다. 2이면 실패다). 닫는 AC 아홉의 `describe` 이름마다 `-t`로 통과가 1개 이상이다.
-- [ ] 6.4 커밋한다(`Add the attribute, key and subject area commands and export the editor`).
+- [x] 6.2 **구현**: `handlers/attribute.ts`, `key.ts`, `subject-area.ts`(목록을 고치는 일은 결정 9의 도우미로), `registry.ts`에 등록. `SAMPLE_COMMANDS`의 나머지 기대값. `index.ts`에 `createEditor`, `commandSchemas`, 타입 넷.
+- [x] 6.3 **검증**: 5장의 단계 관문. `command/` 아래에 `test.todo`가 없다(`grep -rn 'test.todo' packages/core/src/command`의 종료 상태가 1이고 출력이 없다. 2이면 실패다). 닫는 AC 아홉의 `describe` 이름마다 `-t`로 통과가 1개 이상이다.
+- [x] 6.4 커밋한다(`Add the attribute, key and subject area commands and export the editor`).
 
 ### 단계 7: 통합, 번들, 시간
 
@@ -617,7 +617,28 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 - 메모 8: "넣은 값이 객체를 공유하지 않는다"는 단계 6에서 표본 17종 모두에 돈다.
 - 단계 5 기록의 "정한 것" 수는 아홉이다(위 절의 제목에 적었다. 이 계획의 본문에는 여덟이라 적힌 곳이 없었다).
 
+### 단계 6 (2026-11-28)
+
+- 6.1 테스트(구현 전에 돌려 처리가 없어 33개가 실패하는 것을 봤다). `test.todo` 11개를 모두 채웠다(`grep -rn 'test.todo' packages/core/src/command`의 종료 상태 1).
+  - `testing/commands.ts`: `SAMPLE_COMMANDS` 17종 모두에 `items`(기대 데이터)를 채웠다. `handlers.test.ts` "명령 동작"이 표본의 종류가 `commandSchemas`의 17종과 같고 모두 `items`를 가졌음을 단언한다.
+  - `handlers.test.ts` "명령 동작" 37개: AC-06 전부(속성의 `unset`과 `physical` 정리, `set.domain`/`set.type`, `unset: ['domain']`+`set.type`, `set.ext`·`physical.types` 통째, `before`와 이동(앞으로, 끝으로, 뒤로), 바뀐 것이 없는 사례 14줄, `physical.types` 순서와 속성의 `scope: both`는 바뀜, `physical: {}`·`keys: []` 그대로, 키 없는 엔터티의 `key.create` → `key.delete`, `subjectArea.create`의 `entities: []`·없음, 생성 셋의 모든 필드, `key.update`·`subjectArea.update`), 깊이 얼린 예제에서 표본을 모두 실행하고 되돌림.
+  - `cascade.test.ts` "연쇄와 대상" 12개: AC-10 전부(`attribute.delete`의 키 연쇄와 빈 키·빈 `keys`, 이주된 속성의 세 변경과 이동, `set.migratedFrom`, `not-found` 15줄, 저장만 하는 참조(`R02`, 뒤 명령이 만드는 `batch`), 쓰이는 `id`+없는 `subjectArea`, 없는 엔터티+스키마 위반, `ambiguous-target` 8줄, `subjectArea.delete`·`removeEntities`의 배치 연쇄).
+  - `rename.test.ts` "이름 변경" 8개(AC-04), `serializable.test.ts` "명령 직렬화" 20개(AC-01의 왕복, 타입을 준 `attribute.create`, `-0`, `@ts-expect-error` 셋), `ids.test.ts` "ID 만들기"의 편집기 사례 10개(AC-08), `paths.test.ts` "새 파일 경로"의 편집기 사례 5개(AC-09의 "다시 읽기" 앞까지), `history.test.ts`(AC-12 마지막 문장), `policy.test.ts`(부록 D의 나머지 7줄을 글자 그대로. 지금 검증기가 모두 그대로 냈다. AC-07 (가)·(다)·(라)·(마)), `batch.test.ts`(세 명령의 묶음, `pk` 지우고 다시 만들기, 스펙 꼴의 `attribute.update` 묶음과 `order.yaml` 하나만 직렬화·쓰기), `hostile.test.ts`(`subjectArea.create`의 받는 두 줄, 표본 17종마다 넣은 값이 명령과도 모델의 다른 곳과도 객체를 공유하지 않음), `packages/cli/src/core-entry.test.ts` "명령 직렬화: 공개 이름"(빌드한 `@erdmaker/core`에서 값 넷, 타입 다섯, F02의 값).
+  - 단계 5 리뷰에서 넘어온 것: `batch.test.ts`에 깊이 얼린 예제의 섞인 묶음 넷(`[entity.update X, attribute.create X]`, `[attribute.update X.a, key.create X, key.update, attribute.delete]`, `[subjectArea.update S, addEntities S, removeEntities S]`, `[entity.create, entity.update, entity.delete, entity.create (subjectArea), subjectArea.delete]`. 처음 모델이 미리 뜬 사본과 같고 `undo`가 처음 모델 객체, `redo`가 결과 모델), 한 묶음 안의 삽입·삭제·이동 뒤의 찾기, 섞인 묶음의 일의 수. `random.test.ts` "명령 동작: 무작위": 깊이 얼린 예제에 17종(묶음 포함)의 무작위 명령과 `undo`·`redo` 2500번(씨앗 20261128). 던지지 않고 `internal`이 없으며 오류가 늘지 않고 처음 모델이 그대로다.
+- 6.2 구현: `handlers/attribute.ts`, `key.ts`, `subject-area.ts`, 공통 `handlers/members.ts`(엔터티·멤버·`before` 찾기, 멤버 ID, 수정, 이동, 필드 옮기기), `handlers/update.ts`(`applyUpdate`: `unset` 다음 `set`, `physical` 키 단위, 바꾸면 지우는 짝). `entity.update`도 `applyUpdate`를 쓴다. `find.ts`에 `findMember`. `working.ts`에 멤버 도우미(`memberPositions`, `memberSpace`, `insertMember`, `removeMember`, `moveMember`, `ownMember`, `removeFromKeys`, `dropEmptyKeys`)와 주제영역 도우미(`subjectAreaSpace`, `ownSubjectArea`, `removeFromArea`, `removeAreaNodes`, `removeLayoutsOf`). `registry.ts`에 13종. `index.ts`에 `createEditor`, `commandSchemas`, 타입 `Command`, `CommandResult`, `Editor`, `RejectionCode`. 처리 모듈은 목록을 도우미로만 고친다(`source-guard.test.ts`가 새 파일까지 본다. 허용 표시 0개).
+- 6.3 단계 관문 `exit=0`. 64개 파일 1187개 통과, todo 0, `pnpm test` 75.75초(단계 0의 73.99초 + 1.8초). `-t`로 닫는 AC의 `describe`마다 통과: 명령 스키마 73, 명령 직렬화 21, 이름 변경 8, 명령 동작 38, 검증 정책 20, ID 만들기 74, 연쇄와 대상 13, 믿을 수 없는 입력 128, 거부 문구 23, 이력 7, 묶음 20.
+- **섞인 묶음의 일의 수**: 다섯 명령(생성한 ID의 `entity.create`, 그 엔터티의 `attribute.create`, `key.create`, 있는 엔터티의 `entity.update`, `entity.delete`)을 n/5번. T(250) = 5401, T(500) = 5801, T(1000) = 6601(Δ250 = 400, Δ500 = 800. 하위 명령 하나에 1.6칸). `tolerance` = 2, `c` = 4.
+- 깨뜨려 확인한 것(각각 되돌림. `command/` 테스트의 실패 수): 키 연쇄를 뺌(5), 빈 키를 남김(3), 키를 통째로 지움(2), 빈 `keys`를 남김(1), 주제영역 삭제의 배치 연쇄를 뺌(6), 모든 배치를 지움(1), `removeEntities`의 노드 연쇄를 뺌(6), 모든 배치의 노드를 뺌(2), 이름 바꾸면 `id`도 바뀜(14), 자기 앞으로의 이동이 끝으로 감(1), 끝의 비교에서 원래 항목으로 되돌리지 않음(5), 없는 멤버를 받음(2), 없는 주제영역을 받음(5), `attribute.create`의 `before`가 한 칸 뒤(2), `key.create`의 `before`를 무시(1), 이동의 자리 보정을 뺌(2), `key.move`의 `before`를 무시(5), `set.domain`이 `type`을 남김(1), `unset`을 무시(5), 빈 `physical`을 남김(3), `set.physical: {}`를 바뀐 것으로(2), `subjectArea.create`의 `entities`를 무시(4), 명령의 `entities`를 다른 필드와 공유(8), 이미 든 것도 넣음(2), `removeEntities`를 무시(2), 멤버를 제자리에서 고침(15), 키의 `attributes`를 공유(1), 엔터티 사본이 `attributes`를 공유(16. 단계 5 리뷰의 경고), 삽입·삭제·이동 뒤 멤버 색인을 버리지 않음(1, 2, 1. 처음에는 삽입이 살아남아 "한 묶음 안의 삽입·삭제·이동 뒤의 찾기"를 더했다), 생성 ID가 이름 공간을 보지 않음(2), 주제영역 ID의 경로 검사를 뺌(1), `keys`를 만들지 않음(11), `dataType`을 버림(4), 다른 키를 고침(9), 처음 주제영역을 제자리에서 고침(5). 살아남은 변이는 없다.
+- 스펙과 계획이 정하지 않아 정한 것:
+  1. **`removeEntities`의 노드**: 연쇄 표의 글 그대로, 명령이 준 엔터티 모두의 노드를 그 주제영역의 배치에서 뺀다(영역에 없던 엔터티의 노드도. 그런 노드는 `R09` 오류라 오류 없는 모델에서는 결과가 같다).
+  2. **자기 앞으로의 이동**: `id`와 `before`를 먼저 찾고(`not-found`·`ambiguous-target`은 그대로 낸다) 바꾸지 않는다.
+  3. **멤버 찾기**: 엔터티마다 속성·키의 ID 색인을 처음 물을 때 만들고, 끝에 붙이면 이어 고치며, 가운데 넣기·빼기·이동에서는 버리고 다음에 물을 때 다시 만든다(그 명령의 자리 옮기기가 이미 엔터티 크기에 선형이다. FR-10 (1)).
+  4. **`attribute.delete`의 키**: 그 속성을 가진 키에서만 빼고, 그래서 빈 키만 지우며, 그 결과 키가 하나도 남지 않을 때만 `keys`를 지운다. 속성을 갖지 않은 키는 건드리지 않는다.
+  5. **만든 데이터의 필드 순서**: 형식 스키마의 순서로 넣는다(쓴 글은 스키마 순이라 결과는 같다). `subjectArea.create`의 `entities`는 받은 순서다(쓸 때 정렬된다).
+  6. **생성 명령의 찾기 순서**: `entity`, 다음 `before`(부록 A의 필드 순), 그다음 `id-taken`.
+- 계획과 달라진 점: (1) 처리 셋 말고 공통 모듈 `handlers/members.ts`, `handlers/update.ts`를 더했다. (2) 단계 5 리뷰의 항목 가운데 단계 6의 처리가 있어야 하는 것(섞인 얼린 묶음, 무작위 시험, 섞인 일의 수)을 이 커밋에 넣었다. (3) AC-08 (아)의 "찾아본 후보 셋"은 단계 3의 함수 수준 테스트가 세고, 편집기 수준은 결과 `s_4`만 본다. (4) 단계 5의 계획과 다른 점 (3)·(5)(AC-13의 `entity.update` 대신 `attribute.update`, `subjectArea.create`의 받는 두 줄)는 스펙의 줄 그대로 채웠다(단계 5의 `entity.update` 사례는 남겨 두었다).
+
 ---
 
 마지막 수정: 2026-11-28 11:00
-상태: 진행 중 (단계 5/8 완료)
+상태: 진행 중 (단계 6/8 완료)

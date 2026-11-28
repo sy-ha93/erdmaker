@@ -7,6 +7,7 @@ import type {
   EntityUpdateCommand,
 } from '../types.js';
 import type { Working } from '../working.js';
+import { applyUpdate, type Fields } from './update.js';
 
 /** The fields of `entity.create` an entity keeps, in the format's order. */
 const CREATE_FIELDS = [
@@ -16,8 +17,6 @@ const CREATE_FIELDS = [
   'nameSource',
   'physical',
 ] as const;
-
-type Fields = Record<string, unknown>;
 
 const idTaken = (message: string): HandlerResult => ({
   ok: false,
@@ -74,35 +73,7 @@ export function updateEntity(
   const found = findEntity(working, command.id);
   if (!found.ok) return found;
   const data = working.own<EntityData>('entities', found.position);
-  const fields = data as unknown as Fields;
-  let emptied = false;
-  for (const name of command.unset ?? []) {
-    if (name === 'physical.name' || name === 'physical.schema') {
-      const key = name === 'physical.name' ? 'name' : 'schema';
-      if (data.physical && Object.hasOwn(data.physical, key)) {
-        delete data.physical[key];
-        emptied = true;
-      }
-    } else {
-      delete fields[name];
-    }
-  }
-  const set = (command.set ?? {}) as Fields;
-  for (const key of Object.keys(set)) {
-    const value = set[key];
-    if (key === 'physical') {
-      const physical = value as Fields;
-      if (Object.keys(physical).length === 0) continue;
-      data.physical = { ...data.physical, ...physical };
-    } else {
-      fields[key] = value;
-    }
-  }
-  // Only a key the command removed empties `physical`; `physical: {}` it
-  // did not touch stays.
-  if (emptied && data.physical && Object.keys(data.physical).length === 0) {
-    delete data.physical;
-  }
+  applyUpdate(data as unknown as Fields, command.set, command.unset);
   return { ok: true };
 }
 

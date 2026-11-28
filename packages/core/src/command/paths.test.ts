@@ -1,7 +1,15 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { createMemoryFileSystem } from '../fs/memory.js';
+import {
+  EMPTY_MANIFEST,
+  entityItem,
+  handModel,
+  loadFiles,
+} from '../testing/editing.js';
 import { AWKWARD_STRINGS } from '../testing/generate.js';
+import { recordingFileSystem } from '../testing/recording-fs.js';
+import { createEditor } from './editor.js';
 import {
   dictionaryFolderOf,
   dictionaryFolders,
@@ -13,6 +21,8 @@ import {
   pathKeys,
   reservedPaths,
 } from './paths.js';
+import type { CommandResult } from './types.js';
+import { writeChanges } from './write-changes.js';
 
 describe('새 파일 경로: 비교 키', () => {
   test('letter case, NFC and NFD, full and half width give one key', () => {
@@ -333,6 +343,177 @@ describe('새 파일 경로', () => {
         list: () => Promise.reject(error),
       };
       await expect(listReservedFiles(fs, '')).rejects.toBe(error);
+    });
+  });
+});
+
+describe('새 파일 경로', () => {
+  describe('편집기에서', () => {
+    const idOf = (result: CommandResult) => (result.ok ? result.id : result);
+    const create = (name: string, id?: string) => ({
+      type: 'entity.create',
+      name,
+      ...(id === undefined ? {} : { id }),
+    });
+
+    test('under the model folder dir: entities/ and subject-areas/', () => {
+      const editor = createEditor(handModel({ dir: 'billing' }));
+      expect(idOf(editor.execute(create('Invoice')))).toBe('invoice');
+      expect(
+        idOf(editor.execute({ type: 'subjectArea.create', name: 'Bills' })),
+      ).toBe('bills');
+      expect(editor.model.entities[0]!.file).toBe(
+        'billing/entities/invoice.yaml',
+      );
+      expect(editor.model.subjectAreas[0]!.file).toBe(
+        'billing/subject-areas/bills.yaml',
+      );
+    });
+
+    test('a path in use with other letters, and a reserved path, move the id on', () => {
+      const editor = createEditor(
+        handModel({
+          entities: [entityItem('cust', {}, 'entities/Customer.yaml')],
+        }),
+        { reservedFiles: ['entities/tag_2.yaml'] },
+      );
+      expect(idOf(editor.execute(create('Customer')))).toBe('customer_2');
+      expect(idOf(editor.execute(create('tag_2')))).toBe('tag_2_2');
+    });
+
+    test('the output of listReservedFiles as reservedFiles: delete and make again, b_2 and c_2', async () => {
+      const files = {
+        'model.yaml': EMPTY_MANIFEST,
+        'entities/a.yaml': 'id: a\nname: a\nattributes: []\n',
+        'entities/b.yaml/inner.yaml': 'x: 1\n',
+        'entities/c.yaml': ': : :\n',
+      };
+      const fs = createMemoryFileSystem(files);
+      const model = await loadFiles(files);
+      const reservedFiles = await listReservedFiles(fs, '');
+      expect(reservedFiles).toEqual([
+        'entities/a.yaml',
+        'entities/b.yaml',
+        'entities/c.yaml',
+      ]);
+      const editor = createEditor(model, { reservedFiles });
+      expect(
+        editor.execute({
+          type: 'batch',
+          commands: [{ type: 'entity.delete', id: 'a' }, create('a', 'a')],
+        }).ok,
+      ).toBe(true);
+      expect(idOf(editor.execute(create('b')))).toBe('b_2');
+      expect(idOf(editor.execute(create('c')))).toBe('c_2');
+
+      // Without them, b is b, and saving meets the folder entities/b.yaml.
+      const unaware = createEditor(model);
+      expect(idOf(unaware.execute(create('b')))).toBe('b');
+      const recording = recordingFileSystem(files);
+      recording.clear();
+      await expect(
+        writeChanges(recording, model, unaware.model),
+      ).rejects.toThrow(
+        new Error(
+          'Cannot save: entities/b.yaml already exists and is not part of the model',
+        ),
+      );
+      expect(recording.paths('writeText')).toEqual([]);
+      expect(recording.paths('remove')).toEqual([]);
+    });
+
+    test('letter case: Customer.yaml loaded, customer.yaml loaded, and the three files', () => {
+      const refusal = (message: string) => ({
+        ok: false,
+        code: 'id-taken',
+        message,
+        issues: [],
+      });
+      const upper = createEditor(
+        handModel({
+          entities: [entityItem('customer', {}, 'entities/Customer.yaml')],
+        }),
+      );
+      upper.execute({ type: 'entity.delete', id: 'customer' });
+      expect(upper.execute(create('X', 'customer'))).toEqual(
+        refusal(
+          'entity id "customer" cannot be used: a file with another letter case was loaded: entities/Customer.yaml',
+        ),
+      );
+      expect(idOf(upper.execute(create('Customer')))).toBe('customer_2');
+
+      const lower = createEditor(
+        handModel({ entities: [entityItem('customer')] }),
+      );
+      lower.execute({ type: 'entity.delete', id: 'customer' });
+      expect(idOf(lower.execute(create('X', 'customer')))).toBe('customer');
+
+      const three = createEditor(
+        handModel({
+          entities: [
+            entityItem('a', {}, 'entities/Customer.yaml'),
+            entityItem('b', {}, 'entities/cUstomer.yaml'),
+            entityItem('customer'),
+          ],
+        }),
+      );
+      three.execute({ type: 'entity.delete', id: 'customer' });
+      expect(three.execute(create('X', 'customer'))).toEqual(
+        refusal(
+          'entity id "customer" cannot be used: entities/customer.yaml is already in use',
+        ),
+      );
+      three.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.delete', id: 'a' },
+          { type: 'entity.delete', id: 'b' },
+        ],
+      });
+      const fifth = refusal(
+        'entity id "customer" cannot be used: a file with another letter case was loaded: entities/Customer.yaml',
+      );
+      expect(three.execute(create('X', 'customer'))).toEqual(fifth);
+      three.undo();
+      three.redo();
+      expect(three.execute(create('X', 'customer'))).toEqual(fifth);
+      three.undo();
+      three.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.delete', id: 'a' },
+          { type: 'entity.delete', id: 'b' },
+        ],
+      });
+      expect(three.execute(create('X', 'customer'))).toEqual(fifth);
+    });
+
+    test('a folder entities/Customer.yaml: deleting old and making customer in a batch is refused on saving', async () => {
+      const files = {
+        'model.yaml': EMPTY_MANIFEST,
+        'entities/old.yaml': 'id: old\nname: old\nattributes: []\n',
+        'entities/Customer.yaml/inner.yaml': 'x: 1\n',
+      };
+      const fs = recordingFileSystem(files);
+      const model = await loadFiles(files);
+      const editor = createEditor(model);
+      expect(
+        editor.execute({
+          type: 'batch',
+          commands: [
+            { type: 'entity.delete', id: 'old' },
+            create('Customer', 'customer'),
+          ],
+        }).ok,
+      ).toBe(true);
+      fs.clear();
+      await expect(writeChanges(fs, model, editor.model)).rejects.toThrow(
+        new Error(
+          'Cannot save: entities/customer.yaml already exists and is not part of the model',
+        ),
+      );
+      expect(fs.paths('writeText')).toEqual([]);
+      expect(fs.paths('remove')).toEqual([]);
     });
   });
 });

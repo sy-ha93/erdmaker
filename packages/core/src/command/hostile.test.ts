@@ -1,8 +1,25 @@
 import { describe, expect, test } from 'vitest';
-import { ACCEPTED_INPUTS, REJECTED_INPUTS } from '../testing/commands.js';
-import { emptyModel } from '../testing/editing.js';
+import {
+  ACCEPTED_INPUTS,
+  REJECTED_INPUTS,
+  SAMPLE_COMMANDS,
+} from '../testing/commands.js';
+import { emptyModel, exampleModel } from '../testing/editing.js';
 import { createEditor } from './editor.js';
 import type { CommandResult } from './types.js';
+
+/** Every object reachable from `value`. */
+function objectsOf(value: unknown): Set<object> {
+  const out = new Set<object>();
+  const stack = [value];
+  while (stack.length > 0) {
+    const next = stack.pop();
+    if (typeof next !== 'object' || next === null || out.has(next)) continue;
+    out.add(next);
+    for (const child of Object.values(next)) stack.push(child);
+  }
+  return out;
+}
 
 describe('믿을 수 없는 입력', () => {
   test.each(REJECTED_INPUTS.map((row) => [row.name, row] as const))(
@@ -57,11 +74,30 @@ describe('믿을 수 없는 입력', () => {
       }
     },
   );
-  for (const row of ACCEPTED_INPUTS) {
-    if (!entityRows.includes(row)) {
-      test.todo(`taken: ${row.name} (subjectArea.create, phase 6)`);
+  const areaRows = ACCEPTED_INPUTS.filter((row) => !entityRows.includes(row));
+  test('every accepted row is an entity.create or a subjectArea.create', () => {
+    for (const row of areaRows) {
+      expect((row.copy() as { type: string }).type).toBe('subjectArea.create');
     }
-  }
+    expect(areaRows.length).toBe(2);
+  });
+  test.each(areaRows.map((row) => [row.name, row] as const))(
+    'taken: %s',
+    async (_name, row) => {
+      const editor = createEditor(await exampleModel());
+      const result = editor.execute(row.input());
+      expect(result).toMatchObject({ ok: true, id: 'a' });
+      const copy = row.copy() as Record<string, unknown>;
+      const { type: _type, ...fields } = copy;
+      void _type;
+      const created = editor.model.subjectAreas.at(-1)!;
+      expect(created).toEqual({
+        file: 'subject-areas/a.yaml',
+        data: { ...fields, id: 'a' },
+      });
+      expect(created.data.entities).toEqual(['product']);
+    },
+  );
 
   test('a getter that calls the editor gets busy; the getter throwing refuses the outer call', async () => {
     const editor = createEditor(await emptyModel());
@@ -111,8 +147,38 @@ describe('믿을 수 없는 입력', () => {
     expect(data.physical).not.toBe(command.physical);
   });
 
-  test.todo(
-    'per sample command, the values it put in share no object with the command or the rest of the model (phase 6)',
+  test.each(
+    SAMPLE_COMMANDS.map((sample) => [sample.command.type, sample] as const),
+  )(
+    'the values the sample %s put in share no object with the command or the rest of the model',
+    async (_type, sample) => {
+      const editor = createEditor(
+        sample.start === 'example' ? await exampleModel() : await emptyModel(),
+      );
+      for (const command of sample.before ?? []) {
+        expect(editor.execute(command).ok).toBe(true);
+      }
+      const before = editor.model;
+      const command = JSON.parse(JSON.stringify(sample.command)) as object;
+      expect(editor.execute(command).ok).toBe(true);
+      const commandObjects = objectsOf(command);
+      // The objects of the model before the command, which may stay shared.
+      const old = objectsOf(before);
+      const seen = new Map<object, string>();
+      const stack: [unknown, string][] = [[editor.model, '']];
+      while (stack.length > 0) {
+        const [value, path] = stack.pop()!;
+        if (typeof value !== 'object' || value === null) continue;
+        expect(commandObjects.has(value), path).toBe(false);
+        if (old.has(value)) continue;
+        // A new object reached twice is shared between two places.
+        expect(seen.get(value), path).toBeUndefined();
+        seen.set(value, path);
+        for (const [key, child] of Object.entries(value)) {
+          stack.push([child, `${path}/${key}`]);
+        }
+      }
+    },
   );
 });
 

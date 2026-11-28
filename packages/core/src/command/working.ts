@@ -1,6 +1,8 @@
 import type {
+  AttributeData,
   DeepReadonly,
   EntityData,
+  KeyData,
   LayoutData,
   ModelItem,
   ReadonlyModel,
@@ -129,6 +131,43 @@ class IdIndex {
   }
 }
 
+/** The lists inside an entity that commands change: its attributes and keys. */
+export type Member = 'attributes' | 'keys';
+
+type MemberData = { readonly id: string };
+
+/** Positions by id among the attributes or keys of one entity. */
+function memberIndex(members: readonly MemberData[]): Map<string, number[]> {
+  noteWork('index-build', members.length);
+  const positions = new Map<string, number[]>();
+  for (let i = 0; i < members.length; i += 1) {
+    const id = members[i]!.id;
+    const at = positions.get(id);
+    if (at) at.push(i);
+    else positions.set(id, [i]);
+  }
+  return positions;
+}
+
+/** A new attribute or key object a handler may change in place. */
+function copyMember(member: Member, data: MemberData): MemberData {
+  if (member === 'attributes') {
+    const attribute = data as DeepReadonly<AttributeData>;
+    const made: DeepReadonly<AttributeData> =
+      attribute.physical === undefined
+        ? { ...attribute }
+        : { ...attribute, physical: { ...attribute.physical } };
+    return made;
+  }
+  const key = data as DeepReadonly<KeyData>;
+  const made: DeepReadonly<KeyData> = {
+    ...key,
+    attributes: copyList(key.attributes),
+    ...(key.physical === undefined ? {} : { physical: { ...key.physical } }),
+  };
+  return made;
+}
+
 /** A subject area's data being changed, with the ids it holds. */
 interface OwnedArea {
   data: SubjectAreaData;
@@ -150,6 +189,13 @@ export class Working {
   private readonly indexes = new Map<ListName, IdIndex>();
   private keyCounts: Map<string, number> | undefined;
   private readonly areas = new Map<Item, OwnedArea>();
+  /** By entity position, then member: positions by id; dropped when stale. */
+  private readonly memberIndexes = new Map<
+    number,
+    Map<Member, Map<string, number[]>>
+  >();
+  /** Attributes and keys made by this state, which it may change in place. */
+  private readonly ownedMembers = new Set<object>();
 
   constructor(
     readonly start: ReadonlyModel,
@@ -199,6 +245,195 @@ export class Working {
       },
       files: this.files('entities'),
     };
+  }
+
+  /** The id namespace of subject areas, with the files new ones get. */
+  subjectAreaSpace(): Extract<IdSpace, { kind: 'subject area' }> {
+    return {
+      kind: 'subject area',
+      hasId: (id) => this.positions('subjectAreas', id).length > 0,
+      files: this.files('subject-areas'),
+    };
+  }
+
+  /** The id namespace of the attributes or keys of the entity at `entity`. */
+  memberSpace(
+    entity: number,
+    member: Member,
+    entityId: string,
+  ): Extract<IdSpace, { kind: 'attribute' | 'key' }> {
+    return {
+      kind: member === 'attributes' ? 'attribute' : 'key',
+      entity: entityId,
+      hasId: (id) => this.memberPositions(entity, member, id).length > 0,
+    };
+  }
+
+  /** The positions of the attributes or keys with this id in the entity at `entity`. */
+  memberPositions(
+    entity: number,
+    member: Member,
+    id: string,
+  ): readonly number[] {
+    let byMember = this.memberIndexes.get(entity);
+    if (!byMember) {
+      byMember = new Map();
+      this.memberIndexes.set(entity, byMember);
+    }
+    let index = byMember.get(member);
+    if (!index) {
+      index = memberIndex(this.members(entity, member));
+      byMember.set(member, index);
+    }
+    return index.get(id) ?? [];
+  }
+
+  /**
+   * Puts `value` (a new object this state now owns) among the members of the
+   * entity at `entity`: before the one at `before`, or at the end. Makes
+   * `keys` when the entity has none.
+   */
+  insertMember(
+    entity: number,
+    member: Member,
+    value: MemberData,
+    before?: number,
+  ): void {
+    const list = this.ownMembers(entity, member);
+    this.ownedMembers.add(value);
+    if (before === undefined) {
+      noteWork('copy', 1);
+      list.push(value);
+      const index = this.memberIndexes.get(entity)?.get(member);
+      const at = index?.get(value.id);
+      if (at) at.push(list.length - 1);
+      else index?.set(value.id, [list.length - 1]);
+      return;
+    }
+    noteWork('copy', list.length - before + 1);
+    list.splice(before, 0, value);
+    this.staleMembers(entity, member);
+  }
+
+  /** Takes the member at `position` out of the entity at `entity`. */
+  removeMember(entity: number, member: Member, position: number): void {
+    const list = this.ownMembers(entity, member);
+    noteWork('copy', list.length - position);
+    list.splice(position, 1);
+    this.staleMembers(entity, member);
+  }
+
+  /** Moves the member at `from` before the one at `before`, or to the end. */
+  moveMember(
+    entity: number,
+    member: Member,
+    from: number,
+    before?: number,
+  ): void {
+    const list = this.ownMembers(entity, member);
+    noteWork('copy', list.length);
+    const [moved] = list.splice(from, 1);
+    let to = before ?? list.length + 1;
+    if (to > from) to -= 1;
+    list.splice(to, 0, moved!);
+    this.staleMembers(entity, member);
+  }
+
+  /**
+   * The member at `position` of the entity at `entity`, to change in place:
+   * the first time replaced by a new object this state owns.
+   */
+  ownMember<T>(entity: number, member: Member, position: number): T {
+    const list = this.ownMembers(entity, member);
+    const value = list[position]!;
+    if (this.ownedMembers.has(value)) return value as T;
+    const made = copyMember(member, value);
+    noteWork('copy', 1);
+    list[position] = made;
+    this.ownedMembers.add(made);
+    return made as T;
+  }
+
+  /**
+   * Takes the attribute `attribute` out of the keys of the entity at
+   * `entity`; a key it leaves with no attribute goes, and `keys` with the
+   * last one (spec FR-07).
+   */
+  removeFromKeys(entity: number, attribute: string): void {
+    const keys = () =>
+      this.members(entity, 'keys') as readonly DeepReadonly<KeyData>[];
+    noteWork('scan', keys().length);
+    let removed = false;
+    // From the end, so removing a key moves none still to be seen.
+    for (let p = keys().length - 1; p >= 0; p -= 1) {
+      const held = keys()[p]!.attributes;
+      noteWork('scan', held.length);
+      if (!held.includes(attribute)) continue;
+      const key = this.ownMember<KeyData>(entity, 'keys', p);
+      let kept = 0;
+      for (const id of key.attributes)
+        if (id !== attribute) key.attributes[kept++] = id;
+      key.attributes.length = kept;
+      if (kept === 0) {
+        this.removeMember(entity, 'keys', p);
+        removed = true;
+      }
+    }
+    if (removed) this.dropEmptyKeys(entity);
+  }
+
+  /** Removes `keys` from the entity at `entity` when a command emptied it. */
+  dropEmptyKeys(entity: number): void {
+    const data = this.own<EntityData>('entities', entity);
+    if (data.keys && data.keys.length === 0) delete data.keys;
+  }
+
+  /** The data of the subject area at `position`, to change in place. */
+  ownSubjectArea(position: number): SubjectAreaData {
+    return this.ownArea(position).data;
+  }
+
+  /** Takes `ids` out of the subject area at `position`; ids it lacks are ignored. */
+  removeFromArea(position: number, ids: readonly string[]): void {
+    const area = this.ownArea(position);
+    const gone = new Set<string>();
+    for (const id of ids) if (area.members.delete(id)) gone.add(id);
+    if (gone.size === 0) return;
+    const list = area.data.entities;
+    noteWork('scan', list.length);
+    let kept = 0;
+    for (const id of list) if (!gone.has(id)) list[kept++] = id;
+    list.length = kept;
+  }
+
+  /** Takes the nodes of `ids` out of every layout of the subject area `area`. */
+  removeAreaNodes(area: string, ids: readonly string[]): void {
+    const cells = this.cells('layouts');
+    noteWork('scan', cells.length);
+    for (let p = 0; p < cells.length; p += 1) {
+      const item = cells[p];
+      if (!item || (item.data as LayoutData).subjectArea !== area) continue;
+      noteWork('scan', ids.length);
+      let holds = false;
+      for (const id of ids) {
+        if (Object.hasOwn((item.data as LayoutData).nodes, id)) holds = true;
+      }
+      if (!holds) continue;
+      const data = this.own<LayoutData>('layouts', p);
+      for (const id of ids) delete data.nodes[id];
+    }
+  }
+
+  /** Removes every layout of the subject area `area`. */
+  removeLayoutsOf(area: string): void {
+    const cells = this.cells('layouts');
+    noteWork('scan', cells.length);
+    for (let p = 0; p < cells.length; p += 1) {
+      const item = cells[p];
+      if (item && (item.data as LayoutData).subjectArea === area) {
+        this.remove('layouts', p);
+      }
+    }
   }
 
   /** The file of a new item with this id. */
@@ -299,6 +534,23 @@ export class Working {
       const data = this.own<LayoutData>('layouts', p);
       delete data.nodes[entity];
     }
+  }
+
+  /** The attributes or keys of the entity at `entity` now. */
+  private members(entity: number, member: Member): readonly MemberData[] {
+    const data = this.item<EntityData>('entities', entity).data;
+    return (data[member] ?? []) as readonly MemberData[];
+  }
+
+  /** The members of the entity at `entity` as an array this state owns. */
+  private ownMembers(entity: number, member: Member): MemberData[] {
+    const data = this.own<EntityData>('entities', entity);
+    if (member === 'keys') data.keys ??= [];
+    return data[member] as MemberData[];
+  }
+
+  private staleMembers(entity: number, member: Member): void {
+    this.memberIndexes.get(entity)?.delete(member);
   }
 
   private listed(ids: readonly string[], entity: string): boolean {
