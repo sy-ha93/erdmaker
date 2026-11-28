@@ -10,12 +10,12 @@
 
 ## 지금 상태
 
-모노레포 골격(pnpm 워크스페이스, 패키지 `core`·`cli`·`mcp`·`web`, CI `.github/workflows/ci.yml`)과 모델 파일 형식 초안(`format/v0/`)이 있다. F02(`core-model-io`)까지 들어왔다.
+모노레포 골격(pnpm 워크스페이스, 패키지 `core`·`cli`·`mcp`·`web`, CI `.github/workflows/ci.yml`)과 모델 파일 형식 초안(`format/v0/`)이 있다. F03(`core-commands`)까지 들어왔다.
 
 - `core`: 형식 v0 모델 폴더를 메모리 모델로 읽고(`loadModel`) 다시 쓴다(`serializeModel`, `writeModel`). 스키마 검사와 파일 간 규칙(R01~R12), 프로젝트에서 모델 찾기(`findModels`, `validateProject`, P01·P02)를 한다. 파일 접근은 어댑터(`FileSystemAdapter`)로만 한다. 기본 진입점은 브라우저와 Node 양쪽에서 돌고, Node용 어댑터는 `@erdmaker/core/node`에 있다. 스키마는 `src/generated/schemas.ts`에 내장한다(생성물이다. 스키마를 고치면 `pnpm --filter @erdmaker/core generate:schemas`).
 - `cli`: `erdmaker validate <dir>` 하나(아래 "명령").
 - `mcp`, `web`: 아직 비어 있다.
-- 편집 명령 API는 아직 없다(F03).
+- `core`의 명령 API: `createEditor`가 돌려주는 편집기의 `execute`·`undo`·`redo`가 모델을 고치는 유일한 길이다. 명령은 평범한 JSON이고 종류마다 스키마가 있다(`commandSchemas`). 저장은 `writeChanges`(바뀐 파일만 쓰고 지운다), 새 파일 자리를 피하려면 `listReservedFiles`. 관계·사전 명령은 아직 없다(F04, F05).
 
 ## 바꾸지 않는 결정
 

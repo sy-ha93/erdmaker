@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 7/8 완료)
+**상태**: 완료 (단계 8/8. AC-18의 PR 검사는 리드 확인 대기)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -352,19 +352,21 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 8: 문서와 마무리
 
 **목표**: 문서가 FR-11과 맞고 로컬에서 닫을 수 있는 AC가 모두 닫혔다.
-**위험**: 낮음 · **상태**: 대기 · **수용 기준**: AC-16, AC-17, AC-18(로컬 부분) · **요구사항**: FR-11
+**위험**: 낮음 · **상태**: 완료 · **수용 기준**: AC-16, AC-17, AC-18(로컬 부분) · **요구사항**: FR-11
 
-- [ ] 8.1 `docs/format-v0.md`: FR-11의 셋. 5장의 AC-16 스크립트가 찾는 글을 글자 그대로 넣는다.
-- [ ] 8.2 `CLAUDE.md`의 "지금 상태"에 `createEditor`와 F03까지 들어왔다는 것, `pnpm test`의 시간이 달라졌으면 "명령"의 그 문장. `pnpm exec prettier --write CLAUDE.md`. `docs/stage1-backlog.md`에 F03 상태 줄(결정 10).
-- [ ] 8.3 **검증**: 5장의 단계 관문, AC-16, AC-18의 `dependencies` 확인(5장). AC-16을 돌리기 전에 스펙 6.1의 스크립트와 5장의 것을 `diff`로 본다. 차이는 스펙 쪽에만 있는 두 줄(`git rev-parse --verify --quiet 'main^{commit}'`과 `git diff --quiet main -- format/ packages/core/src/generated/`)뿐이어야 한다. 그 밖의 차이가 있으면 멈추고 알린다.
+- [x] 8.1 `docs/format-v0.md`: FR-11의 셋. 5장의 AC-16 스크립트가 찾는 글을 글자 그대로 넣는다.
+- [x] 8.2 `CLAUDE.md`의 "지금 상태"에 `createEditor`와 F03까지 들어왔다는 것, `pnpm test`의 시간이 달라졌으면 "명령"의 그 문장. `pnpm exec prettier --write CLAUDE.md`. `docs/stage1-backlog.md`에 F03 상태 줄(결정 10).
+- [x] 8.3 **검증**: 5장의 단계 관문, AC-16, AC-18의 `dependencies` 확인(5장). AC-16을 돌리기 전에 스펙 6.1의 스크립트와 5장의 것을 `diff`로 본다. 차이는 스펙 쪽에만 있는 두 줄(`git rev-parse --verify --quiet 'main^{commit}'`과 `git diff --quiet main -- format/ packages/core/src/generated/`)뿐이어야 한다. 그 밖의 차이가 있으면 멈추고 알린다. 판정은 아래 묶음의 종료 상태다: `diff`의 출력이 그 두 줄을 지우는 글(`2,3d1`과 두 줄)과 정확히 같을 때만 0이다(`diff` 자신은 차이가 있어 1을 내므로 `|| true`로 받고 출력을 비교한다).
 
   ```bash
   (set -euo pipefail
-   block() { awk -v from="$1" '$0 ~ from {s=1} s && /```bash/ {on=1; next} on && /```/ {exit} on' "$2" | sed 's/^ *//'; }
-   diff <(block '^### 6\.1' docs/specs/core-commands.md) <(block '^- \[.\] AC-16' docs/plans/core-commands.md))
+   block() { from="$1" awk '$0 ~ ENVIRON["from"] {s=1} s && /```bash/ {on=1; next} on && /```/ {exit} on' "$2" | sed 's/^ *//'; }
+   got=$(diff <(block '^### 6\.1' docs/specs/core-commands.md) <(block '^- \[.\] AC-16' docs/plans/core-commands.md) || true)
+   want=$(printf '%s\n' '2,3d1' "< git rev-parse --verify --quiet 'main^{commit}' > /dev/null" '< git diff --quiet main -- format/ packages/core/src/generated/')
+   test "$got" = "$want")
   ```
 
-- [ ] 8.4 커밋한다(`Update the docs for the command API`). `git status --porcelain --untracked-files=no`가 비어야 한다. 리드에게 넘긴다(결정 11). **AC-18의 `gh pr checks`는 "리드 확인 대기"로 열어 둔다.** 리드가 PR의 마지막 머리에서 확인한 뒤 닫는다.
+- [x] 8.4 커밋한다(`Update the docs for the command API`). `git status --porcelain --untracked-files=no`가 비어야 한다. 리드에게 넘긴다(결정 11). **AC-18의 `gh pr checks`는 "리드 확인 대기"로 열어 둔다.** 리드가 PR의 마지막 머리에서 확인한 뒤 닫는다.
 
 ## 5. 품질 관문
 
@@ -412,8 +414,8 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 
 ### AC별 확인
 
-- [ ] AC-01~AC-15: 1장의 표가 적은 `describe` 이름의 테스트가 `pnpm test`에 있고 통과한다. 닫을 때 `pnpm exec vitest run -t '<이름>'`에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
-- [ ] AC-16 (단계 8): 아래가 종료 0이다. **이 스크립트는 스펙 6.1의 스크립트와 같은 글이어야 한다. 예외는 스펙 쪽에만 있는 형식 확인 두 줄이다**(8.3이 `diff`로 본다. 한쪽을 고치면 다른 쪽도 고친다). 형식과 생성물이 그대로인지는 단계 관문이 판정한다. "없어야 하는 글"은 `grep`의 종료 상태가 정확히 1일 때만 통과다(2는 실패).
+- [x] AC-01~AC-15: 1장의 표가 적은 `describe` 이름의 테스트가 `pnpm test`에 있고 통과한다. 닫을 때 `pnpm exec vitest run -t '<이름>'`에서 통과한 테스트가 1개 이상인지 본다(이름이 틀려 0개가 돈 것을 통과로 치지 않는다).
+- [x] AC-16 (단계 8): 아래가 종료 0이다. **이 스크립트는 스펙 6.1의 스크립트와 같은 글이어야 한다. 예외는 스펙 쪽에만 있는 형식 확인 두 줄이다**(8.3이 `diff`로 본다. 한쪽을 고치면 다른 쪽도 고친다). 형식과 생성물이 그대로인지는 단계 관문이 판정한다. "없어야 하는 글"은 `grep`의 종료 상태가 정확히 1일 때만 통과다(2는 실패).
 
   ```bash
   (set -euo pipefail
@@ -428,8 +430,8 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
    grep -q 'createEditor' CLAUDE.md)
   ```
 
-- [ ] AC-17 (단계 8): 단계 관문의 마지막 검사.
-- [ ] AC-18 로컬 (단계 8): 단계 관문, 그리고 종료 상태 0인
+- [x] AC-17 (단계 8): 단계 관문의 마지막 검사.
+- [x] AC-18 로컬 (단계 8): 단계 관문, 그리고 종료 상태 0인
 
   ```bash
   node -e "const d = require('./packages/core/package.json').dependencies;
@@ -650,7 +652,14 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 - 7.6 변이 증명 `exit=0`. 단계 관문 `exit=0`, 67개 파일 1219개 통과(1187 + 20 + 9 + 2 + 1), `pnpm test` 78.05초. 시간 테스트 15번 `exit=0`(15번 모두 통과). 따로 `--reporter=verbose`로 15번 더 돌려 잰 값: 실행마다 가장 빠른 값이 56.0 / 57.6 / 58.5 ms(최소 / 중앙 / 최대), 잰 75개 전부는 56.0 / 59.2 / 73.3 ms(한도의 약 4.4배 여유). `pnpm test`를 세 번 이어 돌려 모두 통과: 81.18, 81.93, 81.32초(단계 0의 73.99초 + 8초 = 81.99초 이하. 여유가 작다). 새 테스트 파일은 따로 돌리면 합쳐 약 2초이고(`undo-roundtrip`·`reload`·`write-changes` 1.00초, 번들 0.67초, 시간 테스트 약 0.8초), 나머지는 같은 날의 실행마다의 흔들림이다(관문의 실행은 78.05초).
 - 계획과 달라진 점: (1) 표본의 기대 `written`·`removed`를 따로 적지 않고 단계 6이 채운 `items`의 파일에서 만든다(`items`는 "명령 동작"이 실제 데이터와 비교한다). (2) `testing/editing.ts`에 `adapterFiles`를 더했다. (3) 시간 테스트의 `describe` 이름은 스펙에 없어 `편집기: 시간`으로 했다.
 
+### 단계 8 (2026-11-28)
+
+- 8.1 `docs/format-v0.md`: "엔터티" 절의 스키마 접두 문장을 FR-11의 글 그대로 바꿨고(ID 요약과 `docs/specs/core-commands.md`의 FR-05 안내 포함), "열린 질문"의 한글 이름 ID 항목을 지웠고, "프로젝트, 모델, 주제영역" 절에 사전 폴더를 `entities`나 `subject-areas`와 겹치게 두지 않는다는 문장을 더했다.
+- 8.2 `CLAUDE.md` "지금 상태": F03까지 들어왔다는 것과 명령 API(`createEditor`, `commandSchemas`, `writeChanges`, `listReservedFiles`) 한 줄. "명령"의 `pnpm test` 시간 문장("약 1분")은 그대로 두었다(단계 0의 74초 때도 같은 글이었다). `pnpm exec prettier --write CLAUDE.md`. `docs/stage1-backlog.md`에 F03 상태 줄(`PR #6`. 번호는 리드가 바로잡는다).
+- 8.3 **계획의 명령을 고쳤다**: 원래 `block`은 `awk -v from="$1"`로 패턴을 넘겼는데, `-v`는 역슬래시 이스케이프를 풀어 `'^- \[.\] AC-16'`이 `^- [.] AC-16`이 된다(awk가 "escape sequence `\[' treated as plain `['"를 경고한다). 그 패턴은 아무 줄에도 맞지 않아 계획 쪽이 비고 `diff`가 스펙의 12줄 전부를 냈다. 패턴을 환경 변수로 넘기도록(`from="$1" awk '$0 ~ ENVIRON["from"] …'`) 고친 명령의 결과는 스펙 쪽에만 있는 두 줄(`git rev-parse --verify --quiet 'main^{commit}'`, `git diff --quiet main -- format/ packages/core/src/generated/`)뿐이다. 리드가 고친 명령을 승인하고 판정을 검사할 수 있게 하라고 했다: `diff`의 출력을 받아(`|| true`) 기대한 세 줄(`2,3d1`과 그 두 줄)과 `test`로 비교한다. 고친 8.3의 묶음 `exit=0`이고, 비교할 글에 한 글자를 바꾸면 `exit=1`이다. AC-16 스크립트(5장) `exit=0`, 스펙 6.1의 스크립트 `exit=0`, `dependencies` 확인 `exit=0`, 단계 관문 `exit=0`(67개 파일 1219개 통과, `pnpm test` 93.63초. 이 값은 다른 작업의 `node probes/random.mjs` 두 개가 코어 둘을 쓰는 동안 잰 것이라 기준으로 쓰지 않는다. 그 작업이 끝나 부하 평균이 0.06일 때 다시 돌린 `pnpm test`는 1219개 통과, 76.09초다. 이 단계는 코드를 바꾸지 않았다), `spikes/`는 기준선과 같다(관문의 마지막 검사. AC-17).
+- AC-18의 `gh pr checks`는 리드 확인 대기로 열어 둔다.
+
 ---
 
-마지막 수정: 2026-11-28 11:20
-상태: 진행 중 (단계 7/8 완료)
+마지막 수정: 2026-11-28 11:40
+상태: 완료 (단계 8/8. AC-18의 PR 검사는 리드 확인 대기)
