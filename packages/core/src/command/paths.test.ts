@@ -171,6 +171,18 @@ describe('새 파일 경로', () => {
     expect(dictionaryFolderOf('entities/a.yaml', [])).toBeUndefined();
   });
 
+  test('a dictionary folder at or above the opened folder holds every model path', () => {
+    const inside = (dir: string, entries: string[], path: string) =>
+      dictionaryFolderOf(path, dictionaryFolders(dir, entries));
+    expect(inside('', ['.'], 'entities/a.yaml')).toBe('.');
+    expect(inside('', ['..'], 'entities/a.yaml')).toBe('..');
+    expect(inside('', ['../..'], 'subject-areas/a.yaml')).toBe('../..');
+    expect(inside('m', ['../..'], 'm/entities/a.yaml')).toBe('..');
+    expect(inside('m', ['..'], 'm/entities/a.yaml')).toBe('.');
+    expect(inside('', ['../shared'], 'entities/a.yaml')).toBeUndefined();
+    expect(inside('m', ['../shared'], 'm/entities/a.yaml')).toBeUndefined();
+  });
+
   test('the file space answers the dictionary folder for its folder', () => {
     const space = fileSpace({
       dir: '',
@@ -199,7 +211,51 @@ describe('새 파일 경로', () => {
       ),
     ).toEqual(['entities/b.yaml', 'entities/A.yaml', 'subject-areas/x.yaml']);
     expect(reservedPaths([], initial)).toEqual([]);
-    expect(reservedPaths(new Set(['model.yaml']), initial)).toEqual([]);
+    expect(reservedPaths(['model.yaml'], initial)).toEqual([]);
+    // Entries that normalize to nothing are ignored.
+    expect(reservedPaths(['', '.', 'a/..', 'x'], initial)).toEqual(['x']);
+  });
+
+  test('reserved files that are not an array of strings throw one TypeError', () => {
+    const initial = new InitialPaths([]);
+    const throwing = new Proxy(['a'], {
+      get(target, key, receiver) {
+        if (key === '0') throw new Error('trap');
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    const badLength = new Proxy(['a'], {
+      get(target, key, receiver) {
+        if (key === 'length') throw new Error('trap');
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    const revoked = Proxy.revocable([], {});
+    revoked.revoke();
+    for (const input of [
+      new Set(['a']),
+      'entities/a.yaml',
+      null,
+      { length: 0 },
+      ['a', 1],
+      // eslint-disable-next-line no-sparse-arrays
+      ['a', , 'b'],
+      [undefined],
+      throwing,
+      badLength,
+      revoked.proxy,
+    ]) {
+      expect(() => reservedPaths(input, initial)).toThrow(
+        new TypeError(
+          'Cannot edit the model: reservedFiles is not a list of paths',
+        ),
+      );
+      try {
+        reservedPaths(input, initial);
+      } catch (error) {
+        expect(error).toBeInstanceOf(TypeError);
+      }
+    }
   });
 
   describe('listReservedFiles', () => {

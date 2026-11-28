@@ -75,18 +75,36 @@ export class InitialPaths {
   }
 }
 
+const NOT_A_LIST =
+  'Cannot edit the model: reservedFiles is not a list of paths';
+
 /**
- * The reserved paths an editor keeps (spec FR-06): each normalized, once,
- * in the order given, without the paths an initial item has.
+ * The reserved paths an editor keeps (spec FR-01, FR-06): each normalized,
+ * once, in the order given, without empty ones and the paths an initial item
+ * has. Throws only `TypeError(NOT_A_LIST)`: for a non-array, a non-string
+ * entry, or a value whose reading throws.
  */
 export function reservedPaths(
-  reservedFiles: Iterable<string>,
+  reservedFiles: unknown,
   initial: InitialPaths,
 ): string[] {
+  const files: string[] = [];
+  try {
+    if (!Array.isArray(reservedFiles)) throw new TypeError(NOT_A_LIST);
+    const list: readonly unknown[] = reservedFiles;
+    const length = list.length;
+    for (let i = 0; i < length; i += 1) {
+      const file = list[i];
+      if (typeof file !== 'string') throw new TypeError(NOT_A_LIST);
+      files.push(file);
+    }
+  } catch {
+    throw new TypeError(NOT_A_LIST);
+  }
   const kept = new Set<string>();
-  for (const file of reservedFiles) {
+  for (const file of files) {
     const path = normalizePath(file);
-    if (!initial.has(path)) kept.add(path);
+    if (path !== '' && !initial.has(path)) kept.add(path);
   }
   return [...kept];
 }
@@ -112,9 +130,10 @@ const components = (path: string): string[] =>
 
 /**
  * The first of `folders` that holds `path` (normalized), as the message
- * names it (`.` for the opened folder), or `undefined`. A folder holds a
- * path when its components, compared by key, are the path's leading ones;
- * the path itself is not inside a folder of the same name.
+ * names it (`.` for the opened folder), or `undefined`. The opened folder
+ * and any folder above it (only `..` components) hold every path; any other
+ * folder holds a path when its components, compared by key, are the path's
+ * leading ones, so the path itself is not inside a folder of the same name.
  */
 export function dictionaryFolderOf(
   path: string,
@@ -123,6 +142,9 @@ export function dictionaryFolderOf(
   const parts = components(path);
   for (const folder of folders) {
     const leading = components(folder);
+    if (leading.every((part) => part === '..')) {
+      return folder === '' ? '.' : folder;
+    }
     if (leading.length >= parts.length) continue;
     let inside = true;
     for (let i = 0; i < leading.length && inside; i += 1) {

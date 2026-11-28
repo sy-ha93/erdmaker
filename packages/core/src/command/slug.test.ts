@@ -44,6 +44,14 @@ describe('ID 만들기: 슬러그', () => {
     expect(slugify(`${' '.repeat(255)}ab`)).toBe('a');
     // A pair cut in half by the limit leaves a lone surrogate: a separator.
     expect(slugify(`${'a'.repeat(255)}🙂b`)).toBe('a'.repeat(63));
+    // Cut first, then NFKC: normalizing first would grow `ﬁ` past the limit
+    // and shrink the decomposed `값` (three units) inside it.
+    expect(slugify(`${'-'.repeat(255)}ﬁ`)).toBe('fi');
+    expect(slugify(`${'-'.repeat(254)}값`)).toBe('ga');
+  });
+
+  test('compatibility jamo compose into a syllable', () => {
+    expect(slugify('ㄱㅏ')).toBe('ga');
   });
 
   test('cuts to 63 characters and drops the separator it ends on', () => {
