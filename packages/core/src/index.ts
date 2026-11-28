@@ -1,3 +1,4 @@
+export { listReservedFiles } from './command/paths.js';
 export {
   FileNotFoundError,
   type FileEntry,
