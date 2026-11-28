@@ -7,6 +7,18 @@ function isPlainObject(value: object): boolean {
   return proto === Object.prototype || proto === null;
 }
 
+/**
+ * Whether a number is JSON data a file can hold: finite, and an
+ * integer-valued number exact, however it was written (`1e300` and `2 ** 53`
+ * are rejected). The one number rule of the format; the command copy uses
+ * it too (F03 FR-03).
+ */
+export function isJsonNumber(value: number): boolean {
+  return Number.isInteger(value)
+    ? Number.isSafeInteger(value)
+    : Number.isFinite(value);
+}
+
 function isJsonScalar(value: unknown): boolean {
   if (value === null) return true;
   switch (typeof value) {
@@ -14,10 +26,7 @@ function isJsonScalar(value: unknown): boolean {
     case 'string':
       return true;
     case 'number':
-      // An integer-valued number must be exact, however it was written (`1e300` is rejected).
-      return Number.isInteger(value)
-        ? Number.isSafeInteger(value)
-        : Number.isFinite(value);
+      return isJsonNumber(value);
     default:
       return false;
   }

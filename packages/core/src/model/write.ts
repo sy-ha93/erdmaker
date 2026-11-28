@@ -1,6 +1,6 @@
 import { FileNotFoundError, type FileSystemAdapter } from '../fs/adapter.js';
 import { serializeModel } from './serialize.js';
-import type { Model } from './types.js';
+import type { ReadonlyModel } from './types.js';
 
 /**
  * Writes the files of `serializeModel(model)` whose text differs from the
@@ -21,7 +21,7 @@ import type { Model } from './types.js';
  */
 export async function writeModel(
   fs: FileSystemAdapter,
-  model: Model,
+  model: ReadonlyModel,
 ): Promise<string[]> {
   const changed = [];
   for (const file of serializeModel(model)) {

@@ -1,5 +1,5 @@
 import { normalizePath } from '../fs/path.js';
-import type { Issue, Model, ModelItem } from '../model/types.js';
+import type { Issue, Model, ModelItem, ReadonlyModel } from '../model/types.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { type FilePositions, finishIssues } from './issues.js';
 import { manifestIssues } from './manifest.js';
@@ -14,7 +14,9 @@ import { itemIssues } from './schema.js';
  * skipped (there is nowhere to report it), and a `data` that is missing or
  * not a data property is `undefined`, so it is reported at its file.
  */
-export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
+export function modelItems(
+  model: ReadonlyModel,
+): [ModelItem<unknown>, SchemaName][] {
   const items: [ModelItem<unknown>, SchemaName][] = [];
   const add = (item: unknown, schema: SchemaName) => {
     const file = field(item, 'file');
@@ -55,7 +57,7 @@ export function modelItems(model: Model): [ModelItem<unknown>, SchemaName][] {
  * answers Ajv otherwise than it looked) is the calling code's to avoid.
  */
 export function validateModel(
-  model: Model,
+  model: ReadonlyModel,
   positions?: FilePositions,
 ): Issue[] {
   const issues: Issue[] = [];

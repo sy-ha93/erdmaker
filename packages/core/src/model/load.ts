@@ -5,8 +5,8 @@ import { parseJson } from '../parse/json.js';
 import { parseYaml } from '../parse/yaml.js';
 import type { SchemaName } from '../schema/ajv.js';
 import { type FilePositions, finishIssues } from '../validate/issues.js';
-import { isAbsoluteEntry } from '../validate/manifest.js';
 import { itemIssues } from '../validate/schema.js';
+import { dictionaryEntries } from './dictionary-entries.js';
 import type {
   DictionaryData,
   EntityData,
@@ -172,9 +172,9 @@ export async function loadModel(
   // or inside one walked already is not walked again.
   const dictionaryFiles = new Set<string>();
   const walked = new Set<string>();
-  const folders = manifest?.data.dictionaries ?? ['dictionary'];
-  for (const folder of folders) {
-    if (isAbsoluteEntry(folder)) continue;
+  // The rule an editor uses too (F03 FR-06): `dictionary` when the
+  // manifest names none or was left out, absolute entries not read.
+  for (const folder of dictionaryEntries(manifest?.data)) {
     const under = await filesUnder(fs, joinPath(dir, folder), '.yaml', walked);
     for (const file of under) dictionaryFiles.add(file);
   }

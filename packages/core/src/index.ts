@@ -1,3 +1,13 @@
+export { createEditor } from './command/editor.js';
+export { listReservedFiles } from './command/paths.js';
+export { commandSchemas } from './command/schemas.js';
+export type {
+  Command,
+  CommandResult,
+  Editor,
+  RejectionCode,
+} from './command/types.js';
+export { writeChanges } from './command/write-changes.js';
 export {
   FileNotFoundError,
   type FileEntry,
@@ -24,6 +34,7 @@ export type {
   PhysicalTypes,
   Position,
   PositionIndex,
+  ReadonlyModel,
   ReferentialAction,
   RelationshipData,
   Scope,

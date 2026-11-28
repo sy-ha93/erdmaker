@@ -119,6 +119,30 @@ describe('브라우저 번들', () => {
           },
         ],
       });
+
+      // The command is made inside the context: the editor refuses objects of another realm.
+      const edited = (await vm.runInContext(
+        `(async () => {
+          const fs = erdcore.createMemoryFileSystem(JSON.parse(filesJson));
+          const loaded = (await erdcore.loadModel(fs, '')).model;
+          const editor = erdcore.createEditor(loaded);
+          const result = editor.execute({ type: 'entity.create', name: '배송' });
+          const saved = await erdcore.writeChanges(fs, loaded, editor.model);
+          const project = await erdcore.validateProject(fs, '');
+          return JSON.stringify({ ok: result.ok, id: result.id, saved, project });
+        })()`,
+        context,
+      )) as string;
+      const { ok, id, saved, project } = JSON.parse(edited);
+      expect([ok, id]).toEqual([true, 'baesong']);
+      expect(saved).toEqual({
+        written: ['entities/baesong.yaml'],
+        removed: [],
+      });
+      expect(project.issues).toEqual([]);
+      expect(project.models).toHaveLength(1);
+      expect(project.models[0].issues).toEqual([]);
+      expect(project.models[0].counts.entities).toBe(11);
     },
   );
 
