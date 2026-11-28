@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 3/8 완료)
+**상태**: 진행 중 (단계 4/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -273,20 +273,20 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 4: 저장
 
 **목표**: `writeChanges`가 두 모델의 차이만 쓰고 지운다. 손으로 만든 모델로 FR-09 전부가 시험된다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: 없음 (AC-05, AC-09, AC-14를 먼저) · **요구사항**: FR-09, FR-01(조건 1~4), FR-10(쓸 항목만 직렬화)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: 없음 (AC-05, AC-09, AC-14를 먼저) · **요구사항**: FR-09, FR-01(조건 1~4), FR-10(쓸 항목만 직렬화)
 
-- [ ] 4.1 `testing/recording-fs.ts`: 어댑터를 감싸 호출(`readText`, `writeText`, `remove`, `list`와 경로)을 순서대로 적고 기록을 비울 수 있다. 넷을 따로 켤 수 있다: 고른 폴더의 `list` 실패, 고른 경로의 `readText` 실패, 고른 경로의 `writeText` 실패(모두 `EACCES`), 읽히기는 하지만 부모의 나열에서는 빠지는 경로.
-- [ ] 4.2 **테스트**: `command/model-shape.test.ts`, `describe('편집기 만들기: 모델의 조건')`. AC-14의 입력 아홉마다 FR-01의 이유 문구, 받는 것 셋(`../dictionary/a.yaml`인 사전 하나, 검증 오류가 있는 모델, 매니페스트 없는 모델). **구현**: `command/model-shape.ts`. 한 번 훑고 `Set`으로 겹침을 본다.
-- [ ] 4.3 **테스트**: `command/write-changes.test.ts`, `describe('저장의 조건')`. 편집기 없이 `before`를 읽고 `after`를 펼치기로 만든다. 어댑터 기록과 `serializeItem` 감시는 `writeChanges` 바로 앞에서 비운다. AC-05의 "조건"과 "새 경로의 보호" 가운데 `writeChanges`만의 것 전부와 FR-09의 항목마다 하나 이상이다. **검사 다섯 단계에서 거부되는 사례**는 모두 `writeText`와 `remove`가 0번이다.
+- [x] 4.1 `testing/recording-fs.ts`: 어댑터를 감싸 호출(`readText`, `writeText`, `remove`, `list`와 경로)을 순서대로 적고 기록을 비울 수 있다. 넷을 따로 켤 수 있다: 고른 폴더의 `list` 실패, 고른 경로의 `readText` 실패, 고른 경로의 `writeText` 실패(모두 `EACCES`), 읽히기는 하지만 부모의 나열에서는 빠지는 경로.
+- [x] 4.2 **테스트**: `command/model-shape.test.ts`, `describe('편집기 만들기: 모델의 조건')`. AC-14의 입력 아홉마다 FR-01의 이유 문구, 받는 것 셋(`../dictionary/a.yaml`인 사전 하나, 검증 오류가 있는 모델, 매니페스트 없는 모델). **구현**: `command/model-shape.ts`. 한 번 훑고 `Set`으로 겹침을 본다.
+- [x] 4.3 **테스트**: `command/write-changes.test.ts`, `describe('저장의 조건')`. 편집기 없이 `before`를 읽고 `after`를 펼치기로 만든다. 어댑터 기록과 `serializeItem` 감시는 `writeChanges` 바로 앞에서 비운다. AC-05의 "조건"과 "새 경로의 보호" 가운데 `writeChanges`만의 것 전부와 FR-09의 항목마다 하나 이상이다. **검사 다섯 단계에서 거부되는 사례**는 모두 `writeText`와 `remove`가 0번이다.
   - 조건 위반 셋(어댑터 호출 0번). 비교 키가 같은 쌍: 손댄 쌍은 거부, 손대지 않은 쌍은 성공, 걸리는 쌍이 둘이면 FR-09의 첫 쌍, **새 항목 둘 `entities/É.yaml`과 `entities/é.yaml`은 거부**(어댑터 호출 0번. 문구는 FR-09의 것 그대로다). 직렬화가 둘 실패하면 경로 순으로 첫 것의 오류이고 어댑터 호출 0번.
   - 차지된 새 경로: 파일, 같은 글의 파일, 같은 이름의 폴더, 이름의 키가 같고 글자가 다른 폴더(폴더 `entities/Customer.yaml`이 있고 `after`가 `entities/old.yaml`을 빼고 `entities/customer.yaml`을 더한다. 문구의 경로는 새 경로이고 `old.yaml`의 바이트가 그대로다), 그런 파일, **나열에는 없고 읽기에서만 보이는 파일**(4.1의 넷째).
   - **차례로 보고 첫 실패에서 멈춘다**(결정 8): 한 폴더의 나열에 차지된 새 경로가 둘이면 어댑터가 준 순서와 상관없이 경로 순으로 첫 것. `entities`에서 차지된 경로를 찾으면 `subject-areas`는 나열하지 않는다(그 `list`가 실패하게 해 두어도 `entities`의 문구다). `entities`의 `list`가 실패하면 그 오류이고 읽기는 0번. `list`와 읽기가 둘 다 실패하게 하면 `list`의 오류. 나열에서 찾은 것이 읽기에서만 보이는 것보다 먼저(읽기 쪽 경로가 앞이어도). 읽기 단계에서는 경로 순: 앞 경로의 `EACCES`가 뒤 경로의 "읽기에서만 보이는 차지"보다 먼저이고, 읽기에서만 보이는 둘 가운데는 첫 것.
   - **쓰고 나서 지운다**: 기록에서 모든 `writeText`가 모든 `remove`보다 앞이고 각각 경로 순이다. **쓰기 실패**(AC-05): `after`가 `entities/old.yaml`을 빼고 새 `entities/a.yaml`, `entities/b.yaml`을 더하며 `entities/b.yaml`의 `writeText`가 실패한다. 그 오류로 거부되고, `writeText` 호출이 **정확히 2번**(`a`, 실패한 `b`의 순)이며 `remove`가 0번이고 `old.yaml`의 바이트가 그대로다. `before`의 경로만 지움(`entities/stray.yaml`, `entities-old/x.yaml`이 남는다), 이미 없는 파일의 삭제도 `removed`에.
   - 그 밖: 매니페스트와 사전은 읽지도 쓰지도 않음, 객체가 다른 항목만 `serializeItem`되고 읽힘(같은 테스트 파일에서 1개인 저장과 0개인 저장), 글이 같으면 쓰지 않음, 나열은 새 경로가 있는 폴더만 한 번씩이고 모든 읽기보다 먼저, 결과의 정렬.
   - **구현**: `command/write-changes.ts`. 경로 비교는 `pathKey`로만 한다.
-- [ ] 4.4 `index.ts`에 `writeChanges`.
-- [ ] 4.5 **검증**: 5장의 단계 관문.
-- [ ] 4.6 커밋한다(`Add writeChanges: write and remove only what changed`).
+- [x] 4.4 `index.ts`에 `writeChanges`.
+- [x] 4.5 **검증**: 5장의 단계 관문.
+- [x] 4.6 커밋한다(`Add writeChanges: write and remove only what changed`).
 
 ### 단계 5: 편집기와 `entity.*`
 
@@ -546,7 +546,27 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 - 스펙: FR-03 1(함수는 1, 평범하지 않은 객체는 2), 2의 받는 값(안전한 정수 범위 밖의 수는 복사를 통과하고 검증이 `validation`으로 거부), 읽기 예외의 자리, 한 자리에서의 순서(한도 먼저, 그 값은 이미 한 번 읽혔다), 한 줄 처리의 자르기(이스케이프 앞에서), 부록 B의 잘린 종류 예(`…`가 따옴표 안). 줄 수는 그대로 380줄.
 - 리드의 메모와 다른 점: 메모는 "함수(또는 평범하지 않은 객체)인 명령 전체는 `command must be an object`"였으나 지금 코드와 FR-03의 1·2는 평범하지 않은 객체를 `/ must be a JSON value`로 낸다. 스펙에는 코드대로 적고 두 경우를 표의 줄로 고정했다.
 
+### 단계 4 (2026-11-28)
+
+- 4.1: `testing/recording-fs.ts`의 `recordingFileSystem(files, inner?)`. 호출(`readText`, `writeText`, `list`, `remove`와 경로)을 **넘기기 전에** 적고(실패한 호출도 든다) `clear()`로 비운다. `faults`의 네 집합(`list`, `read`, `write`, `unlisted`)을 따로 켠다. 앞 셋은 `code: 'EACCES'`인 `Error`(`accessError`), `unlisted`는 읽히지만 부모의 나열에서 빠지는 경로다. 나열 순서를 뒤집는 어댑터는 테스트가 `inner`로 넘긴다.
+- 4.2: `model-shape.test.ts`, `describe('편집기 만들기: 모델의 조건')`, 테스트 9개: AC-14의 입력 아홉과 이유 문구, 받는 것 셋(밖의 사전 하나, 검증 오류가 있는 모델, 매니페스트 없는 예제), 조건 1~4마다의 경계와 순서, 던지는 getter·트랩·폐기된 Proxy, 자리마다 한 번만 읽음, 항목 10만 개. 구현 전에 모듈이 없어 실패하는 것을 봤다. **구현**: `command/model-shape.ts`의 `readModelShape(model)`(조건 1~4를 차례로 보고 첫 이유, 또는 한 번 읽은 자리들: `dir`, 매니페스트, 다섯 목록의 항목, 사전), `checkEditable(model)`(이유 또는 `undefined`), `SAVED_LISTS`(다섯 목록과 스키마). 겹침은 `Set` 하나로 한 번 훑는다.
+- 4.3: `write-changes.test.ts`, `describe('저장의 조건')`, 테스트 33개(모델 4, 대소문자 5, 직렬화 3, 새 경로 9, 다섯 검사의 순서 7, 쓰고 나서 지우기 5). 편집기 없이 `before`를 `loadModel`로 읽고 `after`를 펼치기로 만든다. 어댑터 기록과 `serializeItem` 감시(`vi.mock('../model/serialize-item.js')`)는 `writeChanges` 바로 앞에서 비운다. 검사에서 거부되는 사례는 모두 `writeText`·`remove`가 0번이고, (1)~(3)에서 거부되는 사례는 어댑터 호출 자체가 0번이다. 쓰기 실패는 `writeText`가 정확히 `a`, 실패한 `b` 두 번이고 `remove` 0번, `old.yaml`의 바이트가 그대로다. 구현 전에 모듈이 없어 실패하는 것을 봤다. **구현**: `command/write-changes.ts`. 경로의 접기는 `pathKey`뿐이다(`command/` 안의 `toLowerCase`·`normalize`는 여전히 `pathKey`와 슬러그 둘). 조회는 모두 `Map`·`Set`이고 짝 비교가 없다: 대소문자 쌍은 키마다 경로를 모아 둘 이상인 무리만 정렬해 무리마다 후보 쌍 하나를 고른다.
+- 테스트를 처음 돌렸을 때 실패한 넷은 모두 테스트의 잘못이었다(실패 뒤 `snapshot`의 읽기가 기록에 섞임, 읽어 온 항목 대신 새 객체를 넘김). 테스트를 고쳤고 구현은 그대로다.
+- 4.4: `index.ts`에 `writeChanges`.
+- 4.5: 단계 관문 `exit=0`. 50개 파일 943개 통과(901 + 9 + 33), `pnpm test` 74.66초(단계 3 리뷰 반영 뒤 74.17초. 새 두 파일은 따로 돌리면 약 0.6초).
+- 깨뜨려 확인한 것(각각 되돌림. 실패한 테스트 수). `write-changes.ts`: 지우기를 쓰기 앞으로(2), 부모 나열을 뺌(12), 나열 이름을 `pathKey` 없이 비교(2), 새 경로를 읽지 않음(5), 새 경로에 같은 글이면 통과(1), 새 경로 둘의 대소문자 쌍을 봐주기(3), 검사 순서 바꾸기 넷: 대소문자를 직렬화 뒤로(1), 직렬화를 나열 뒤로(3), 읽기를 나열 앞으로(9), `dir` 비교를 `after`의 조건 앞으로(처음에는 1. "before, after, 폴더 순" 테스트에 `after`만 틀린 사례를 더해 2), 지운 파일의 폴더에서 `after`에 없는 파일도 지움(`before`가 갖지 않은 경로를 지움, 1), `before`와 같은 객체도 씀(6), 대소문자 쌍의 키에서 NFKC를 뺌(2), 나열 키에서 NFKC를 뺌(1), 나열 이름 대신 경로 전체를 키로(8). `model-shape.ts`: `dir` 안을 구성요소가 아닌 글 앞부분으로(2), 정규화보다 겹침을 먼저(1), 빈 `file`을 받음(1), `dir`의 정규화를 보지 않음(2), 사전도 `dir` 안이어야 함(1), 읽기의 `try`를 뺌(1). 살아남은 변이는 없다.
+- 스펙과 계획이 정하지 않아 정한 것:
+  1. **한 번 읽기**: `readModelShape`가 `dir`, 여섯 목록, `length`, 색인, 항목의 `file`을 저마다 한 번 읽고 `writeChanges`는 그 값만 쓴다. 읽을 때마다 값이 바뀌는 getter가 검사와 저장에서 다른 경로를 내지 못한다. 항목의 `data`는 (3)에서 쓸 항목에만 한 번 읽는다(`before`의 `data`는 읽지 않는다).
+  2. **읽다가 난 예외**: 그 자리의 조건을 어긴 것으로 친다. `dir`이면 `dir is not a normalized path`, 목록·`length`·폐기된 배열 Proxy면 `<목록> is not a list`, 색인·항목·`file`이면 `<목록>[<i>] is not an item`, 매니페스트면 `manifest is not an item`. 모든 읽기가 던지는 폐기된 Proxy 모델은 첫 자리인 `dir`의 문구다(`typeof`가 `object`라 조건 1은 통과한다). `length`가 음이 아닌 안전한 정수가 아니면 목록이 아니다. `data` getter가 던지면 (3)의 직렬화 실패로 보고 그 오류를 그대로 내며, 경로 순 차례도 직렬화와 같다(어댑터 호출 0번).
+  3. **매니페스트의 문구**: FR-01의 `<목록>[<i>] is not an item`에 색인이 없으므로 `manifest is not an item`이다. 없는(`undefined`) 매니페스트는 받는다.
+  4. **조건 안의 순서**: 조건 2는 여섯 목록이 모두 배열인지(`Model`의 순서: `entities`, `relationships`, `subtypes`, `subjectAreas`, `layouts`, `dictionaries`)를 먼저 보고, 그다음 매니페스트, 그다음 목록마다 항목이다. 조건 3은 모든 항목(매니페스트, 다섯 목록, 사전 순)의 정규화를 먼저 보고 그 뒤에 겹침을 본다. 겹침의 문구는 두 번째로 나온 항목의 `file`이다(글이 같다). 빈 `file`의 문구는 글자 그대로 ` is not a normalized file path`다(앞이 빈 글).
+  5. **조건 4의 "안"**: 구성요소를 글자 그대로 비교한다(비교 키가 아니다). `dir`과 같은 `file`은 밖이다. `dir`이 빈 글이면 `..`로 시작하지 않는 모든 경로가 안이다.
+  6. **대소문자 쌍의 대상**: 두 모델의 다섯 목록에 든 서로 다른 `file` 글 전부이고, 쌍의 두 경로 가운데 하나 이상이 이번 저장이 쓰거나 지우는 것일 때 걸린다. 매니페스트와 사전의 경로는 넣지 않는다(FR-09의 "다섯 목록").
+  7. **같은 객체가 다른 목록으로 옮긴 경우**: `before`의 같은 `file`에 같은 객체가 있으면 목록이 달라도 쓰지 않는다(FR-09의 "같은 객체가 아닌 것" 그대로). 명령은 이런 모델을 만들지 않는다.
+  8. **부모 폴더**: 마지막 `/` 앞이고, `/`가 없는 경로의 부모는 연 폴더(`""`)다. 나열한 이름은 `pathKey`한 집합으로 들고 새 경로의 마지막 구성요소의 키를 찾는다.
+- 계획과 달라진 점: (1) `model-shape.ts`가 `checkEditable` 말고 `readModelShape`와 `SAVED_LISTS`도 내보낸다. `writeChanges`가 검사한 값을 다시 읽지 않으려면 읽은 자리가 필요하다. 단계 5의 `createEditor`는 `checkEditable`을 쓰면 된다. (2) 4.3의 "같은 글의 파일"은 나열에 보이는 것과 읽기에서만 보이는 것 둘로 넣었다(나열에 보이면 읽기 전에 걸려 "같은 글이면 통과" 변이를 잡지 못한다). (3) AC-05 가운데 명령으로 만드는 사례(예제의 `attribute.update`·`subjectArea.*`, `listReservedFiles`를 준 편집기)는 계획대로 단계 7이다. `definiton` 사례와 `Customer.yaml` 세 파일 사례는 손으로 만든 `after`로 여기에 넣었다.
+
 ---
 
 마지막 수정: 2026-11-28 10:10
-상태: 진행 중 (단계 3/8 완료)
+상태: 진행 중 (단계 4/8 완료)

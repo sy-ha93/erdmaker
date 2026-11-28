@@ -1,4 +1,5 @@
 export { listReservedFiles } from './command/paths.js';
+export { writeChanges } from './command/write-changes.js';
 export {
   FileNotFoundError,
   type FileEntry,
