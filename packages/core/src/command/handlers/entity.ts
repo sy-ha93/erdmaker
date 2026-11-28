@@ -1,4 +1,4 @@
-import type { DeepReadonly, EntityData } from '../../model/types.js';
+import type { EntityData } from '../../model/types.js';
 import { findEntity, findSubjectArea, type HandlerResult } from '../find.js';
 import { chooseId, idBase, idProblem } from '../ids.js';
 import type {
@@ -66,13 +66,6 @@ export function createEntity(
   return { ok: true, id };
 }
 
-/** A copy of an entity's data that `entity.update` may change. */
-const copyEntity = (data: DeepReadonly<EntityData>): EntityData =>
-  ({
-    ...data,
-    ...(data.physical === undefined ? {} : { physical: { ...data.physical } }),
-  }) as EntityData;
-
 /** `entity.update`: `unset` first, then `set` (spec FR-07). */
 export function updateEntity(
   command: EntityUpdateCommand,
@@ -80,7 +73,7 @@ export function updateEntity(
 ): HandlerResult {
   const found = findEntity(working, command.id);
   if (!found.ok) return found;
-  const data = working.own('entities', found.position, copyEntity);
+  const data = working.own<EntityData>('entities', found.position);
   const fields = data as unknown as Fields;
   let emptied = false;
   for (const name of command.unset ?? []) {

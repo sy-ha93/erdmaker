@@ -79,7 +79,7 @@ type CommandResult =
   2. 여섯 목록이 배열이고 `length`가 0 이상 2³² − 1 이하의 정수이며(`<목록> is not a list`. 어떤 배열도 그보다 길 수 없으니 더 길다고 답하는 Proxy다), 매니페스트(`manifest is not an item`)와 목록의 항목이 `file`이 글인 객체다(`<목록>[<i>] is not an item`). 항목은 여섯 목록을 모두 본 뒤 색인 하나씩 보고 처음 항목이 아닌 것에서 멈춘다(빈 칸이 많은 배열도 일이 든 항목 수에 선형이다).
   3. 모든 항목(매니페스트와 사전 포함)의 `file`이 정규화돼 있고 빈 글이 아니며(`<file> is not a normalized file path`. 빈 글이면 ` is not a normalized file path`로 앞이 빈 칸이다) 서로 다르다(`<file> is used by two items`).
   4. 다섯 목록(엔터티, 관계, 서브타입, 주제영역, 배치)의 `file`이 구성요소 단위로 `dir` 안이다(`<file> is outside the model folder`). `dir` 바로 뒤의 구성요소가 `..`이면 밖이다(`dir`이 `..`일 때 `../../a.yaml`, `dir`이 빈 글일 때 `../a.yaml`). 사전은 밖에 있어도 된다.
-- `reservedFiles`를 주면 글의 배열이어야 한다. 그 밖의 것(배열이 아닌 값, 글이 아닌 항목, 읽다가 예외가 나는 값)이면 `createEditor`가 `TypeError('Cannot edit the model: reservedFiles is not a list of paths')`를 던진다. 글마다 `normalizePath`로 정규화하고, 정규화해 빈 글이 되는 항목은 무시한다.
+- `options`가 객체가 아니면(`undefined`, `null`, 함수, 그 밖의 값) 옵션이 없는 것이고, 객체일 때만 그 `reservedFiles`를 읽는다. `reservedFiles`를 주면 글의 배열이어야 한다. 그 밖의 것(배열이 아닌 값, 글이 아닌 항목, 읽다가 예외가 나는 값)이면 `createEditor`가 `TypeError('Cannot edit the model: reservedFiles is not a list of paths')`를 던진다. 글마다 `normalizePath`로 정규화하고, 정규화해 빈 글이 되는 항목은 무시한다.
 - 부르는 쪽은 넘긴 모델과 편집기가 준 모델을 고치지 않는다. 편집기는 모델을 복사하지도 얼리지도 않고, 이것을 검사하지도 않는다.
 - `loadModel`의 `issues`(읽다가 빠진 파일의 오류, `comment` 경고)는 부르는 쪽이 따로 든다. 모델에 `validateModel` 오류가 있어도 편집기를 만든다.
 - 공개 이름: 값 `createEditor`, `writeChanges`, `listReservedFiles`, `commandSchemas`, 타입 `Editor`, `Command`, `CommandResult`, `RejectionCode`, `ReadonlyModel`. F02의 공개 이름은 그대로 있다.
@@ -120,7 +120,7 @@ type CommandResult =
 
 - 명령(`batch`는 전체)이 모델을 바꿨으면 새 모델에 `validateModel`을 한 번 부른다.
 - **거부 규칙**: `severity`가 `error`인 `Issue`의 수가 전(`editor.issues`)보다 많으면 `validation`으로 거부한다. 같거나 적으면 받는다. 오류가 0개인 모델은 어떤 명령 뒤에도 0개다.
-- 거부의 `issues`는 새 모델의 오류 가운데 전 목록에 `rule`, `file`, `path`, `message`가 모두 같은 것이 없는 것들이다(`validateModel`의 순서). 그런 것이 없으면 새 모델의 오류 전부다.
+- 거부의 `issues`는 새 모델의 오류 가운데 전 목록의 **오류**에 `rule`, `file`, `path`, `message`가 모두 같은 것이 없는 것들이다(`validateModel`의 순서. 전 목록의 경고는 견주지 않는다). 그런 것이 없으면 새 모델의 오류 전부다.
 - 경고는 명령을 막지 않고 `issues`에 실린다. 지금 `validateModel`은 경고를 내지 않는다(`comment` 경고는 `loadModel`이 낸다). 뒤 기능이 경고 규칙을 더해도 이 규칙은 그대로다.
 - `undo`와 `redo`는 이 규칙으로 거부하지 않고 `validateModel`을 부르지도 않는다. 이력이 모델마다 그때의 `issues`를 함께 들고 있다가 그대로 돌려놓는다.
 - 처리가 스스로 거부하는 것은 넷뿐이다: 대상이 없음(`not-found`), 대상의 ID가 겹침(`ambiguous-target`), 쓸 수 없는 `id`(`id-taken`), 입력 모양(FR-03). 나머지(두 번째 PK, 엔터티보다 넓은 `scope`, 모르는 도메인·묶음·엔터티, 같은 스키마의 같은 테이블명, 관계가 쓰는 것의 삭제)는 검증기가 오류로 알리고 위 규칙이 판단한다. 문구는 F02 부록 A의 것이다.
@@ -184,7 +184,7 @@ type CommandResult =
 - **`batch`**: 지금 모델에서 시작하는 작업 모델 하나에 하위 명령을 차례로 적용한다. 실패의 순서는 정해져 있다. (1) 봉투의 오류(FR-03의 1, 2와 `batch` 스키마). (2) 하위 명령을 색인 순으로, 하나마다 모양(FR-03의 3, 4)을 보고 적용한다. 처음 실패한 것에서 묶음 전체를 거부하고, 그 `code`에 `index`(0부터)를 더하고 문구 앞에 `commands[<index>]: `를 붙인다. (3) 모두 적용되면 FR-04의 검증을 한 번 한다(가운데 상태의 오류는 보지 않는다). 이 거부에는 `index`가 없다.
   - `batch` 안에 `batch`를 넣지 못한다. 뒤 하위 명령이 앞에서 만든 객체를 가리키려면 앞 명령에 `id`를 직접 준다.
   - 결과의 `ids`는 하위 명령과 길이가 같다. 생성 명령의 자리는 그때 정해진 ID(뒤에서 지워졌어도), 나머지는 `null`이다.
-  - 지우고 같은 `id`로 다시 만드는 것은 된다. 엔터티와 주제영역이면 파일 경로는 FR-06의 것이다.
+  - 지우고 같은 `id`로 다시 만드는 것은 된다. 엔터티와 주제영역이면 파일 경로는 FR-06의 것이다. 다시 만든 항목이 끝의 비교로 원래 객체가 되어도 자리는 그 목록의 끝이다(디스크의 파일 순서와는 상관없다).
   - **끝의 비교**: 끝 모델의 항목 가운데 목록, `file`, 직렬화한 글이 시작 모델의 어느 항목과 같은 것은 그 원래 항목 객체로 바꾼다. 그러고 나서 두 모델이 FR-02의 뜻으로 같으면(항목의 집합이 같고 모두 원래 객체) 시작 모델 객체를 그대로 돌려주고 이력도 검증도 없다. 지우기만 한 묶음, 경로가 달라진 묶음은 바뀐 것이다.
 - **이력**은 "실행 전 모델과 그 `issues`"의 목록이다. 모델을 바꾼 `execute`가 한 칸을 더하고 다시 실행 목록을 비운다. `batch`도, 처리 하나가 여러 파일을 바꾸는 명령(F04의 이주 전파)도 한 칸이다. 거부된 명령과 바뀐 것이 없는 명령은 둘 다 건드리지 않는다.
 - `undo()`는 가장 최근 칸의 모델과 `issues`로 돌아가고(그 객체 그대로다) 지금 것을 다시 실행 목록에 올린다. `redo()`는 그 반대다. 칸이 없으면 `nothing-to-undo`, `nothing-to-redo`다. 100칸을 넘으면 가장 오래된 칸을 버린다. 이력은 편집기 밖으로 나가지 않는다. 모델을 다시 읽으면 부르는 쪽이 새 편집기를 만든다(시점은 F10이 정한다).
@@ -350,7 +350,7 @@ writeChanges(fs, before: ReadonlyModel, after: ReadonlyModel): Promise<{ written
 | `validation` | FR-04 | `The command would break the model: <file>: <message>`. 거부의 `issues` 가운데 첫 것의 값이다 |
 | `nothing-to-undo` | | `Nothing to undo` |
 | `nothing-to-redo` | | `Nothing to redo` |
-| `internal` | 처리 중 예외 | `Unexpected error: <메시지>`. `<메시지>`는 `Error`이면 그 `message`, 아니면 `String(값)`, 그것도 던지면 `unknown error`다 |
+| `internal` | 처리 중 예외 | `Unexpected error: <메시지>`. `<메시지>`는 `Error`이면 그 `message`, 아니면 `String(값)`, 그것도 던지면 `unknown error`다. `batch`의 하위 명령의 처리가 던지면 그 `index`와 `commands[<i>]: ` 접두가 붙고, 처리 밖(끝의 비교, 검증)의 예외에는 `index`가 없다 |
 | | 재진입(FR-01) | `The editor is busy` |
 
 `batch`의 하위 명령이 낸 거부는 위 문구 앞에 `commands[<index>]: `가 붙는다. 모든 `message`는 다 만든 뒤에 FR-03의 한 줄 처리와 500개 자르기를 거친다.

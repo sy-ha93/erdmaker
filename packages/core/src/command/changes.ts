@@ -124,7 +124,7 @@ const issueKey = (issue: Readonly<Issue>): string =>
 
 /**
  * The issues of a `validation` refusal (spec FR-04): the errors of `next`
- * with no issue of `previous` of the same rule, file, path and message, in
+ * with no error of `previous` of the same rule, file, path and message, in
  * the order of `next`; when there is none, every error of `next`.
  */
 export function rejectionIssues(
@@ -132,7 +132,9 @@ export function rejectionIssues(
   next: Issues,
 ): Readonly<Issue>[] {
   const known = new Set<string>();
-  for (const issue of previous) known.add(errorKey(issue));
+  for (const issue of previous) {
+    if (issue.severity === 'error') known.add(errorKey(issue));
+  }
   const fresh: Readonly<Issue>[] = [];
   const errors: Readonly<Issue>[] = [];
   for (const issue of next) {

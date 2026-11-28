@@ -126,7 +126,6 @@ describe('편집기 만들기', () => {
       { reservedFiles: [1] },
       { reservedFiles: ['a', null] },
       throwing,
-      null,
     ]) {
       const error = thrown(() =>
         createEditor(model, options as { reservedFiles?: string[] }),
@@ -147,6 +146,24 @@ describe('편집기 만들기', () => {
       createEditor(model, { reservedFiles: undefined }),
     ).not.toThrow();
     expect(() => createEditor(model, {})).not.toThrow();
+    // A value that is not an object is no options; only an object is read.
+    for (const options of [
+      null,
+      undefined,
+      1,
+      'entities/a.yaml',
+      true,
+      () => 1,
+    ]) {
+      expect(() =>
+        createEditor(model, options as { reservedFiles?: string[] }),
+      ).not.toThrow();
+    }
+    const editor = createEditor(model, null as never);
+    expect(editor.execute({ type: 'entity.create', name: 'a' })).toMatchObject({
+      ok: true,
+      id: 'a',
+    });
   });
 
   test('each of the eight rejection codes leaves the model, issues, undo and redo as they were', () => {

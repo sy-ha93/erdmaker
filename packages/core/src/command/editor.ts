@@ -83,9 +83,12 @@ function dictionaryEntries(model: ReadonlyModel): string[] | undefined {
   return kept;
 }
 
-/** The `reservedFiles` of `options`, read once; reading it may throw. */
+/**
+ * The `reservedFiles` of `options`, read once; reading it may throw. A value
+ * that is not an object (`undefined`, `null`, a function) is no options.
+ */
 function reservedOption(options: unknown): unknown {
-  if (options === undefined) return [];
+  if (typeof options !== 'object' || options === null) return [];
   try {
     const files = (options as { reservedFiles?: unknown }).reservedFiles;
     return files === undefined ? [] : files;
@@ -243,7 +246,8 @@ class ModelEditor implements Editor {
 /**
  * An editor of `model` (spec FR-01). Throws a `TypeError` starting with
  * `Cannot edit the model: ` when the model breaks a condition of FR-01, or
- * when `reservedFiles` is not an array of strings; nothing else throws.
+ * when the `reservedFiles` of an object `options` is not an array of
+ * strings; nothing else throws. `options` that is not an object is none.
  * Calls `validateModel` once.
  */
 export function createEditor(

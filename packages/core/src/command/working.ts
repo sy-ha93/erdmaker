@@ -51,6 +51,48 @@ function idOf(item: Item): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
+/** A plain array of the same entries, with its length noted as copied. */
+function copyList<T>(list: readonly T[]): T[] {
+  noteWork('copy', list.length);
+  const out: T[] = [];
+  for (const entry of list) out.push(entry);
+  return out;
+}
+
+/**
+ * The one copy of an item's data per list (Phase 5 review): the data object
+ * and every object one level down that a handler changes in place. Entities:
+ * `physical`, `attributes`, `keys` (an attribute or key a handler changes is
+ * replaced by a new object, never changed in place); subject areas:
+ * `entities`; layouts: `nodes`. Other lists: the data object.
+ */
+function copyData(list: ListName, data: unknown): unknown {
+  switch (list) {
+    case 'entities': {
+      const entity = data as DeepReadonly<EntityData>;
+      return {
+        ...entity,
+        ...(entity.physical === undefined
+          ? {}
+          : { physical: { ...entity.physical } }),
+        attributes: copyList(entity.attributes),
+        ...(entity.keys === undefined ? {} : { keys: copyList(entity.keys) }),
+      };
+    }
+    case 'subjectAreas': {
+      const area = data as DeepReadonly<SubjectAreaData>;
+      return { ...area, entities: copyList(area.entities) };
+    }
+    case 'layouts': {
+      const layout = data as DeepReadonly<LayoutData>;
+      noteWork('copy', Object.keys(layout.nodes).length);
+      return { ...layout, nodes: { ...layout.nodes } };
+    }
+    default:
+      return { ...(data as object) };
+  }
+}
+
 /** Positions by id in one list. */
 class IdIndex {
   private readonly positions = new Map<string, number[]>();
@@ -196,20 +238,17 @@ export class Working {
 
   /**
    * The data of the item at `position` of `list`, to change in place: the
-   * first time made with `copy` into a new item this state owns, then that
-   * same object. `copy` must copy whatever the caller then changes.
+   * first time copied into a new item this state owns, then that same
+   * object. The copy is the list's one copy (`copyData`), whoever asks first,
+   * so it holds new objects for everything any handler changes in place.
    */
-  own<T>(
-    list: ListName,
-    position: number,
-    copy: (data: DeepReadonly<T>) => T,
-  ): T {
+  own<T>(list: ListName, position: number): T {
     const cells = this.writable(list);
     const item = cells[position]!;
     if (this.owned.has(item)) return item.data as T;
     const made: Item = {
       file: item.file,
-      data: copy(item.data as DeepReadonly<T>) as DeepReadonly<unknown>,
+      data: copyData(list, item.data) as DeepReadonly<unknown>,
     };
     noteWork('copy', 1);
     cells[position] = made;
@@ -257,10 +296,7 @@ export class Working {
       if (!item) continue;
       const nodes = (item.data as LayoutData).nodes;
       if (!Object.hasOwn(nodes, entity)) continue;
-      const data = this.own<LayoutData>('layouts', p, (layout) => {
-        noteWork('copy', Object.keys(layout.nodes).length);
-        return { ...layout, nodes: { ...layout.nodes } } as LayoutData;
-      });
+      const data = this.own<LayoutData>('layouts', p);
       delete data.nodes[entity];
     }
   }
@@ -271,10 +307,7 @@ export class Working {
   }
 
   private ownArea(position: number): OwnedArea {
-    const data = this.own<SubjectAreaData>('subjectAreas', position, (area) => {
-      noteWork('copy', area.entities.length);
-      return { ...area, entities: [...area.entities] } as SubjectAreaData;
-    });
+    const data = this.own<SubjectAreaData>('subjectAreas', position);
     const item = this.cells('subjectAreas')[position]!;
     let area = this.areas.get(item);
     if (!area) {

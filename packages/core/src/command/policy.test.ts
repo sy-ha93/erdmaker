@@ -151,7 +151,7 @@ describe('검증 정책', () => {
     });
   });
 
-  test('predicate (가): new errors by rule, file, path and message; all errors when none is new', () => {
+  test('predicate (가): new errors by rule, file, path and message against the old errors; all errors when none is new', () => {
     const old = error('R11', 'f', '/p', 'm');
     const warning: Issue = {
       ...error('R02', 'f', '/q', 'w'),
@@ -163,11 +163,12 @@ describe('검증 정책', () => {
     expect(rejectionIssues([old, warning], [same, fresh, warning])).toEqual([
       fresh,
     ]);
-    // A warning of the old list counts: its rule, file, path and message are there.
+    // Only the errors of the old list count: a warning with the same rule,
+    // file, path and message does not make an error old.
     expect(rejectionIssues([old, warning], [old, promoted])).toEqual([
-      old,
       promoted,
     ]);
+    expect(rejectionIssues([warning], [promoted])).toEqual([promoted]);
     expect(rejectionIssues([old], [old, old])).toEqual([old, old]);
     expect(rejectionIssues([], [warning, old])).toEqual([old]);
   });

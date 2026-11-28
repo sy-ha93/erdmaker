@@ -73,3 +73,20 @@ export function succeeded(
   if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
   return result;
 }
+
+/** `value` frozen all the way down. */
+export function deepFreeze<T>(value: T): T {
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const next = stack.pop();
+    if (typeof next === 'object' && next !== null && !Object.isFrozen(next)) {
+      Object.freeze(next);
+      for (const child of Object.values(next)) stack.push(child);
+    }
+  }
+  return value;
+}
+
+/** A plain deep copy, to compare a model with what it was. */
+export const snapshotOf = <T>(value: T): T =>
+  JSON.parse(JSON.stringify(value)) as T;

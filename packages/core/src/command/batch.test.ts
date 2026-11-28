@@ -4,12 +4,15 @@ import { loadModel } from '../model/load.js';
 import { serializeItem } from '../model/serialize-item.js';
 import { validateModel } from '../validate/index.js';
 import {
+  areaItem,
   cachedExampleFiles,
+  deepFreeze,
   emptyFiles,
   emptyModel,
   entityItem,
   exampleModel,
   handModel,
+  snapshotOf,
   succeeded,
 } from '../testing/editing.js';
 import { createEditor } from './editor.js';
@@ -187,6 +190,43 @@ describe('묶음', () => {
     expect(editor.canUndo).toBe(false);
   });
 
+  test('on a deep-frozen model, a batch changing one entity several ways leaves the start model as it was', () => {
+    const model = deepFreeze(
+      handModel({
+        entities: [
+          entityItem('x', {
+            physical: { name: 'X' },
+            attributes: [{ id: 'a', name: 'A' }],
+          }),
+        ],
+        subjectAreas: [areaItem('s', ['x'])],
+        layouts: [
+          {
+            file: 'layouts/s.json',
+            data: {
+              formatVersion: '0.1',
+              subjectArea: 's',
+              nodes: { x: { x: 0, y: 0 } },
+            },
+          },
+        ],
+      }),
+    );
+    const before = snapshotOf(model);
+    const editor = createEditor(model);
+    const result = editor.execute(
+      batch(
+        { type: 'entity.update', id: 'x', set: { note: 'n' } },
+        { type: 'entity.delete', id: 'x' },
+        { type: 'entity.create', id: 'y', name: 'Y', subjectArea: 's' },
+      ),
+    );
+    expect(result.ok).toBe(true);
+    expect(editor.model.subjectAreas[0]!.data.entities).toEqual(['y']);
+    expect(snapshotOf(model)).toEqual(before);
+    expect(succeeded(editor.undo()).model).toBe(model);
+  });
+
   test('a create and a delete of it: ok, ids, the same model, no history, no validation', async () => {
     const editor = createEditor(await exampleModel());
     const model = editor.model;
@@ -241,6 +281,9 @@ describe('묶음', () => {
     );
     expect(result.ok).toBe(true);
     expect(editor.model.entities).toContain(memo);
+    // The recreated item is the original object, at the end of its list.
+    expect(editor.model.entities.at(-1)).toBe(memo);
+    expect(saved.entities.at(-1)).not.toBe(memo);
     vi.mocked(serializeItem).mockClear();
     const written = await writeChanges(fs, saved, editor.model);
     expect(written).toEqual({ written: ['entities/order.yaml'], removed: [] });

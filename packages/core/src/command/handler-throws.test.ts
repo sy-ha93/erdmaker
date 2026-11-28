@@ -69,6 +69,37 @@ describe('처리가 던지면', () => {
     },
   );
 
+  test('a handler that changed the working state and then threw leaves the model', async () => {
+    const editor = createEditor(await emptyModel());
+    expect(
+      editor.execute({ type: 'entity.create', id: 'b', name: 'B' }).ok,
+    ).toBe(true);
+    const model = editor.model;
+    const issues = editor.issues;
+    vi.mocked(createEntity).mockImplementation((_command, working) => {
+      working.append('entities', {
+        file: 'entities/a.yaml',
+        data: { id: 'a', name: 'a', attributes: [] },
+      });
+      working.own('entities', 0);
+      throw new Error('late');
+    });
+    expect(editor.execute(create)).toEqual({
+      ok: false,
+      code: 'internal',
+      message: 'Unexpected error: late',
+      issues: [],
+    });
+    expect(editor.model).toBe(model);
+    expect(editor.issues).toBe(issues);
+    expect(editor.model.entities.length).toBe(1);
+    expect(editor.model.entities[0]!.data).toEqual({
+      id: 'b',
+      name: 'B',
+      attributes: [],
+    });
+  });
+
   test('inside a batch the refusal names the sub-command that threw', async () => {
     const editor = createEditor(await emptyModel());
     const model = editor.model;
