@@ -165,7 +165,9 @@ export function itemText(
 /**
  * The text `serializeModel` writes for one item at `file` with the data
  * `data` and the schema `schema`: `checkItemData`, then `itemText`, with
- * their errors.
+ * their errors. It does not check `file` itself (it does not reject a
+ * `file` that names no file, as `serializeModel` does); callers check the
+ * path.
  */
 export function serializeItem(
   file: string,

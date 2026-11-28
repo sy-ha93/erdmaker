@@ -148,6 +148,64 @@ describe('항목 직렬화', () => {
     expect(error).toBeInstanceOf(TypeError);
   });
 
+  describe('which error wins inside one item', () => {
+    const deepArray = (levels: number): unknown => {
+      let list: unknown = [];
+      for (let level = 2; level <= levels; level += 1) list = [list];
+      return list;
+    };
+    const doubling = (levels: number): unknown => {
+      let value: unknown = { x: 1 };
+      for (let level = 0; level < levels; level += 1) {
+        value = { a: value, b: value };
+      }
+      return value;
+    };
+    const both = (data: Record<string, unknown>) => [
+      () => serializeItem('entities/e.yaml', data, 'entity'),
+      () =>
+        serializeModel({
+          dir: '',
+          entities: [{ file: 'entities/e.yaml', data: data as never }],
+          relationships: [],
+          subtypes: [],
+          subjectAreas: [],
+          layouts: [],
+          dictionaries: [],
+        }),
+    ];
+
+    test('a value that is not JSON wins over nesting too deep', () => {
+      const data = { ...ENTITY, ext: { deep: deepArray(300), f: () => 1 } };
+      for (const run of both(data)) {
+        const error = thrown(run);
+        expect(error).toEqual(
+          new TypeError(
+            'Cannot write entities/e.yaml: /ext/f must be a JSON value',
+          ),
+        );
+        expect(error).toBeInstanceOf(TypeError);
+      }
+    });
+
+    test('nesting too deep wins over shared objects copied too often', () => {
+      const data = {
+        ...ENTITY,
+        ext: { shared: doubling(40), deep: deepArray(300) },
+      };
+      const path = `/ext/deep${'/0'.repeat(254)}`;
+      for (const run of both(data)) {
+        const error = thrown(run);
+        expect(error).toEqual(
+          new TypeError(
+            `Cannot write entities/e.yaml: ${path} is nested more than 256 levels deep`,
+          ),
+        );
+        expect(error).toBeInstanceOf(TypeError);
+      }
+    });
+  });
+
   test('a RangeError from writing the data in order passes through unchanged', () => {
     const original = new RangeError('from the second ownKeys');
     let calls = 0;
