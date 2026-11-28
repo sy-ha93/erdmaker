@@ -685,7 +685,22 @@ F03 코드 리뷰(심각 0, 경고 2, 메모 4. 참조와 견준 무작위 88,50
 - 8(스펙): AC-14의 "이유 일곱"을 "이유를 어긴 사례 열"로 고쳤다(괄호 안의 사례가 열이다).
 - 스펙은 384줄이다(392줄 이하).
 
+### Codex 재확인 대응 (2026-11-28)
+
+D-11의 수정(`7ad6528`)을 Codex가 다시 봤다(심각 1, 경고 6, 메모 1. 판정 FAIL). 두 커밋에 넣었다: `Keep touched items writable instead of tracking error identity`(1, 2)와 `Close the Codex re-check`(나머지). 결정은 리드가 내렸다(결정 기록 D-12). 고치기 전마다 실패하는 테스트를 먼저 썼고 고치기 전 코드에서 실패를 봤다(1의 "이미 쓸 수 없던 모델" 사례는 고치기 전에도 받아들여져 처음부터 통과했다. 새 규칙에서도 같은 결과를 고정하는 것이다). 단계 관문 `exit=0`, 70개 파일 1270개 통과(1239 + 31), `pnpm test` 77.95초(81.99초 이하). 시간 테스트 15번 `exit=0`. AC-16 스크립트, 스펙 6.1의 스크립트, 8.3의 `diff` 판정 모두 `exit=0`.
+
+- 1(심각, 경고 2): 오류의 동일성(`rule`·`file`·`path`·`message`)을 버렸다. 받는 조건은 (가) 끝에 바뀌었거나 새로 생긴 항목마다 `serializeItem`이 받는다(같은 목록·`file`의 항목이 명령 전에도 거부됐으면 뺀다), (나) 오류 수가 늘지 않는다. `changes.ts`의 `endList`가 바뀌었는지 보려고 직렬화한 결과를 그대로 쓰고, 명령 전 항목은 손댄 항목의 것만 많아야 한 번 직렬화한다. 직렬화할 수 없는 손댄 항목은 바뀐 것이다(데이터가 새 객체이고 견줄 글이 없다). `addsSchemaError`를 지웠다. 거부의 `issues`는 새 모델에서 그 `file`의 `schema` 오류(없으면 빈 목록), 문구는 `The command would break the model: <serializeItem의 문구>`(부록 B). 스펙 4장 표, FR-02, FR-04, AC-07 (바)~(아), 8장, 부록 B. 테스트: `policy.test.ts`(실제 편집기: Codex의 첫 사례와 재확인 사례 1은 `invalid-command`, 사례 2는 받음, 쓸 수 없는 항목을 같은 값으로 고쳐도 바뀐 것), 새 파일 `writable.test.ts`(입력 사본을 `structuredClone`으로, `serializeItem`을 세는 것으로 바꿔 규칙 (가) 자체를 본다: 첫 사례는 새 문구로 `validation`, 사례 1은 받아들여지고 모델은 여전히 쓸 수 없음, 고치며 다른 항목을 깨는 묶음, 쓸 수 없는 새 항목, 목록 순서로 첫 항목, `validateModel`이 아무것도 못 찾는 경우의 빈 `issues`, 직렬화가 손댄 항목에만 한 번씩). 무작위 테스트의 직렬화 검사는 그대로다.
+- 2: `validate/json-value.ts`에 `isJsonNumber`를 내보내 `copy.ts`가 같은 함수를 쓴다. `2 ** 53`, `1e300`이 `<path> must be a JSON value`(`invalid-command`)다. 스펙 FR-03. `testing/commands.ts`의 거부 표에 두 행, `copy.test.ts`에 F02 검사와 수마다 같은 판정인지 보는 테스트.
+- 3(경고): `validate/plain.ts`의 `ownStrings`. 색인마다 서술자의 `value`만 쓰고 빈 칸·접근자·글이 아닌 첫 색인에서 멈춘다. `paths.test.ts`: `[false, …글 10000개]` Proxy는 색인 `0`만 보고(전에는 10,001번), `get`이 글을 주는 `[42]`는 거부, 서술자의 값과 `get`의 값이 다르면 서술자의 것. 색인의 `get`이 던지는 Proxy 사례는 서술자 트랩이 던지는 것으로 바꿨다(이제 색인에는 `get`을 부르지 않는다). 스펙 FR-01, AC-14.
+- 4(경고): 새 파일 `model/dictionary-entries.ts`의 `dictionaryEntries(data)`를 `loadModel`과 편집기(`paths.ts`의 `dictionaryFolders(dir, manifest)`)가 같이 쓴다. 매니페스트가 없거나 `model` 스키마의 오류가 있으면 `dictionary`(`loadModel`이 그런 `model.yaml`을 뺀다), 아니면 `dictionaries`(없으면 `dictionary`)에서 절대 경로를 뺀 것. `loadModel`의 동작은 그대로다(F02 테스트 파일은 하나도 바꾸지 않았고 모두 통과). 새 파일 `dictionary-entries.test.ts`가 열 사례마다 `loadModel`이 나열한 폴더와 편집기의 폴더가 같은지 본다. **다른 점**: 앞 수정은 읽을 수 없는 `dictionaries`를 "사전 폴더 없음"으로 쳤는데, 이제 `dictionary`다(같은 규칙이니). `editor.test.ts`의 사례가 그에 맞게 바뀌었다(`[5, 'entities']`가 이제 `dictionary`). 스펙 FR-06, AC-14.
+- 5(경고): 4096자보다 긴 항목은 잇기 전에 뺀다. `loadModel`에는 그런 한도가 없어 편집기 쪽에서만 한다. 테스트: 100만 자 항목, `'x'.repeat(2 ** 20)` 구성요소 넷, 그 구성요소의 `dir`. Codex의 `MAX_STRING_LENGTH` 사례를 빌드한 번들로 따로 돌려 던지지 않음을 봤다(`createEditor`가 5.4초. 5억 자 글의 검증 비용이다).
+- 6(경고): `removeAreaNodes`를 `ed993c8`의 본문으로 되돌렸다(ID마다 배치마다 자기 속성 하나). `removeFromKeys`의 한 번 압축은 남겼다. `cascade-work.test.ts`: ID 수에 선형(n = 250/500/1000), 노드 250/500/1000/4000개 배치에서 노드 없는 ID 하나를 빼는 일이 같음(고치기 전에는 노드 수만큼 늘었다). 스펙 FR-10, AC-10.
+- 7(경고): `random.test.ts`의 `describe`에 `{ timeout: 20_000 }`과 이유의 주석. 따로 돌린 시간 2.57~2.61초(3초 미만). 한도를 100 ms로 바꾸면 실패하는 것을 봤다(되돌림).
+- 8(메모): `cascade-work.test.ts`의 다섯 테스트와 `ids.test.ts`의 후보 수 테스트가 먼저 그 작업의 몫 이상을 센 것을 요구한다(예: 키 2n개의 한 번 훑기, 남은 목록의 합 n(n + 1)/2, 생성마다 후보 하나). 증명: `working.ts`의 `noteWork` 28곳과 테스트의 `asked += 1`을 지우면 여섯 모두 실패했고, 되돌렸다.
+- 9: `source-guard.test.ts`에서 `for…of`·`for…in`·`new Set(`·`new Map(` 꼴을 뺐다. 머리 주석에 보는 것(한 식으로 목록을 훑거나 복사하는 꼴)과 고리는 검사 밖이라는 것을 적었다. 그 꼴만 필요하던 표시 35개를 지워 **표시는 27개**다(`changes.ts` 1, `editor.ts` 3, `ids.ts` 1, `model-shape.ts` 4, `paths.ts` 3, `write-changes.ts` 11, `handlers/update.ts` 4).
+- 스펙은 386줄이다(392줄 이하).
+
 ---
 
-마지막 수정: 2026-11-28 12:20
+마지막 수정: 2026-11-28 13:40
 상태: 완료 (단계 8/8. AC-18의 PR 검사는 리드 확인 대기)

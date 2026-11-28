@@ -12,7 +12,6 @@ import { readModelShape } from './model-shape.js';
 import {
   dictionaryFolders,
   InitialPaths,
-  manifestDictionaries,
   pathKeys,
   reservedPaths,
 } from './paths.js';
@@ -74,7 +73,6 @@ const BROKEN = 'The command would break the model: ';
 /** The `schema` issues of `file` in `issues`, in their order. */
 function schemaIssuesOf(issues: Issues, file: string): Readonly<Issue>[] {
   const kept: Readonly<Issue>[] = [];
-  // work-ok: the issues of one validation, once for a refusal
   for (const issue of issues) {
     if (issue.rule === 'schema' && issue.file === file) kept.push(issue);
   }
@@ -277,18 +275,13 @@ export function createEditor(
   const { shape } = read;
   const files: string[] = [];
   if (shape.manifest) files.push(shape.manifest.file);
-  // work-ok: the shape of the model, once when the editor is made
   for (const item of shape.items) files.push(item.file);
-  // work-ok: the shape of the model, once when the editor is made
   for (const item of shape.dictionaries) files.push(item.file);
   const initial = new InitialPaths(files);
   const reserved = reservedPaths(reservedOption(options), initial);
   return new ModelEditor(model, {
     initial,
     reservedKeys: pathKeys(reserved),
-    dictionaryFolders: dictionaryFolders(
-      shape.dir,
-      manifestDictionaries(shape.manifest?.item),
-    ),
+    dictionaryFolders: dictionaryFolders(shape.dir, shape.manifest?.item),
   });
 }

@@ -429,31 +429,26 @@ export class Working {
     list.length = kept;
   }
 
-  /** Takes the nodes of `ids` out of every layout of the subject area `area`. */
+  /**
+   * Takes the nodes of `ids` out of every layout of the subject area `area`:
+   * one own-property probe per id and layout of the area, so the work is
+   * the ids times those layouts, whatever their node counts (Codex
+   * re-check: walking each layout's nodes cost 4000 for one id).
+   */
   removeAreaNodes(area: string, ids: readonly string[]): void {
     const cells = this.cells('layouts');
     noteWork('scan', cells.length);
-    // Built once, when a layout of the area has a node: then each layout's
-    // own nodes are walked once, so the work is the ids plus the nodes of
-    // the area's layouts, not the ids times the layouts (Codex review).
-    let gone: Set<string> | undefined;
     for (let p = 0; p < cells.length; p += 1) {
       const item = cells[p];
       if (!item || (item.data as LayoutData).subjectArea !== area) continue;
-      const nodes = Object.keys((item.data as LayoutData).nodes);
-      noteWork('scan', nodes.length);
-      if (nodes.length === 0) continue;
-      if (!gone) {
-        noteWork('index-build', ids.length);
-        gone = new Set(ids);
-      }
+      noteWork('scan', ids.length);
       let holds = false;
-      for (let i = 0; i < nodes.length && !holds; i += 1) {
-        holds = gone.has(nodes[i]!);
+      for (const id of ids) {
+        if (Object.hasOwn((item.data as LayoutData).nodes, id)) holds = true;
       }
       if (!holds) continue;
       const data = this.own<LayoutData>('layouts', p);
-      for (const id of nodes) if (gone.has(id)) delete data.nodes[id];
+      for (const id of ids) delete data.nodes[id];
     }
   }
 

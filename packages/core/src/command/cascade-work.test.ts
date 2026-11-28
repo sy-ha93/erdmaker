@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { KeyData, LayoutData } from '../model/types.js';
-import { validateModel } from '../validate/index.js';
 import { areaItem, entityItem, handModel } from '../testing/editing.js';
 import { createEditor } from './editor.js';
 import { noteWork, type WorkKind } from './work.js';
@@ -80,7 +79,10 @@ describe('연쇄와 대상: 일의 수', () => {
       expect(left).toHaveLength(n);
       expect(left[0]).toBe(keys[n]);
       expect(left[n - 1]).toBe(keys[2 * n - 1]);
-      work.push(total(takeWork()));
+      const done = takeWork();
+      // Measured at all: the one pass over the 2n keys is counted.
+      expect(done.scan).toBeGreaterThanOrEqual(2 * n);
+      work.push(total(done));
     }
     // Before, each emptied key shifted the keys after it: about n² moves.
     const { bend, d500 } = steps(work);
@@ -121,41 +123,74 @@ describe('연쇄와 대상: 일의 수', () => {
     expect('keys' in editor.model.entities[1]!.data).toBe(false);
   });
 
-  test('subjectArea.removeEntities builds the set of ids once and walks each layout of the area once', () => {
-    // n entities in `all`; n layouts of `all` (R09), every node map empty
-    // but the first, which holds them all.
+  test('subjectArea.removeEntities: the work is linear in the ids named', () => {
+    // n entities in `all`, besides ten that have nodes in its one layout;
+    // all n are taken out and none has a node.
+    const fixed = Array.from({ length: 10 }, (_, i) => `f${i}`);
     const work: number[] = [];
     for (const n of SIZES) {
       const ids: string[] = [];
       for (let i = 0; i < n; i += 1) ids.push(`e${i}`);
-      const layouts = [layout('layouts/l0.json', 'all', ids)];
-      for (let i = 1; i < n; i += 1)
-        layouts.push(layout(`layouts/l${i}.json`, 'all'));
-      const model = handModel({
-        entities: ids.map((id) => entityItem(id)),
-        subjectAreas: [areaItem('all', [...ids])],
-        layouts,
-      });
-      const editor = createEditor(model);
-      const before = validateModel(model).length;
+      const all = [...fixed, ...ids];
+      const editor = createEditor(
+        handModel({
+          entities: all.map((id) => entityItem(id)),
+          subjectAreas: [areaItem('all', [...all])],
+          layouts: [layout('layouts/all.json', 'all', fixed)],
+        }),
+      );
+      expect(editor.issues).toEqual([]);
       takeWork();
       const result = editor.execute({
         type: 'subjectArea.removeEntities',
         id: 'all',
         entities: ids,
       });
-      expect(result.ok, JSON.stringify(result).slice(0, 300)).toBe(true);
-      expect(editor.model.subjectAreas[0]!.data.entities).toEqual([]);
-      expect(editor.model.layouts[0]!.data.nodes).toEqual({});
-      // The empty layouts stay the objects they were.
-      expect(editor.model.layouts[1]).toBe(layouts[1]);
-      expect(editor.issues.length).toBeLessThanOrEqual(before);
-      work.push(total(takeWork()));
+      expect(result.ok).toBe(true);
+      expect(editor.model.subjectAreas[0]!.data.entities).toEqual(fixed);
+      const done = takeWork();
+      // Measured at all: the area's list and each id in the layout.
+      expect(done.scan).toBeGreaterThanOrEqual(2 * n);
+      work.push(total(done));
     }
-    // Before, every id was looked for in every layout: n² probes.
     const { bend, d500 } = steps(work);
     expect(bend).toBeLessThanOrEqual(2);
     expect(d500).toBeLessThanOrEqual(500 * 12);
+  });
+
+  test("subjectArea.removeEntities: an id is probed in the area's layout, whatever its node count", () => {
+    // Codex: one absent id in an area with a 4000-node layout walked all
+    // 4000 nodes. Each id named is looked up with one own-property probe
+    // per layout of the area (ids × those layouts).
+    const work: number[] = [];
+    for (const n of [...SIZES, 4000]) {
+      const nodes: string[] = [];
+      for (let i = 0; i < n; i += 1) nodes.push(`e${i}`);
+      const layoutItem = layout('layouts/small.json', 'small', nodes);
+      const editor = createEditor(
+        handModel({
+          entities: [...nodes, 'a'].map((id) => entityItem(id)),
+          // The nodes are of entities outside the area (R09): the
+          // area's own list stays one id long.
+          subjectAreas: [areaItem('small', ['a'])],
+          layouts: [layoutItem],
+        }),
+      );
+      takeWork();
+      const result = editor.execute({
+        type: 'subjectArea.removeEntities',
+        id: 'small',
+        entities: ['a'],
+      });
+      expect(result.ok).toBe(true);
+      // `a` has no node: the layout stays the object it was.
+      expect(editor.model.layouts[0]).toBe(layoutItem);
+      const done = takeWork();
+      // Measured at all: the area's list, the layouts and the one id.
+      expect(done.scan).toBeGreaterThanOrEqual(3);
+      work.push(total(done));
+    }
+    expect(new Set(work).size).toBe(1);
   });
 });
 
@@ -191,6 +226,9 @@ describe('묶음: 같은 대상을 거듭 고치는 일의 수', () => {
       // the sum of those sizes.
       const pass = (n * (n + 1)) / 2 + n;
       const memberBuilds = work.builds.filter((entries) => entries > 1);
+      // Measured at all: each insert but the first rebuilds the index.
+      expect(memberBuilds.length).toBeGreaterThanOrEqual(n - 1);
+      expect(work['index-build']).toBeGreaterThanOrEqual((n * (n + 1)) / 2);
       expect(memberBuilds.length).toBeLessThanOrEqual(n);
       expect(work['index-build']).toBeLessThanOrEqual(pass + 2);
       expect(total(work)).toBeLessThanOrEqual(pass + 10 * n);
@@ -219,6 +257,8 @@ describe('묶음: 같은 대상을 거듭 고치는 일의 수', () => {
       const work = takeWork();
       // The removal i scans a list of n − i ids.
       const pass = (n * (n + 1)) / 2;
+      // Measured at all: each removal scans what is left of the list.
+      expect(work.scan).toBeGreaterThanOrEqual(pass);
       expect(work.scan).toBeLessThanOrEqual(pass + 2 * n);
       expect(total(work)).toBeLessThanOrEqual(pass + 10 * n);
     }

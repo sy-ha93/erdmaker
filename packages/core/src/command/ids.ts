@@ -70,7 +70,6 @@ for (let n = 0; n <= 9; n += 1) WINDOWS_NAMES.add(`com${n}`).add(`lpt${n}`);
 
 /** The first non-empty slug of `texts`, else `fallback`. */
 function firstSlug(texts: (string | undefined)[], fallback: string): string {
-  // work-ok: the two texts of one id's material
   for (const text of texts) {
     if (text === undefined) continue;
     const slug = slugify(text);
@@ -176,7 +175,6 @@ function prefixed(
   if (name === undefined) return undefined;
   const schema = physical.schema ?? '';
   let differs = false;
-  // work-ok: the entities with one id: one, more only in a model with R01
   for (const other of space.physicalsOf(base)) {
     if (other?.name === name && (other.schema ?? '') !== schema) {
       differs = true;

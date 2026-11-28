@@ -165,7 +165,6 @@ export function readModelShape(
     : [...items, ...dictionaries]; // work-ok: the shape check, once per editor and once per save; not per command
   let twice: string | undefined;
   const seen = new Set<string>();
-  // work-ok: the shape check, once per editor and once per save; not per command
   for (const { file } of all) {
     if (file === '' || normalizePath(file) !== file) {
       return { reason: `${file} is not a normalized file path` };
@@ -175,7 +174,6 @@ export function readModelShape(
   }
   if (twice !== undefined) return { reason: `${twice} is used by two items` };
 
-  // work-ok: the shape check, once per editor and once per save; not per command
   for (const { file } of items) {
     if (!isInside(file, dir)) {
       return { reason: `${file} is outside the model folder` };

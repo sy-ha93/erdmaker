@@ -1,7 +1,8 @@
 import { compareCodeUnits } from '../compare.js';
 import type { FileSystemAdapter } from '../fs/adapter.js';
 import { joinPath, normalizePath } from '../fs/path.js';
-import { isAbsoluteEntry } from '../validate/manifest.js';
+import { dictionaryEntries } from '../model/dictionary-entries.js';
+import { field, ownStrings } from '../validate/plain.js';
 
 /** The folders new entities and subject areas go to (spec FR-06). */
 export type NewItemFolder = 'entities' | 'subject-areas';
@@ -19,7 +20,6 @@ export function pathKey(path: string): string {
 /** The keys of `paths`. */
 export function pathKeys(paths: Iterable<string>): Set<string> {
   const keys = new Set<string>();
-  // work-ok: the reserved paths, once when the editor is made
   for (const path of paths) keys.add(pathKey(path));
   return keys;
 }
@@ -43,7 +43,6 @@ export class InitialPaths {
   private readonly byKey = new Map<string, [string, string | undefined]>();
 
   constructor(files: Iterable<string>) {
-    // work-ok: the initial or reserved paths, once when the editor is made
     for (const file of files) {
       if (this.paths.has(file)) continue;
       this.paths.add(file);
@@ -80,52 +79,6 @@ export class InitialPaths {
 const NOT_A_LIST =
   'Cannot edit the model: reservedFiles is not a list of paths';
 
-/** No array is longer; only a Proxy says so (as for the model lists, FR-01). */
-const MAX_LIST_LENGTH = 2 ** 32 - 1;
-
-/** `value`'s own data property `key`, or `none` when it has none or reading throws. */
-const none: unique symbol = Symbol('none');
-function ownData(value: object, key: string): unknown {
-  try {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor && 'value' in descriptor ? descriptor.value : none;
-  } catch {
-    return none;
-  }
-}
-
-/**
- * The entries of `value` when it is an array whose `length` reads as a
- * whole number from 0 to `MAX_LIST_LENGTH` and every index below it is an
- * own data property that reads without throwing; `undefined` otherwise.
- * Reads `length` before any index, looks at each index's descriptor before
- * reading it (an accessor is never called), and stops at the first index
- * that fails, so the work is linear in the entries there are. Never throws.
- */
-function ownEntries(value: unknown): unknown[] | undefined {
-  try {
-    if (!Array.isArray(value)) return undefined;
-    const list: readonly unknown[] = value;
-    const length = list.length;
-    if (
-      typeof length !== 'number' ||
-      !Number.isInteger(length) ||
-      length < 0 ||
-      length > MAX_LIST_LENGTH
-    ) {
-      return undefined;
-    }
-    const entries: unknown[] = [];
-    for (let i = 0; i < length; i += 1) {
-      if (ownData(list, String(i)) === none) return undefined;
-      entries.push(list[i]);
-    }
-    return entries;
-  } catch {
-    return undefined; // a revoked Proxy, or a trap that throws
-  }
-}
-
 /**
  * The reserved paths an editor keeps (spec FR-01, FR-06): each normalized,
  * once, in the order given, without empty ones and the paths an initial item
@@ -137,16 +90,10 @@ export function reservedPaths(
   reservedFiles: unknown,
   initial: InitialPaths,
 ): string[] {
-  const entries = ownEntries(reservedFiles);
-  if (entries === undefined) throw new TypeError(NOT_A_LIST);
-  const files: string[] = [];
-  // work-ok: the reserved paths, once when the editor is made
-  for (const file of entries) {
-    if (typeof file !== 'string') throw new TypeError(NOT_A_LIST);
-    files.push(file);
-  }
+  // Each index through its descriptor, up to the first that fails.
+  const files = ownStrings(reservedFiles);
+  if (files === undefined) throw new TypeError(NOT_A_LIST);
   const kept = new Set<string>();
-  // work-ok: the initial or reserved paths, once when the editor is made
   for (const file of files) {
     const path = normalizePath(file);
     if (path !== '' && !initial.has(path)) kept.add(path);
@@ -154,49 +101,26 @@ export function reservedPaths(
   return [...kept]; // work-ok: the reserved paths, once when the editor is made
 }
 
-/**
- * The `dictionaries` of a manifest item (spec FR-06), read without calling a
- * getter and never throwing: `undefined` (the default folder) when there is
- * no manifest or its `data` is an object without its own `dictionaries`;
- * the string entries when `dictionaries` is a list (`ownEntries`); for
- * anything else (a getter or a throwing trap on `data` or `dictionaries`,
- * a value that is not such a list, a hole) none, `[]`: no dictionary folder.
- */
-export function manifestDictionaries(
-  manifest: object | undefined,
-): string[] | undefined {
-  if (manifest === undefined) return undefined;
-  const data = ownData(manifest, 'data');
-  if (typeof data !== 'object' || data === null) return [];
-  let has: boolean;
-  try {
-    has = Object.getOwnPropertyDescriptor(data, 'dictionaries') !== undefined;
-  } catch {
-    return [];
-  }
-  if (!has) return undefined;
-  const entries = ownEntries(ownData(data, 'dictionaries'));
-  const kept: string[] = [];
-  // work-ok: the manifest's dictionaries, once when the editor is made
-  for (const entry of entries ?? []) {
-    if (typeof entry === 'string') kept.push(entry);
-  }
-  return kept;
-}
+/** The longest path the adapters take; a longer dictionary entry is left out. */
+const MAX_ENTRY_LENGTH = 4096;
 
 /**
- * The dictionary folders of a model (spec FR-06): the manifest's
- * `dictionaries`, else `dictionary`, absolute entries left out, each joined
- * to the model folder and normalized. The opened folder itself is `""`.
+ * The dictionary folders of a model (spec FR-06): `dictionaryEntries` of
+ * the manifest item's `data` (read as an own data property; anything else
+ * is no manifest), the rule `loadModel` reads them by, each joined to the
+ * model folder and normalized. The opened folder itself is `""`. On the
+ * editor side only, an entry longer than 4096 characters is left out
+ * before it is joined (no adapter takes such a path, and joining an
+ * enormous one could throw). Never throws.
  */
 export function dictionaryFolders(
   dir: string,
-  dictionaries: readonly string[] | undefined,
+  manifest: object | undefined,
 ): string[] {
+  const data = field(manifest, 'data');
   const folders: string[] = [];
-  // work-ok: the manifest's dictionaries, once when the editor is made
-  for (const entry of dictionaries ?? ['dictionary']) {
-    if (!isAbsoluteEntry(entry)) folders.push(joinPath(dir, entry));
+  for (const entry of dictionaryEntries(data)) {
+    if (entry.length <= MAX_ENTRY_LENGTH) folders.push(joinPath(dir, entry));
   }
   return folders;
 }
@@ -216,7 +140,6 @@ export function dictionaryFolderOf(
   folders: readonly string[],
 ): string | undefined {
   const parts = components(path);
-  // work-ok: the dictionary folders of the manifest: a few, not the model
   for (const folder of folders) {
     const leading = components(folder);
     // work-ok: the components of one dictionary folder path
@@ -276,7 +199,6 @@ export async function listReservedFiles(
   const found: string[] = [];
   for (const folder of ['entities', 'subject-areas'] as const) {
     const under = joinPath(modelDir, folder);
-    // work-ok: listReservedFiles, called by the caller before an editor exists
     for (const entry of await fs.list(under)) {
       found.push(joinPath(under, entry.name));
     }

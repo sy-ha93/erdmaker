@@ -119,7 +119,6 @@ export function copyFields(
   fields: readonly string[],
 ): void {
   const from = command as Fields;
-  // work-ok: the field names of one command kind
   for (const field of fields) {
     if (from[field] !== undefined) data[field] = from[field];
   }

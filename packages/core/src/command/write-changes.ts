@@ -45,7 +45,6 @@ function letterCasePair(
   touched: ReadonlySet<string>,
 ): [string, string] | undefined {
   const byKey = new Map<string, string[]>();
-  // work-ok: a save, once per writeChanges; not per command
   for (const path of paths) {
     const key = pathKey(path);
     const group = byKey.get(key);
@@ -121,11 +120,9 @@ export async function writeChanges(
   }
 
   const owned = new Map<string, object>();
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file, item } of old.items) owned.set(file, item);
   const kept = new Set<string>();
   const writes: Write[] = [];
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file, item, list } of next.items) {
     kept.add(file);
     const had = owned.get(file);
@@ -140,19 +137,15 @@ export async function writeChanges(
   writes.sort((a, b) => compareCodeUnits(a.file, b.file)); // work-ok: a save, once per writeChanges; not per command
   // A path any item of `after` holds is not removed, the manifest's and the
   // dictionaries' included; only the five lists count for letter case (2).
-  // work-ok: a save, once per writeChanges; not per command
   const held = new Set(kept);
   if (next.manifest) held.add(next.manifest.file);
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file } of next.dictionaries) held.add(file);
   const removals: string[] = [];
   for (const file of owned.keys()) if (!held.has(file)) removals.push(file); // work-ok: a save, once per writeChanges; not per command
   removals.sort(compareCodeUnits); // work-ok: a save, once per writeChanges; not per command
 
   // (2)
-  // work-ok: a save, once per writeChanges; not per command
   const touched = new Set<string>(removals);
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file } of writes) touched.add(file);
   const pair = letterCasePair(new Set([...owned.keys(), ...kept]), touched); // work-ok: a save, once per writeChanges; not per command
   if (pair) {
@@ -163,14 +156,12 @@ export async function writeChanges(
 
   // (3)
   const texts: string[] = [];
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file, item, schema } of writes) {
     texts.push(serializeItem(file, (item as { data?: unknown }).data, schema));
   }
 
   // (4)
   const byParent = new Map<string, string[]>();
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file, isNew } of writes) {
     if (!isNew) continue;
     const parent = parentOf(file);
@@ -182,9 +173,7 @@ export async function writeChanges(
   // work-ok: a save: the folders of the new files, once per writeChanges
   for (const parent of [...byParent.keys()].sort(compareCodeUnits)) {
     const names = new Set<string>();
-    // work-ok: a save, once per writeChanges; not per command
     for (const entry of await fs.list(parent)) names.add(pathKey(entry.name));
-    // work-ok: a save, once per writeChanges; not per command
     for (const path of byParent.get(parent)!) {
       if (names.has(pathKey(nameOf(path)))) throw occupied(path);
     }
@@ -206,13 +195,11 @@ export async function writeChanges(
   }
 
   const written: string[] = [];
-  // work-ok: a save, once per writeChanges; not per command
   for (const { file, text } of changed) {
     await fs.writeText(file, text);
     written.push(file);
   }
   const removed: string[] = [];
-  // work-ok: a save, once per writeChanges; not per command
   for (const file of removals) {
     await fs.remove(file);
     removed.push(file);

@@ -65,6 +65,17 @@ describe('새 파일 경로: 비교 키', () => {
   });
 });
 
+/** A valid manifest item naming `dictionaries`, or none. */
+const manifestNaming = (dictionaries?: string[]) => ({
+  file: 'model.yaml',
+  data: {
+    formatVersion: '0.1',
+    id: 'm',
+    name: 'M',
+    ...(dictionaries === undefined ? {} : { dictionaries }),
+  },
+});
+
 describe('새 파일 경로', () => {
   test('a new item goes to entities/ or subject-areas/ under the model folder as given', () => {
     expect(newItemFile('', 'entities', 'order')).toBe('entities/order.yaml');
@@ -134,18 +145,16 @@ describe('새 파일 경로', () => {
   test('dictionary folders: dictionaries, else dictionary; absolute entries dropped; normalized under the model folder', () => {
     expect(dictionaryFolders('', undefined)).toEqual(['dictionary']);
     expect(dictionaryFolders('m', undefined)).toEqual(['m/dictionary']);
+    expect(dictionaryFolders('m', manifestNaming())).toEqual(['m/dictionary']);
     expect(
-      dictionaryFolders('m', [
-        '../dictionary',
-        'words/./a',
-        '/abs',
-        'C:\\x',
-        '\\x',
-      ]),
+      dictionaryFolders(
+        'm',
+        manifestNaming(['../dictionary', 'words/./a', '/abs', 'C:\\x', '\\x']),
+      ),
     ).toEqual(['dictionary', 'm/words/a']);
-    expect(dictionaryFolders('', ['.'])).toEqual(['']);
-    expect(dictionaryFolders('m', ['..'])).toEqual(['']);
-    expect(dictionaryFolders('', [])).toEqual([]);
+    expect(dictionaryFolders('', manifestNaming(['.']))).toEqual(['']);
+    expect(dictionaryFolders('m', manifestNaming(['..']))).toEqual(['']);
+    expect(dictionaryFolders('', manifestNaming([]))).toEqual([]);
   });
 
   test('inside a dictionary folder: leading components compared by key; the opened folder holds every path', () => {
@@ -183,7 +192,7 @@ describe('새 파일 경로', () => {
 
   test('a dictionary folder at or above the opened folder holds every model path', () => {
     const inside = (dir: string, entries: string[], path: string) =>
-      dictionaryFolderOf(path, dictionaryFolders(dir, entries));
+      dictionaryFolderOf(path, dictionaryFolders(dir, manifestNaming(entries)));
     expect(inside('', ['.'], 'entities/a.yaml')).toBe('.');
     expect(inside('', ['..'], 'entities/a.yaml')).toBe('..');
     expect(inside('', ['../..'], 'subject-areas/a.yaml')).toBe('../..');
@@ -228,10 +237,11 @@ describe('새 파일 경로', () => {
 
   test('reserved files that are not an array of strings throw one TypeError', () => {
     const initial = new InitialPaths([]);
+    // An index is read through its descriptor only: that trap is the one.
     const throwing = new Proxy(['a'], {
-      get(target, key, receiver) {
+      getOwnPropertyDescriptor(target, key) {
         if (key === '0') throw new Error('trap');
-        return Reflect.get(target, key, receiver) as unknown;
+        return Reflect.getOwnPropertyDescriptor(target, key);
       },
     });
     const badLength = new Proxy(['a'], {
@@ -296,16 +306,20 @@ describe('새 파일 경로', () => {
 
   test('an inflated length is refused at the first index that is not there', () => {
     const initial = new InitialPaths([]);
-    const read: PropertyKey[] = [];
+    const read: string[] = [];
     // Every index reads as a string through `get`, but only 0 and 1 exist.
     const inflated = new Proxy(['a', 'b'], {
       get(target, key, receiver) {
         if (key === 'length') return 2 ** 32 - 1;
         if (typeof key === 'string' && /^\d+$/.test(key)) {
-          read.push(key);
+          read.push(`get ${key}`);
           return 'x';
         }
         return Reflect.get(target, key, receiver) as unknown;
+      },
+      getOwnPropertyDescriptor(target, key) {
+        read.push(`own ${String(key)}`);
+        return Reflect.getOwnPropertyDescriptor(target, key);
       },
     });
     expect(() => reservedPaths(inflated, initial)).toThrow(
@@ -313,7 +327,8 @@ describe('새 파일 경로', () => {
         'Cannot edit the model: reservedFiles is not a list of paths',
       ),
     );
-    expect(read).toEqual(['0', '1']);
+    // Each index through its descriptor only, up to the first missing one.
+    expect(read).toEqual(['own 0', 'own 1', 'own 2']);
     // An accessor index is refused without calling it.
     const called: number[] = [];
     const accessor: string[] = ['a'];
@@ -327,6 +342,48 @@ describe('새 파일 경로', () => {
     expect(called).toEqual([]);
     // The longest length an array may have is taken when the entries are there.
     expect(reservedPaths(['a'], initial)).toEqual(['a']);
+  });
+
+  test('reserved files stop at the first entry that is not a string, and use the value of its descriptor', () => {
+    const initial = new InitialPaths([]);
+    const refusal = new TypeError(
+      'Cannot edit the model: reservedFiles is not a list of paths',
+    );
+    // Codex: 10,001 indexes were read before the TypeError.
+    const examined: string[] = [];
+    const indexKey = (key: PropertyKey) =>
+      typeof key === 'string' && /^\d+$/.test(key);
+    const many = new Proxy(
+      [false, ...Array.from({ length: 10_000 }, () => 'a')],
+      {
+        get(target, key, receiver) {
+          if (indexKey(key)) examined.push(key as string);
+          return Reflect.get(target, key, receiver) as unknown;
+        },
+        getOwnPropertyDescriptor(target, key) {
+          if (indexKey(key)) examined.push(key as string);
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+      },
+    );
+    expect(() => reservedPaths(many, initial)).toThrow(refusal);
+    expect(new Set(examined)).toEqual(new Set(['0']));
+    // Codex: a `get` trap's string in place of the data value 42 was taken.
+    const replaced = new Proxy([42], {
+      get: (target, key, receiver) =>
+        key === '0'
+          ? 'entities/customer.yaml'
+          : (Reflect.get(target, key, receiver) as unknown),
+    });
+    expect(() => reservedPaths(replaced, initial)).toThrow(refusal);
+    // The descriptor's value is what is kept, not what `get` says.
+    const said = new Proxy(['entities/a.yaml'], {
+      get: (target, key, receiver) =>
+        key === '0'
+          ? 'entities/b.yaml'
+          : (Reflect.get(target, key, receiver) as unknown),
+    });
+    expect(reservedPaths(said, initial)).toEqual(['entities/a.yaml']);
   });
 
   describe('listReservedFiles', () => {

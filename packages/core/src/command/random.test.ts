@@ -299,7 +299,15 @@ function walk(
   return { accepted, seen };
 }
 
-describe('명령 동작: 무작위', () => {
+/**
+ * The long walk normally runs in under 3 s on its own (about 2.6 s on the
+ * development machine). Under a full parallel `pnpm test` with lint running
+ * beside it, the 5 s default was too tight (Codex re-check), so the walk
+ * has an explicit 20 s timeout; a run near that means something got slower.
+ */
+const WALK = { timeout: 20_000 };
+
+describe('명령 동작: 무작위', WALK, () => {
   test('a deep-frozen example under random commands of every kind, undo and redo: nothing throws, errors never grow, every model serializes, history by identity', async () => {
     const model = deepFreeze(await exampleModel());
     const before = snapshotOf(model);

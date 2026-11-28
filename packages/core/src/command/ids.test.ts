@@ -746,6 +746,10 @@ describe('ID 만들기', () => {
           // Each further create asks about the slug and one suffix: before,
           // it walked every suffix again (n(n + 1) / 2 questions).
           const [a, b, c] = counts as [number, number, number];
+          // Measured at all: each create asks about one candidate at least.
+          expect(a, kind).toBeGreaterThanOrEqual(250);
+          expect(b, kind).toBeGreaterThanOrEqual(500);
+          expect(c, kind).toBeGreaterThanOrEqual(1000);
           expect(c - b, kind).toBe(2 * (b - a));
           expect(c, kind).toBeLessThanOrEqual(2 * 1000 + 2);
         }

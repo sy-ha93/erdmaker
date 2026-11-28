@@ -3,6 +3,7 @@ import type { Model } from '../model/types.js';
 import { validateModel } from '../validate/index.js';
 import { entityItem, exampleModel, handModel } from '../testing/editing.js';
 import { createEditor } from './editor.js';
+import { dictionaryFolders } from './paths.js';
 import type { CommandResult, Editor } from './types.js';
 
 const NOT_A_LIST =
@@ -113,7 +114,7 @@ describe('편집기 만들기', () => {
     expect(editor.canRedo).toBe(false);
   });
 
-  test('the dictionaries of the manifest are read as own data; anything else is no dictionary folder, never a throw', () => {
+  test('the dictionaries of the manifest are read as own data; anything else is the default folder, never a throw', () => {
     const manifestOf = (data: unknown) =>
       handModel({ manifest: { file: 'model.yaml', data } as never });
     const plain = { formatVersion: '0.1', id: 'm', name: 'M' };
@@ -131,12 +132,21 @@ describe('편집기 만들기', () => {
         manifestOf({ ...plain, dictionaries: ['entities'] }),
       ).execute(create),
     ).toEqual(refused);
-    // Entries that are not strings are skipped, as before.
+    // A list with an entry that is not a string fails the manifest schema:
+    // `loadModel` leaves such a manifest out and reads `dictionary`.
     expect(
       createEditor(
         manifestOf({ ...plain, dictionaries: [5, 'entities'] }),
       ).execute(create),
-    ).toEqual(refused);
+    ).toMatchObject({ ok: true, id: 'customer' });
+    // The default folder is kept for anything that is not such a list.
+    expect(
+      createEditor(manifestOf({ ...plain, dictionaries: 42 })).execute({
+        type: 'entity.create',
+        id: 'x',
+        name: 'X',
+      }),
+    ).toMatchObject({ ok: true, id: 'x' });
 
     const throwing = (): never => {
       throw new Error('boom');
@@ -199,6 +209,43 @@ describe('편집기 만들기', () => {
     });
     const editor = createEditor(getterData);
     expect(editor.execute(create)).toMatchObject({ ok: true, id: 'customer' });
+  });
+
+  test('an enormous dictionaries entry is left out instead of joined, and createEditor does not throw', () => {
+    // Codex: joining one entry of the longest string length threw a
+    // RangeError out of createEditor. Entries over 4096 characters (the
+    // adapters' path limit) are left out on the editor side.
+    const plain = { formatVersion: '0.1', id: 'm', name: 'M' };
+    const segment = 'x'.repeat(2 ** 20);
+    const entries = [
+      'y'.repeat(1_000_000),
+      [segment, segment, segment, segment].join('/'),
+      `${segment}/../entities`,
+      'y'.repeat(4097),
+    ];
+    for (const entry of entries) {
+      for (const dir of ['m', segment]) {
+        const model = handModel({
+          dir,
+          manifest: {
+            file: `${dir}/model.yaml`,
+            data: { ...plain, dictionaries: [entry, 'entities'] },
+          } as never,
+        });
+        expect(() => createEditor(model)).not.toThrow();
+        expect(dictionaryFolders(dir, model.manifest)).toEqual([
+          `${dir}/entities`,
+        ]);
+      }
+    }
+    // 4096 characters is still an entry.
+    const longest = 'y'.repeat(4096);
+    expect(
+      dictionaryFolders('m', {
+        file: 'm/model.yaml',
+        data: { ...plain, dictionaries: [longest] },
+      }),
+    ).toEqual([`m/${longest}`]);
   });
 
   test('reservedFiles that is not an array of strings throws one TypeError', () => {
