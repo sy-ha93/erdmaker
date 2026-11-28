@@ -8,11 +8,19 @@ export interface Physical {
 }
 
 /**
+ * Per stem, the first suffix a generated id of a namespace has not yet
+ * found taken: kept by the working state for one `execute`, so a batch that
+ * makes one name many times does not walk the same suffixes again.
+ */
+export type SuffixMemory = Map<string, number>;
+
+/**
  * One id namespace (spec FR-05) as id selection asks about it: entities,
  * subject areas, or the attributes or keys of one entity. The caller backs
  * it with sets, so each question is a constant number of lookups.
+ * `suffixes`, when given, is that namespace's memory for this `execute`.
  */
-export type IdSpace =
+export type IdSpace = { readonly suffixes?: SuffixMemory } & (
   | {
       readonly kind: 'entity';
       hasId(id: string): boolean;
@@ -30,7 +38,8 @@ export type IdSpace =
       /** The id of the entity the namespace belongs to. */
       readonly entity: string;
       hasId(id: string): boolean;
-    };
+    }
+);
 
 /** What a generated id is made from (spec FR-05, "재료"). */
 export type IdSource =
@@ -61,6 +70,7 @@ for (let n = 0; n <= 9; n += 1) WINDOWS_NAMES.add(`com${n}`).add(`lpt${n}`);
 
 /** The first non-empty slug of `texts`, else `fallback`. */
 function firstSlug(texts: (string | undefined)[], fallback: string): string {
+  // work-ok: the two texts of one id's material
   for (const text of texts) {
     if (text === undefined) continue;
     const slug = slugify(text);
@@ -166,6 +176,7 @@ function prefixed(
   if (name === undefined) return undefined;
   const schema = physical.schema ?? '';
   let differs = false;
+  // work-ok: the entities with one id: one, more only in a model with R01
   for (const other of space.physicalsOf(base)) {
     if (other?.name === name && (other.schema ?? '') !== schema) {
       differs = true;
@@ -194,6 +205,12 @@ function suffixed(stem: string, n: number): string {
  * `space` is asked about each distinct candidate once. Reason 3 does not
  * depend on the id, so a file inside a dictionary folder refuses the first
  * candidate. `physical` is the new entity's.
+ *
+ * With `space.suffixes`, the suffixes of a stem start after the one this
+ * memory last chose for it, so within one `execute` the suffix of a
+ * repeated stem only grows: a suffix freed meanwhile is not used again. Each
+ * candidate is still asked about; only suffixes already found taken are not
+ * walked again. The base and the prefix are always asked first.
  */
 export function chooseId(
   space: IdSpace,
@@ -219,8 +236,12 @@ export function chooseId(
       stem = withSchema;
     }
   }
-  for (let n = 2; ; n += 1) {
+  const memory = space.suffixes;
+  for (let n = memory?.get(stem) ?? 2; ; n += 1) {
     const id = suffixed(stem, n);
-    if (fits(id)) return { ok: true, id };
+    if (fits(id)) {
+      memory?.set(stem, n + 1);
+      return { ok: true, id };
+    }
   }
 }

@@ -13,6 +13,7 @@ import { readModelShape } from './model-shape.js';
 import {
   dictionaryFolders,
   InitialPaths,
+  manifestDictionaries,
   pathKeys,
   reservedPaths,
 } from './paths.js';
@@ -72,17 +73,6 @@ const BUSY: Rejection = {
   message: 'The editor is busy',
   issues: [],
 };
-
-/** The manifest's `dictionaries` when it is a list of strings. */
-function dictionaryEntries(model: ReadonlyModel): string[] | undefined {
-  const entries = (
-    model.manifest?.data as { dictionaries?: unknown } | undefined
-  )?.dictionaries;
-  if (!Array.isArray(entries)) return undefined;
-  const kept: string[] = [];
-  for (const entry of entries) if (typeof entry === 'string') kept.push(entry);
-  return kept;
-}
 
 /**
  * The `reservedFiles` of `options`, read once; reading it may throw. A value
@@ -266,13 +256,18 @@ export function createEditor(
   const { shape } = read;
   const files: string[] = [];
   if (shape.manifest) files.push(shape.manifest.file);
+  // work-ok: the shape of the model, once when the editor is made
   for (const item of shape.items) files.push(item.file);
+  // work-ok: the shape of the model, once when the editor is made
   for (const item of shape.dictionaries) files.push(item.file);
   const initial = new InitialPaths(files);
   const reserved = reservedPaths(reservedOption(options), initial);
   return new ModelEditor(model, {
     initial,
     reservedKeys: pathKeys(reserved),
-    dictionaryFolders: dictionaryFolders(shape.dir, dictionaryEntries(model)),
+    dictionaryFolders: dictionaryFolders(
+      shape.dir,
+      manifestDictionaries(shape.manifest?.item),
+    ),
   });
 }

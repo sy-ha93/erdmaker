@@ -268,6 +268,67 @@ describe('새 파일 경로', () => {
     }
   });
 
+  test('reserved files whose length no array can have are refused before an index is read', () => {
+    const initial = new InitialPaths([]);
+    const refusal = new TypeError(
+      'Cannot edit the model: reservedFiles is not a list of paths',
+    );
+    for (const length of [NaN, -1, 1.5, 2 ** 32, Infinity, '1', undefined]) {
+      const read: PropertyKey[] = [];
+      const lying = new Proxy(['a'], {
+        get(target, key, receiver) {
+          read.push(key);
+          return key === 'length'
+            ? length
+            : (Reflect.get(target, key, receiver) as unknown);
+        },
+        getOwnPropertyDescriptor(target, key) {
+          read.push(key);
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+      });
+      expect(() => reservedPaths(lying, initial), String(length)).toThrow(
+        refusal,
+      );
+      expect(read, String(length)).toEqual(['length']);
+    }
+  });
+
+  test('an inflated length is refused at the first index that is not there', () => {
+    const initial = new InitialPaths([]);
+    const read: PropertyKey[] = [];
+    // Every index reads as a string through `get`, but only 0 and 1 exist.
+    const inflated = new Proxy(['a', 'b'], {
+      get(target, key, receiver) {
+        if (key === 'length') return 2 ** 32 - 1;
+        if (typeof key === 'string' && /^\d+$/.test(key)) {
+          read.push(key);
+          return 'x';
+        }
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    expect(() => reservedPaths(inflated, initial)).toThrow(
+      new TypeError(
+        'Cannot edit the model: reservedFiles is not a list of paths',
+      ),
+    );
+    expect(read).toEqual(['0', '1']);
+    // An accessor index is refused without calling it.
+    const called: number[] = [];
+    const accessor: string[] = ['a'];
+    Object.defineProperty(accessor, 0, {
+      get: () => {
+        called.push(0);
+        return 'a';
+      },
+    });
+    expect(() => reservedPaths(accessor, initial)).toThrow(TypeError);
+    expect(called).toEqual([]);
+    // The longest length an array may have is taken when the entries are there.
+    expect(reservedPaths(['a'], initial)).toEqual(['a']);
+  });
+
   describe('listReservedFiles', () => {
     const counting = (fs: FileSystemAdapter) => {
       const list = vi.fn(fs.list.bind(fs));

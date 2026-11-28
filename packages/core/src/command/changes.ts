@@ -46,10 +46,12 @@ function endList(
 ): { items: Item[]; same: boolean } {
   noteWork('index-build', start.length);
   const byFile = new Map<string, Item>();
+  // work-ok: the start items of one changed list, counted above (noteWork)
   for (const item of start) byFile.set(item.file, item);
   noteWork('scan', cells.length);
   const items: Item[] = [];
   let original = true;
+  // work-ok: the cells of one changed list, counted above (noteWork)
   for (const cell of cells) {
     if (!cell) continue;
     let item = cell;
@@ -102,6 +104,7 @@ export function endModel(working: Working): ReadonlyModel {
 /** The number of errors in `issues`. */
 export function errorCount(issues: Issues): number {
   let count = 0;
+  // work-ok: the issues of one validation, twice per execute
   for (const issue of issues) if (issue.severity === 'error') count += 1;
   return count;
 }
@@ -125,6 +128,7 @@ const issueKey = (issue: Readonly<Issue>): string =>
 /** The keys of the errors of `issues`. */
 function errorKeys(issues: Issues): Set<string> {
   const keys = new Set<string>();
+  // work-ok: the issues before the command, once per execute
   for (const issue of issues) {
     if (issue.severity === 'error') keys.add(errorKey(issue));
   }
@@ -139,6 +143,7 @@ function errorKeys(issues: Issues): Set<string> {
  */
 export function addsSchemaError(previous: Issues, next: Issues): boolean {
   let known: Set<string> | undefined;
+  // work-ok: the issues of one validation, once per execute
   for (const issue of next) {
     if (issue.severity !== 'error' || issue.rule !== 'schema') continue;
     known ??= errorKeys(previous);
@@ -159,6 +164,7 @@ export function rejectionIssues(
   const known = errorKeys(previous);
   const fresh: Readonly<Issue>[] = [];
   const errors: Readonly<Issue>[] = [];
+  // work-ok: the issues of one validation, once per execute
   for (const issue of next) {
     if (issue.severity !== 'error') continue;
     errors.push(issue);
@@ -174,11 +180,13 @@ export function rejectionIssues(
  */
 export function reuseIssues(previous: Issues, next: Issues): Issues {
   const old = new Map<string, Readonly<Issue>>();
+  // work-ok: the issues before the command, once per execute
   for (const issue of previous) {
     const key = issueKey(issue);
     if (!old.has(key)) old.set(key, issue);
   }
   const kept: Readonly<Issue>[] = [];
+  // work-ok: the issues of one validation, once per execute
   for (const issue of next) kept.push(old.get(issueKey(issue)) ?? issue);
   return kept;
 }

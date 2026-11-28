@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   EMPTY_MANIFEST,
   emptyModel,
@@ -22,6 +22,20 @@ import {
   type NewItemFolder,
   pathKeys,
 } from './paths.js';
+import { Working } from './working.js';
+
+const {
+  entitySpace: workingEntitySpace,
+  subjectAreaSpace: workingAreaSpace,
+  memberSpace: workingMemberSpace,
+} = Working.prototype;
+
+/** `n` copies of `command`. */
+const repeat = (n: number, command: object): object[] => {
+  const out: object[] = [];
+  for (let i = 0; i < n; i += 1) out.push(command);
+  return out;
+};
 
 interface Placed {
   id: string;
@@ -664,6 +678,104 @@ describe('ID 만들기', () => {
       );
       expect(make('x')).toBe('x_2');
       expect(editor.issues).toEqual([]);
+    });
+
+    test('one name made n times in one batch asks about a number of candidates linear in n', async () => {
+      // Count every question about an id in any namespace.
+      let asked = 0;
+      const counted = <S extends { hasId(id: string): boolean }>(space: S) => {
+        const hasId = space.hasId.bind(space);
+        return {
+          ...space,
+          hasId: (id: string) => {
+            asked += 1;
+            return hasId(id);
+          },
+        };
+      };
+      const spies = [
+        vi.spyOn(Working.prototype, 'entitySpace').mockImplementation(function (
+          this: Working,
+        ) {
+          return counted(workingEntitySpace.call(this));
+        }),
+        vi
+          .spyOn(Working.prototype, 'subjectAreaSpace')
+          .mockImplementation(function (this: Working) {
+            return counted(workingAreaSpace.call(this));
+          }),
+        vi.spyOn(Working.prototype, 'memberSpace').mockImplementation(function (
+          this: Working,
+          ...args
+        ) {
+          return counted(workingMemberSpace.apply(this, args));
+        }),
+      ];
+      const model = await emptyModel();
+      const kinds: [string, (n: number) => object[]][] = [
+        ['entity', (n) => repeat(n, { type: 'entity.create', name: 'Same' })],
+        [
+          'subject area',
+          (n) => repeat(n, { type: 'subjectArea.create', name: 'Same' }),
+        ],
+        [
+          'attribute',
+          (n) => [
+            { type: 'entity.create', id: 'e', name: 'E' },
+            ...repeat(n - 1, {
+              type: 'attribute.create',
+              entity: 'e',
+              name: 'Same',
+            }),
+          ],
+        ],
+      ];
+      try {
+        for (const [kind, commands] of kinds) {
+          const counts: number[] = [];
+          for (const n of [250, 500, 1000]) {
+            const editor = createEditor(model);
+            asked = 0;
+            const result = editor.execute({
+              type: 'batch',
+              commands: commands(n),
+            });
+            expect(result.ok, kind).toBe(true);
+            counts.push(asked);
+          }
+          // Each further create asks about the slug and one suffix: before,
+          // it walked every suffix again (n(n + 1) / 2 questions).
+          const [a, b, c] = counts as [number, number, number];
+          expect(c - b, kind).toBe(2 * (b - a));
+          expect(c, kind).toBeLessThanOrEqual(2 * 1000 + 2);
+        }
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    test('a suffix freed in a batch is not used again by that batch; the next batch uses it', async () => {
+      const editor = createEditor(await emptyModel());
+      const make = { type: 'entity.create', name: 'x' };
+      expect(
+        editor.execute({
+          type: 'batch',
+          commands: [
+            make,
+            make,
+            make,
+            { type: 'entity.delete', id: 'x_2' },
+            make,
+          ],
+        }),
+      ).toMatchObject({ ok: true, ids: ['x', 'x_2', 'x_3', null, 'x_4'] });
+      // The base is always asked first, so a freed base is used again.
+      expect(
+        editor.execute({
+          type: 'batch',
+          commands: [{ type: 'entity.delete', id: 'x' }, make, make],
+        }),
+      ).toMatchObject({ ok: true, ids: [null, 'x', 'x_2'] });
     });
 
     test('CON is con_2 for entities and subject areas, con for attributes', async () => {

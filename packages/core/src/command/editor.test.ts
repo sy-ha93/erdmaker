@@ -113,6 +113,94 @@ describe('편집기 만들기', () => {
     expect(editor.canRedo).toBe(false);
   });
 
+  test('the dictionaries of the manifest are read as own data; anything else is no dictionary folder, never a throw', () => {
+    const manifestOf = (data: unknown) =>
+      handModel({ manifest: { file: 'model.yaml', data } as never });
+    const plain = { formatVersion: '0.1', id: 'm', name: 'M' };
+    const create = { type: 'entity.create', name: 'Customer' };
+    const refused = {
+      ok: false,
+      code: 'id-taken',
+      message:
+        'entity id "customer" cannot be used: entities/customer.yaml is inside the dictionary folder entities',
+      issues: [],
+    };
+    // Read as given: the folder entities refuses a new entity there.
+    expect(
+      createEditor(
+        manifestOf({ ...plain, dictionaries: ['entities'] }),
+      ).execute(create),
+    ).toEqual(refused);
+    // Entries that are not strings are skipped, as before.
+    expect(
+      createEditor(
+        manifestOf({ ...plain, dictionaries: [5, 'entities'] }),
+      ).execute(create),
+    ).toEqual(refused);
+
+    const throwing = (): never => {
+      throw new Error('boom');
+    };
+    const sparse: unknown[] = [];
+    sparse[1] = 'entities';
+    const getterEntry: unknown[] = [];
+    Object.defineProperty(getterEntry, 0, { get: () => 'entities' });
+    Object.defineProperty(getterEntry, 'length', { value: 1 });
+    const trapsThrow = new Proxy(['entities'], {
+      get: throwing,
+      getOwnPropertyDescriptor: throwing,
+      ownKeys: throwing,
+      has: throwing,
+    });
+    const longer = new Proxy(['entities'], {
+      get: (target, key) =>
+        key === 'length' ? 2 ** 32 : Reflect.get(target, key),
+    });
+    const notANumber = new Proxy(['entities'], {
+      get: (target, key) => (key === 'length' ? NaN : Reflect.get(target, key)),
+    });
+    const revoked = Proxy.revocable(['entities'], {});
+    revoked.revoke();
+    const datas: unknown[] = [
+      {
+        get formatVersion() {
+          return '0.1';
+        },
+        get dictionaries() {
+          return throwing();
+        },
+      },
+      { ...plain, dictionaries: 'entities' },
+      { ...plain, dictionaries: { 0: 'entities', length: 1 } },
+      { ...plain, dictionaries: sparse },
+      { ...plain, dictionaries: getterEntry },
+      { ...plain, dictionaries: trapsThrow },
+      { ...plain, dictionaries: longer },
+      { ...plain, dictionaries: notANumber },
+      { ...plain, dictionaries: revoked.proxy },
+      new Proxy(plain, { getOwnPropertyDescriptor: throwing, get: throwing }),
+    ];
+    for (const data of datas) {
+      const editor = createEditor(manifestOf(data));
+      expect(editor.execute(create)).toMatchObject({
+        ok: true,
+        id: 'customer',
+      });
+    }
+
+    // The item's data itself behind a getter: read through nothing.
+    const getterData = handModel({
+      manifest: {
+        file: 'model.yaml',
+        get data() {
+          return throwing();
+        },
+      } as never,
+    });
+    const editor = createEditor(getterData);
+    expect(editor.execute(create)).toMatchObject({ ok: true, id: 'customer' });
+  });
+
   test('reservedFiles that is not an array of strings throws one TypeError', () => {
     const model = handModel();
     const throwing = {

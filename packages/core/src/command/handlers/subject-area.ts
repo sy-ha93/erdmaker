@@ -83,6 +83,7 @@ export function addEntities(
 ): HandlerResult {
   const found = findSubjectArea(working, command.id);
   if (!found.ok) return found;
+  // work-ok: the ids the command names; each one a few cells (addToArea)
   for (const entity of command.entities) {
     working.addToArea(found.position, entity);
   }

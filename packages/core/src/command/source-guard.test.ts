@@ -5,12 +5,24 @@ import { describe, expect, test } from 'vitest';
 const COMMAND_DIR = fileURLToPath(new URL('./', import.meta.url));
 
 /**
- * Calls and syntax that scan or copy a list. Under `command/` every list and
- * index change of a command goes through `working.ts`, which reports its
- * work (plan decision 9); one of these here would hide work from the
- * work-count tests. A bracket access by a quoted name (`a['slice'](…)`, the
- * `[` right after the value as the formatter writes it) counts; a list
- * literal of strings (`['a', 'b']`, `of ['a']`) does not.
+ * The forms of code that scan or copy a list, as text. Under `command/`
+ * every list and index change of a command goes through `working.ts`,
+ * which reports its work (plan decision 9); one of these elsewhere could
+ * hide work from the work-count tests. Flagged: the array methods below, a
+ * bracket access by a quoted name (`a['slice'](…)`, the `[` right after the
+ * value as the formatter writes it), spreads, `Array.from`,
+ * `Object.values/entries/keys`, `structuredClone`, a `for…of` or `for…in`
+ * loop, and `new Set(…)`/`new Map(…)` built from a value. Not flagged: a
+ * list literal (`['a', 'b']`, `of ['a']`, `new Map([`) and a module
+ * constant in capitals (`of LIST_NAMES`, `new Map(SAVED_LISTS)`).
+ *
+ * This is a text check, line by line. It cannot tell a model list from any
+ * other value (so it flags every loop and every set built from a value,
+ * and a legitimate one carries a marker), and it cannot see a list reached
+ * through a helper outside `command/`, an index loop (`for (let i = 0; …)`),
+ * a form split over lines, or code that does the same work another way.
+ * The work-count tests are what measure the work; this only keeps the
+ * usual ways of hiding it out of the guarded files.
  */
 const FORBIDDEN = new RegExp(
   [
@@ -20,6 +32,10 @@ const FORBIDDEN = new RegExp(
     String.raw`\bstructuredClone\b`,
     String.raw`(?:[\w$)\]]|\?\.)\[\s*['"\x60]`,
     String.raw`\.\.\.`,
+    // A loop over anything but a list literal or a module constant.
+    String.raw`\bfor\s*\(\s*(?:const|let|var)\s[^;]*?\s(?:of|in)\s+(?!\[|[A-Z][A-Z0-9_]*\s*\))`,
+    // A set or map built from anything but a literal list or a constant.
+    String.raw`\bnew\s+(?:Set|Map|WeakSet|WeakMap)\s*(?:<[^>]*>)?\s*\(\s*(?![\s)]|\[|[A-Z][A-Z0-9_]*\s*\))`,
   ].join('|'),
 );
 
@@ -109,8 +125,8 @@ function markers(text: string): { reason: string; code: string }[] {
   return out;
 }
 
-describe('일의 수: 목록을 고치는 길', () => {
-  test('the files under command/ scan and copy lists only through working.ts', () => {
+describe('일의 수: 목록을 훑는 꼴의 글 검사', () => {
+  test('no guarded file under command/ uses a flagged form without a marker (a text check)', () => {
     const all = commandFiles();
     for (const name of UNGUARDED.keys()) expect(all).toContain(name);
     for (const reason of UNGUARDED.values()) expect(reason.trim()).not.toBe('');
@@ -192,6 +208,16 @@ describe('일의 수: 목록을 고치는 길', () => {
       'f(...a);',
       'const o = { ...p };',
       'const { x, ...rest } = o;',
+      'for (const e of working.start.entities) {',
+      'for (const item of cells) count(item);',
+      "for (const name of unset ?? ['dictionary']) {",
+      'for (const { file } of items) {',
+      'for (const key in nodes) {',
+      'for (let id of ids) {',
+      'const ids = new Set(working.start.entities);',
+      'const byId = new Map(pairs);',
+      'new Set<string>(area.entities)',
+      'new WeakSet(items)',
     ]) {
       expect(offenders(form), form).toHaveLength(1);
       expect(
@@ -218,7 +244,13 @@ describe('일의 수: 목록을 고치는 길', () => {
       "noteWork('index-build', start.length);",
       "const FIELDS = ['definition', 'group', 'order'] as const;",
       "  ['entities', 'entity'],",
-      "for (const name of unset ?? ['dictionary']) {",
+      'for (const name of LIST_NAMES) {',
+      'for (const [list, schema] of SAVED_LISTS) {',
+      'new Map([',
+      "new Set(['con', 'prn', 'aux', 'nul']);",
+      'const seen = new Set<string>();',
+      'new Map(SAVED_LISTS);',
+      'for (let i = 0; i < list.length; i += 1) {',
       "for (const folder of ['entities', 'subject-areas'] as const) {",
       "return ['a'];",
       'const first = issues[0]!;',

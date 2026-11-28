@@ -25,6 +25,7 @@ export function applyUpdate(
   drops: ReadonlyMap<string, string> = NO_DROPS,
 ): void {
   let emptied = false;
+  // work-ok: the unset names of one command
   for (const name of unset ?? []) {
     const inner = PHYSICAL_KEYS.get(name);
     if (inner === undefined) {

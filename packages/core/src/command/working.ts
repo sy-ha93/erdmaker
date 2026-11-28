@@ -8,7 +8,7 @@ import type {
   ReadonlyModel,
   SubjectAreaData,
 } from '../model/types.js';
-import type { IdSpace, Physical } from './ids.js';
+import type { IdSpace, Physical, SuffixMemory } from './ids.js';
 import {
   fileSpace,
   type InitialPaths,
@@ -196,6 +196,8 @@ export class Working {
   >();
   /** Attributes and keys made by this state, which it may change in place. */
   private readonly ownedMembers = new Set<object>();
+  /** By namespace: the suffix memory of generated ids (spec FR-05). */
+  private readonly suffixMemories = new Map<string, SuffixMemory>();
 
   constructor(
     readonly start: ReadonlyModel,
@@ -244,6 +246,7 @@ export class Working {
         return physicals;
       },
       files: this.files('entities'),
+      suffixes: this.suffixes('entities'),
     };
   }
 
@@ -253,6 +256,7 @@ export class Working {
       kind: 'subject area',
       hasId: (id) => this.positions('subjectAreas', id).length > 0,
       files: this.files('subject-areas'),
+      suffixes: this.suffixes('subjectAreas'),
     };
   }
 
@@ -266,6 +270,8 @@ export class Working {
       kind: member === 'attributes' ? 'attribute' : 'key',
       entity: entityId,
       hasId: (id) => this.memberPositions(entity, member, id).length > 0,
+      // By position: an entity made again in the batch is another namespace.
+      suffixes: this.suffixes(`${member} ${entity}`),
     };
   }
 
@@ -360,26 +366,43 @@ export class Working {
    * last one (spec FR-07).
    */
   removeFromKeys(entity: number, attribute: string): void {
-    const keys = () =>
-      this.members(entity, 'keys') as readonly DeepReadonly<KeyData>[];
-    noteWork('scan', keys().length);
-    let removed = false;
-    // From the end, so removing a key moves none still to be seen.
-    for (let p = keys().length - 1; p >= 0; p -= 1) {
-      const held = keys()[p]!.attributes;
+    const keys = this.members(
+      entity,
+      'keys',
+    ) as readonly DeepReadonly<KeyData>[];
+    noteWork('scan', keys.length);
+    // The first key that holds it; with none, nothing is owned or changed.
+    let first = -1;
+    for (let p = 0; p < keys.length && first < 0; p += 1) {
+      const held = keys[p]!.attributes;
       noteWork('scan', held.length);
-      if (!held.includes(attribute)) continue;
-      const key = this.ownMember<KeyData>(entity, 'keys', p);
-      let kept = 0;
-      for (const id of key.attributes)
-        if (id !== attribute) key.attributes[kept++] = id;
-      key.attributes.length = kept;
-      if (kept === 0) {
-        this.removeMember(entity, 'keys', p);
-        removed = true;
-      }
+      if (held.includes(attribute)) first = p;
     }
-    if (removed) this.dropEmptyKeys(entity);
+    if (first < 0) return;
+    // One pass from there: each key that holds it loses it, and the keys
+    // left with an attribute close up behind, so the list is moved once
+    // however many keys go (Codex review: one splice per key was n²).
+    const list = this.ownMembers(entity, 'keys') as KeyData[];
+    let kept = first;
+    for (let p = first; p < list.length; p += 1) {
+      const held = list[p]!.attributes;
+      if (p > first) noteWork('scan', held.length);
+      if (!held.includes(attribute)) {
+        list[kept++] = list[p]!;
+        continue;
+      }
+      const key = this.ownMember<KeyData>(entity, 'keys', p);
+      let left = 0;
+      for (const id of key.attributes)
+        if (id !== attribute) key.attributes[left++] = id;
+      key.attributes.length = left;
+      if (left > 0) list[kept++] = key;
+    }
+    if (kept === list.length) return;
+    noteWork('copy', list.length - first);
+    list.length = kept;
+    this.staleMembers(entity, 'keys');
+    this.dropEmptyKeys(entity);
   }
 
   /** Removes `keys` from the entity at `entity` when a command emptied it. */
@@ -410,17 +433,27 @@ export class Working {
   removeAreaNodes(area: string, ids: readonly string[]): void {
     const cells = this.cells('layouts');
     noteWork('scan', cells.length);
+    // Built once, when a layout of the area has a node: then each layout's
+    // own nodes are walked once, so the work is the ids plus the nodes of
+    // the area's layouts, not the ids times the layouts (Codex review).
+    let gone: Set<string> | undefined;
     for (let p = 0; p < cells.length; p += 1) {
       const item = cells[p];
       if (!item || (item.data as LayoutData).subjectArea !== area) continue;
-      noteWork('scan', ids.length);
+      const nodes = Object.keys((item.data as LayoutData).nodes);
+      noteWork('scan', nodes.length);
+      if (nodes.length === 0) continue;
+      if (!gone) {
+        noteWork('index-build', ids.length);
+        gone = new Set(ids);
+      }
       let holds = false;
-      for (const id of ids) {
-        if (Object.hasOwn((item.data as LayoutData).nodes, id)) holds = true;
+      for (let i = 0; i < nodes.length && !holds; i += 1) {
+        holds = gone.has(nodes[i]!);
       }
       if (!holds) continue;
       const data = this.own<LayoutData>('layouts', p);
-      for (const id of ids) delete data.nodes[id];
+      for (const id of nodes) if (gone.has(id)) delete data.nodes[id];
     }
   }
 
@@ -534,6 +567,16 @@ export class Working {
       const data = this.own<LayoutData>('layouts', p);
       delete data.nodes[entity];
     }
+  }
+
+  /** The suffix memory of the namespace `name`, made on first use. */
+  private suffixes(name: string): SuffixMemory {
+    let memory = this.suffixMemories.get(name);
+    if (!memory) {
+      memory = new Map();
+      this.suffixMemories.set(name, memory);
+    }
+    return memory;
   }
 
   /** The attributes or keys of the entity at `entity` now. */
