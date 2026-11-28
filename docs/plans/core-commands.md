@@ -438,7 +438,7 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
   process.exit(JSON.stringify(Object.keys(d).sort()) === '[\"ajv\",\"yaml\"]' ? 0 : 1)"
   ```
 
-- [ ] AC-18 PR (리드): `gh pr checks`. 넘길 때는 "대기"다.
+- [x] AC-18 PR (리드): `gh pr checks`. 넘길 때는 "대기"다.
 
 ## 6. 위험과 참고
 
