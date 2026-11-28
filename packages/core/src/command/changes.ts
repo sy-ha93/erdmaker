@@ -88,7 +88,7 @@ export function endModel(working: Working): ReadonlyModel {
   if (same) return start;
   const model = {
     dir: start.dir,
-    ...(start.manifest === undefined ? {} : { manifest: start.manifest }),
+    ...(start.manifest === undefined ? {} : { manifest: start.manifest }), // work-ok: the manifest field of the model record, not a list
     entities: lists.get('entities')!,
     relationships: lists.get('relationships')!,
     subtypes: lists.get('subtypes')!,

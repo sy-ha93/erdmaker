@@ -106,7 +106,7 @@ export function reservedPaths(
     const path = normalizePath(file);
     if (path !== '' && !initial.has(path)) kept.add(path);
   }
-  return [...kept];
+  return [...kept]; // work-ok: the reserved paths, once when the editor is made
 }
 
 /**
@@ -142,6 +142,7 @@ export function dictionaryFolderOf(
   const parts = components(path);
   for (const folder of folders) {
     const leading = components(folder);
+    // work-ok: the components of one dictionary folder path
     if (leading.every((part) => part === '..')) {
       return folder === '' ? '.' : folder;
     }
@@ -202,5 +203,5 @@ export async function listReservedFiles(
       found.push(joinPath(under, entry.name));
     }
   }
-  return found.sort(compareCodeUnits);
+  return found.sort(compareCodeUnits); // work-ok: listReservedFiles, called by the caller before an editor exists
 }

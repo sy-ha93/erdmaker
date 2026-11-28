@@ -14,7 +14,7 @@ export type SavedList = (typeof SAVED_LISTS)[number][0];
 type ListName = SavedList | 'dictionaries';
 
 const LISTS: readonly ListName[] = [
-  ...SAVED_LISTS.map(([list]) => list),
+  ...SAVED_LISTS.map(([list]) => list), // work-ok: the six list names, once when the module loads
   'dictionaries',
 ];
 
@@ -97,7 +97,8 @@ function itemFile(item: unknown): string | undefined {
 function isInside(file: string, dir: string): boolean {
   let rest: string;
   if (dir === '') rest = file;
-  else if (file.startsWith(`${dir}/`)) rest = file.slice(dir.length + 1);
+  else if (file.startsWith(`${dir}/`))
+    rest = file.slice(dir.length + 1); // work-ok: a string: the path after the folder
   else return false;
   return rest !== '..' && !rest.startsWith('../');
 }
@@ -160,8 +161,8 @@ export function readModelShape(
   }
 
   const all = manifest
-    ? [manifest, ...items, ...dictionaries]
-    : [...items, ...dictionaries];
+    ? [manifest, ...items, ...dictionaries] // work-ok: the shape check, once per editor and once per save; not per command
+    : [...items, ...dictionaries]; // work-ok: the shape check, once per editor and once per save; not per command
   let twice: string | undefined;
   const seen = new Set<string>();
   for (const { file } of all) {

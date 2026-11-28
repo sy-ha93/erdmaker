@@ -29,11 +29,11 @@ function shapeOf(model: unknown): ModelShape {
 
 /** The folder part of a normalized path; `""` for a path with no `/`. */
 function parentOf(path: string): string {
-  const at = path.lastIndexOf('/');
-  return at === -1 ? '' : path.slice(0, at);
+  const at = path.lastIndexOf('/'); // work-ok: a string: one path
+  return at === -1 ? '' : path.slice(0, at); // work-ok: a string: one path
 }
 
-const nameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
+const nameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1); // work-ok: a string: one path
 
 /**
  * Check (2): the first pair, by smaller then larger path, of two paths of
@@ -52,14 +52,15 @@ function letterCasePair(
     else byKey.set(key, [path]);
   }
   let first: [string, string] | undefined;
+  // work-ok: a save, once per writeChanges; not per command
   for (const group of byKey.values()) {
     if (group.length < 2) continue;
-    group.sort(compareCodeUnits);
+    group.sort(compareCodeUnits); // work-ok: a save: one group of paths with one key
     // The smallest path of a pair is always the group's first; the larger
     // is the next one when the first is touched, else the first touched.
     const larger = touched.has(group[0]!)
       ? group[1]
-      : group.find((path) => touched.has(path));
+      : group.find((path) => touched.has(path)); // work-ok: a save: one group of paths with one key
     if (larger === undefined) continue;
     const pair: [string, string] = [group[0]!, larger];
     if (
@@ -133,20 +134,20 @@ export async function writeChanges(
       isNew: had === undefined,
     });
   }
-  writes.sort((a, b) => compareCodeUnits(a.file, b.file));
+  writes.sort((a, b) => compareCodeUnits(a.file, b.file)); // work-ok: a save, once per writeChanges; not per command
   // A path any item of `after` holds is not removed, the manifest's and the
   // dictionaries' included; only the five lists count for letter case (2).
   const held = new Set(kept);
   if (next.manifest) held.add(next.manifest.file);
   for (const { file } of next.dictionaries) held.add(file);
   const removals: string[] = [];
-  for (const file of owned.keys()) if (!held.has(file)) removals.push(file);
-  removals.sort(compareCodeUnits);
+  for (const file of owned.keys()) if (!held.has(file)) removals.push(file); // work-ok: a save, once per writeChanges; not per command
+  removals.sort(compareCodeUnits); // work-ok: a save, once per writeChanges; not per command
 
   // (2)
   const touched = new Set<string>(removals);
   for (const { file } of writes) touched.add(file);
-  const pair = letterCasePair(new Set([...owned.keys(), ...kept]), touched);
+  const pair = letterCasePair(new Set([...owned.keys(), ...kept]), touched); // work-ok: a save, once per writeChanges; not per command
   if (pair) {
     throw new Error(
       `Cannot save: ${pair[0]} and ${pair[1]} differ only in letter case`,
@@ -169,6 +170,7 @@ export async function writeChanges(
     if (paths) paths.push(file);
     else byParent.set(parent, [file]);
   }
+  // work-ok: a save: the folders of the new files, once per writeChanges
   for (const parent of [...byParent.keys()].sort(compareCodeUnits)) {
     const names = new Set<string>();
     for (const entry of await fs.list(parent)) names.add(pathKey(entry.name));

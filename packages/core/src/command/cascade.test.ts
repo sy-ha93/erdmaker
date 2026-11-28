@@ -437,6 +437,38 @@ describe('연쇄와 대상', () => {
     expect(next.entities).toBe(model.entities);
   });
 
+  test('removeEntities takes out the nodes of every id it names, even one the area does not list', () => {
+    // `b` has a node in the layout of `s` but is not in `s`: an R09 model.
+    const model = handModel({
+      entities: [entityItem('a'), entityItem('b')],
+      subjectAreas: [areaItem('s', ['a'])],
+      layouts: [
+        {
+          file: 'layouts/s.json',
+          data: {
+            formatVersion: '0.1',
+            subjectArea: 's',
+            nodes: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } },
+            edges: {},
+          },
+        },
+      ],
+    });
+    const editor = createEditor(model);
+    expect(editor.issues.map((issue) => issue.rule)).toEqual(['R09']);
+    const result = editor.execute({
+      type: 'subjectArea.removeEntities',
+      id: 's',
+      entities: ['b'],
+    });
+    expect(result.ok).toBe(true);
+    const next = editor.model;
+    expect(next).not.toBe(model);
+    expect(next.subjectAreas).toBe(model.subjectAreas);
+    expect(Object.keys(next.layouts[0]!.data.nodes)).toEqual(['a']);
+    expect(editor.issues).toEqual([]);
+  });
+
   test('a missing entity or subject area is not-found', async () => {
     const editor = createEditor(await exampleModel());
     expect(

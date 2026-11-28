@@ -78,4 +78,41 @@ describe('명령 직렬화', () => {
     };
     expect(typeof writes).toBe('function');
   });
+
+  test('the types take domain or a data type, not both, as the schema does', async () => {
+    const editor = createEditor(await exampleModel());
+    const withDomain: Command = {
+      type: 'attribute.create',
+      entity: 'order',
+      name: '메모',
+      domain: 'memo',
+    };
+    const both = {
+      type: 'attribute.create',
+      entity: 'order',
+      name: '메모',
+      domain: 'memo',
+      dataType: { base: 'string' },
+    } as const;
+    // @ts-expect-error domain and dataType together
+    const typedBoth: Command = both;
+    const setBoth = {
+      type: 'attribute.update',
+      entity: 'order',
+      id: 'ord_dtm',
+      set: { domain: 'memo', type: { base: 'string' } },
+    } as const;
+    // @ts-expect-error set.domain and set.type together
+    const typedSetBoth: Command = setBoth;
+    expect(editor.execute(withDomain)).toMatchObject({
+      ok: false,
+      code: 'validation',
+    });
+    for (const command of [typedBoth, typedSetBoth]) {
+      expect(editor.execute(command)).toMatchObject({
+        ok: false,
+        code: 'invalid-command',
+      });
+    }
+  });
 });

@@ -183,7 +183,7 @@ function suffixed(stem: string, n: number): string {
   const room = MAX_ID_LENGTH - suffix.length;
   return stem.length <= room
     ? `${stem}${suffix}`
-    : `${fitId(stem.slice(0, room))}${suffix}`;
+    : `${fitId(stem.slice(0, room))}${suffix}`; // work-ok: a string, cut to fit an id
 }
 
 /**

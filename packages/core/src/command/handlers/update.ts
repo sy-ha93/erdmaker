@@ -38,12 +38,13 @@ export function applyUpdate(
     }
   }
   const values = (set ?? {}) as Fields;
+  // work-ok: the set record of one command
   for (const key of Object.keys(values)) {
     const value = values[key];
     if (key === 'physical') {
       const physical = value as Fields;
-      if (Object.keys(physical).length === 0) continue;
-      fields.physical = { ...(fields.physical as Fields), ...physical };
+      if (Object.keys(physical).length === 0) continue; // work-ok: the set.physical record of one command
+      fields.physical = { ...(fields.physical as Fields), ...physical }; // work-ok: the physical record of one item and of one command
       continue;
     }
     fields[key] = value;
@@ -51,6 +52,7 @@ export function applyUpdate(
     if (dropped !== undefined) delete fields[dropped];
   }
   const physical = fields.physical as Fields | undefined;
+  // work-ok: the physical record of one item
   if (emptied && physical && Object.keys(physical).length === 0) {
     delete fields.physical;
   }

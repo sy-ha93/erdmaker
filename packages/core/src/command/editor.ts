@@ -154,7 +154,7 @@ class ModelEditor implements Editor {
 
   /** Runs `call` unless a call is running already; never throws. */
   private guard(call: () => CommandResult): CommandResult {
-    if (this.busy) return { ...BUSY, issues: [] };
+    if (this.busy) return { ...BUSY, issues: [] }; // work-ok: the fields of one refusal record
     this.busy = true;
     try {
       return call();
@@ -219,7 +219,7 @@ class ModelEditor implements Editor {
     const before = this.current;
     const model = endModel(working);
     if (model === before.model) {
-      return { ok: true, model, issues: before.issues, ...made };
+      return { ok: true, model, issues: before.issues, ...made }; // work-ok: the id or ids field of the result record
     }
     const found: Issue[] = validateModel(model);
     if (errorCount(found) > errorCount(before.issues)) {
@@ -239,7 +239,7 @@ class ModelEditor implements Editor {
     if (this.undoSteps.length > HISTORY) this.undoSteps.shift();
     this.redoSteps.length = 0;
     this.current = next;
-    return { ok: true, model: next.model, issues: next.issues, ...made };
+    return { ok: true, model: next.model, issues: next.issues, ...made }; // work-ok: the id or ids field of the result record
   }
 }
 

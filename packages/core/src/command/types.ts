@@ -50,15 +50,17 @@ export interface EntityDeleteCommand {
   id: string;
 }
 
-/** Fields every attribute command may set, `type` named as the attribute's data field. */
+/**
+ * Fields every attribute command may set, `type` named as the attribute's
+ * data field. `domain` and `type` are set in `DomainOrType`, as one or the
+ * other (spec FR-07).
+ */
 interface AttributeFields {
   name: string;
   definition?: string;
   note?: string;
   scope?: Scope;
   term?: string;
-  domain?: string;
-  type?: DataType;
   nullable?: boolean;
   default?: DefaultValue;
   validValues?: readonly ValidValue[];
@@ -67,21 +69,31 @@ interface AttributeFields {
   ext?: Ext;
 }
 
-export interface AttributeCreateCommand extends Omit<AttributeFields, 'type'> {
+/** A domain or a data type, never both: the command schema refuses the pair. */
+type DomainOrType<TypeField extends string> =
+  | ({ domain?: string } & { [F in TypeField]?: never })
+  | ({ domain?: never } & { [F in TypeField]?: DataType });
+
+interface AttributeCreateFields extends AttributeFields {
   type: 'attribute.create';
   entity: string;
   id?: string;
-  /** Stored as the attribute's `type` (the command's `type` names the command). */
-  dataType?: DataType;
   /** The attribute it goes before; absent: the end. */
   before?: string;
 }
+
+/**
+ * `attribute.create`. `dataType` is stored as the attribute's `type` (the
+ * command's `type` names the command).
+ */
+export type AttributeCreateCommand = AttributeCreateFields &
+  DomainOrType<'dataType'>;
 
 export interface AttributeUpdateCommand {
   type: 'attribute.update';
   entity: string;
   id: string;
-  set?: Partial<AttributeFields>;
+  set?: Partial<AttributeFields> & DomainOrType<'type'>;
   unset?: readonly (
     | 'definition'
     | 'note'
