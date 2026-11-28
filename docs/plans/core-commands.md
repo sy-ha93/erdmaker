@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 대기
+**상태**: 진행 중 (단계 1/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -189,9 +189,9 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 0: 준비
 
 **목표**: 기준선 둘과 시작 측정값이 있고 계획이 커밋돼 있다.
-**위험**: 낮음 · **상태**: 대기 · **수용 기준**: 없음 (AC-17의 "작업 전")
+**위험**: 낮음 · **상태**: 완료 · **수용 기준**: 없음 (AC-17의 "작업 전")
 
-- [ ] 0.1 **(다른 어떤 명령보다 먼저)** 저장소 루트에서 기준선을 만든다. 종료 상태가 0이 아니면 멈추고 알린다.
+- [x] 0.1 **(다른 어떤 명령보다 먼저)** 저장소 루트에서 기준선을 만든다. 종료 상태가 0이 아니면 멈추고 알린다.
 
   ```bash
   (set -euo pipefail
@@ -216,24 +216,24 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
    git check-ignore -q "$l")
   ```
 
-- [ ] 0.2 `git branch --show-current`가 `feature/core-commands`인지 본다(확인만 한다. 다르면 멈추고 알린다).
-- [ ] 0.3 5장의 단계 관문을 한 번 돌려 시작 값을 7장에 적는다: 테스트 파일 수와 테스트 수(기대 39개 파일 657개), `pnpm test`의 시간, 목록 파일의 줄 수.
-- [ ] 0.4 `git add docs/plans/core-commands.md` 뒤 커밋한다(`Add the F03 plan`). 이 커밋의 해시는 단계 1의 커밋에서 7장에 적는다.
+- [x] 0.2 `git branch --show-current`가 `feature/core-commands`인지 본다(확인만 한다. 다르면 멈추고 알린다).
+- [x] 0.3 5장의 단계 관문을 한 번 돌려 시작 값을 7장에 적는다: 테스트 파일 수와 테스트 수(기대 39개 파일 657개), `pnpm test`의 시간, 목록 파일의 줄 수.
+- [x] 0.4 `git add docs/plans/core-commands.md` 뒤 커밋한다(`Add the F03 plan`). 이 커밋의 해시는 단계 1의 커밋에서 7장에 적는다.
 
 ### 단계 1: F02 바탕 정리
 
 **목표**: 항목 하나를 글로 바꾸는 함수와 `ReadonlyModel`이 있다. 동작은 그대로다.
-**위험**: 중간 · **상태**: 대기 · **수용 기준**: 없음 (AC-01의 타입 부분을 먼저) · **요구사항**: FR-02(타입, 넓히기), FR-10(감시 지점)
+**위험**: 중간 · **상태**: 완료 · **수용 기준**: 없음 (AC-01의 타입 부분을 먼저) · **요구사항**: FR-02(타입, 넓히기), FR-10(감시 지점)
 
-- [ ] 1.1 **지금 동작을 먼저 고정한다**: `model/serialize-order.test.ts`, `describe('serializeModel: 예외의 경계')`. 아래 넷을 쓰고 **떼어 내기 전의 코드에 먼저 돌려 본 결과를 7장에 적는다.** 지금 코드가 아래 설명과 다르면 **지금 동작이 이긴다**: 본 그대로를 단언으로 고정하고 다른 점을 7장에 적는다. 떼어 낸 뒤에는 이 파일을 고치지 않은 채 통과해야 한다.
+- [x] 1.1 **지금 동작을 먼저 고정한다**: `model/serialize-order.test.ts`, `describe('serializeModel: 예외의 경계')`. 아래 넷을 쓰고 **떼어 내기 전의 코드에 먼저 돌려 본 결과를 7장에 적는다.** 지금 코드가 아래 설명과 다르면 **지금 동작이 이긴다**: 본 그대로를 단언으로 고정하고 다른 점을 7장에 적는다. 떼어 낸 뒤에는 이 파일을 고치지 않은 채 통과해야 한다.
   - 모든 항목의 검사가 먼저다: 앞 항목의 글 만들기가 `RangeError`를 던지게 하고(`Document.prototype.toString` 감시) 뒤 항목에 JSON 값이 아닌 데이터를 두면, 뒤 항목의 `must be a JSON value` `TypeError`가 나온다.
   - `yamlText`와 `layoutJson`의 `RangeError`만 바뀌고 `cause`가 원래 오류와 `toBe`다.
   - 첫 훑기(JSON 값 검사)에서 걸리는 둘은 원래 오류가 아니라 `Cannot write <file>: <path> must be a JSON value`인 `TypeError`다: `RangeError`를 던지는 접근자 속성(접근자는 불리지 않는다), 첫 `ownKeys`에서 `RangeError`를 던지는 Proxy.
   - 정규화에서 난 오류는 그대로다: 검사 때는 평범하게 답하고 **둘째** `ownKeys` 호출에서 `RangeError`를 던지는 Proxy는 그 `RangeError` 객체가 바뀌지 않은 채 나온다(`toBe`).
-- [ ] 1.2 **테스트**: `model/serialize-item.test.ts`, `describe('항목 직렬화')`. 예제 29개 항목마다 `serializeItem`의 글이 `serializeModel`의 그 파일 글과 같다. 1.1의 뒤 셋이 `serializeItem`에서도 같은 결과다. **구현**: `model/serialize-item.ts`, `serialize.ts`가 그것을 부른다(결정 4).
-- [ ] 1.3 **테스트**: `model/readonly.test.ts`, `describe('읽기 전용 모델')`. `ReadonlyModel` 값이 `validateModel`, `serializeModel`, `writeModel`에 그대로 들어가고 결과가 `Model`로 넘긴 것과 `toEqual`이다. `Model`이 `ReadonlyModel`에 대입된다. `@ts-expect-error` 셋(항목 데이터의 필드 대입, 목록 `push`, `ext` 안쪽 대입). 타입 검사는 `pnpm lint`가 한다. **구현**: `model/types.ts`, 그리고 `validateModel`·`modelItems`·`serializeModel`·`modelFiles`·`writeModel`의 매개변수. 본문은 고치지 않는다. `index.ts`에 타입 `ReadonlyModel`.
-- [ ] 1.4 `validate/schema.ts`: `schemaIssues`의 몸통을 `ValidateFunction`을 받는 안쪽 함수로 옮기고 `schemaIssues`가 그것을 부른다. 새 테스트는 없다(기존 `schema.test.ts`가 지킨다).
-- [ ] 1.5 **검증**: 5장의 단계 관문, 그리고 `main`에 있던 테스트와 도우미 파일이 작업 폴더와 색인 양쪽에서 바이트까지 같다는 증명(종료 상태 0).
+- [x] 1.2 **테스트**: `model/serialize-item.test.ts`, `describe('항목 직렬화')`. 예제 29개 항목마다 `serializeItem`의 글이 `serializeModel`의 그 파일 글과 같다. 1.1의 뒤 셋이 `serializeItem`에서도 같은 결과다. **구현**: `model/serialize-item.ts`, `serialize.ts`가 그것을 부른다(결정 4).
+- [x] 1.3 **테스트**: `model/readonly.test.ts`, `describe('읽기 전용 모델')`. `ReadonlyModel` 값이 `validateModel`, `serializeModel`, `writeModel`에 그대로 들어가고 결과가 `Model`로 넘긴 것과 `toEqual`이다. `Model`이 `ReadonlyModel`에 대입된다. `@ts-expect-error` 셋(항목 데이터의 필드 대입, 목록 `push`, `ext` 안쪽 대입). 타입 검사는 `pnpm lint`가 한다. **구현**: `model/types.ts`, 그리고 `validateModel`·`modelItems`·`serializeModel`·`modelFiles`·`writeModel`의 매개변수. 본문은 고치지 않는다. `index.ts`에 타입 `ReadonlyModel`.
+- [x] 1.4 `validate/schema.ts`: `schemaIssues`의 몸통을 `ValidateFunction`을 받는 안쪽 함수로 옮기고 `schemaIssues`가 그것을 부른다. 새 테스트는 없다(기존 `schema.test.ts`가 지킨다).
+- [x] 1.5 **검증**: 5장의 단계 관문, 그리고 `main`에 있던 테스트와 도우미 파일이 작업 폴더와 색인 양쪽에서 바이트까지 같다는 증명(종료 상태 0).
 
   ```bash
   (set -euo pipefail
@@ -244,7 +244,7 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
    git diff --cached --quiet main -- "${f[@]}")
   ```
 
-- [ ] 1.6 커밋한다(`Split out the per-item serializer and add ReadonlyModel`). 0.4의 해시를 7장에 적어 함께 넣는다.
+- [x] 1.6 커밋한다(`Split out the per-item serializer and add ReadonlyModel`). 0.4의 해시를 7장에 적어 함께 넣는다.
 
 ### 단계 2: 입력 층
 
@@ -474,7 +474,27 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 
 (구현하면서 적는다: 0.3의 시작 값, 계획 커밋 해시(단계 1의 커밋에서), 1.1에서 지금 코드에 돌려 본 결과, 단계마다 테스트 수와 `pnpm test` 시간, 5.1의 `tolerance`·`c`와 T(250)·T(500)·T(1000), 시간 테스트 15번의 결과와 잰 값, 5.1과 단계 7의 변이마다 본 실패, 깨뜨려 확인한 것, 고친 기대값이나 검사 스크립트, 스펙이 정하지 않아 정한 것, 계획과 달라진 점. 이 절의 변경은 각 단계의 커밋에 넣는다)
 
+### 단계 0 (2026-11-28)
+
+- 0.1: 다른 명령(브랜치·상태 확인의 읽기 명령 하나 뒤)보다 먼저 실행했다. `exit=0`. 두 기준선이 없어서 새로 만들었다: `docs/handoff/core-commands-spikes-before.sha256`(866줄), `docs/handoff/core-commands-f02-tests.list`(44줄). 둘 다 `git check-ignore` 통과.
+- 0.2: `feature/core-commands` 확인.
+- 0.3: 단계 관문 `exit=0`. 39개 파일 657개 통과, `pnpm test` 73.99초. 목록 파일 44줄.
+- 0.4: 계획과 스펙은 리드가 이미 `b7a0350`(`Add the F03 plan and the spec changes from its review`)으로 커밋했다. 이 걸음은 한 것으로 치고 따로 커밋하지 않았다. 계획 커밋의 해시는 `b7a0350`이다.
+
+### 단계 1 (2026-11-28)
+
+- 1.1: `model/serialize-order.test.ts`, `describe('serializeModel: 예외의 경계')`, 테스트 7개. 떼어 내기 전의 코드에 먼저 돌려 7개 모두 통과했다. 본 동작은 계획의 설명과 같다(다른 점 없음).
+  - 검사가 먼저: `Document.prototype.toString`이 `RangeError`를 던지게 하고 뒤 항목 `entities/b.yaml`에 함수 값 `x`를 두면 `TypeError('Cannot write entities/b.yaml: /x must be a JSON value')`이고 `toString`은 한 번도 불리지 않는다.
+  - `yamlText`·`layoutJson`의 `RangeError`는 `Cannot write <file>: it is too large or too deeply nested to write`인 `TypeError`가 되고 `cause`가 원래 오류와 `toBe`다. `layoutJson`의 다른 `Error`는 그대로 나온다(`toBe`. 계획의 넷에 더한 하나. `yamlText` 쪽은 F02의 `serialize-too-large.test.ts`가 이미 본다).
+  - `RangeError`를 던지는 접근자 `/definition`: 불리지 않고 `Cannot write entities/e.yaml: /definition must be a JSON value`. 첫 `ownKeys`에서 `RangeError`를 던지는 Proxy `/ext`: `Cannot write entities/e.yaml: /ext must be a JSON value`.
+  - 첫 `ownKeys`는 답하고 둘째에서 `RangeError`를 던지는 Proxy(`/ext`, 대상 `{ a: 1 }`): 그 `RangeError`가 그대로(`toBe`) 나오고 `ownKeys`는 정확히 2번 불린다(검사에서 1번, `canonical`의 `Object.keys`에서 1번).
+- 1.2: `model/serialize-item.ts`에 `checkItemData(file, data)`(JSON 값 검사의 첫 오류를 `TypeError`로), `itemText(file, data, schema)`(`canonical`은 `try` 밖, `RangeError`만 바꿈), `serializeItem(file, data, schema)`(둘을 차례로)를 두었다. `yamlText`와 그 도우미(`YAML_OPTIONS`, `isBlankLines`, `keyNode`, `yamlNode`, `lastScalar`)는 글자 그대로 옮겼다. `serializeModel`은 모든 항목에 `checkItemData`를 부른 뒤 `itemText`를 부른다. `serialize-item.test.ts`, `describe('항목 직렬화')`, 테스트 7개: 예제 29개 항목의 글이 `serializeModel`의 것과 같고, 1.1의 뒤 셋(과 `layoutJson`의 다른 오류)이 `serializeItem`에서도 같다. 구현 전에 모듈이 없어 실패하는 것을 봤다.
+- 1.3: `model/types.ts`에 `DeepReadonly<T>`(배열 → `readonly DeepReadonly<U>[]`, 객체 → `readonly` 필드)와 `ReadonlyModel = DeepReadonly<Model>`. `validateModel`, `modelItems`, `serializeModel`, `modelFiles`, `writeModel`의 매개변수만 `ReadonlyModel`로 넓혔다(본문 그대로). `index.ts`에 타입 `ReadonlyModel`. `readonly.test.ts`, `describe('읽기 전용 모델')`, 테스트 2개: `Model`이 `ReadonlyModel`에 대입되고, 세 함수의 결과가 `Model`로 넘긴 것과 `toEqual`(`writeModel`은 새 엔터티 하나를 더한 모델을 두 메모리 어댑터에 써서 비교). `@ts-expect-error` 셋(항목 데이터의 `name` 대입, `entities.push`, `ext` 안 객체의 키 대입)은 부르지 않는 함수 안에 두었다. 타입을 넣기 전 `tsc -p tsconfig.test.json`이 `TS2305`와 `TS2578` 셋으로 실패했고, 타입만 넣고 넓히기 전에는 `TS2345` 셋으로 실패했다.
+- 1.4: `validate/schema.ts`에 `validatorIssues(file, validate: ValidateFunction, data)`를 두고 `schemaIssues`가 `validatorIssues(file, schemaValidator(name), data)`를 부른다. 몸통은 그대로 옮겼다.
+- 1.5: 단계 관문 `exit=0`, 불변 증명 `exit=0`. 42개 파일 673개 통과(657 + 7 + 7 + 2), `pnpm test` 73.97초(단계 0과 거의 같다).
+- 계획과 달라진 점: (1) 모듈 표의 `serialize-item.ts`에 `itemText`, `serializeItem` 말고 `checkItemData`도 내보낸다. `serializeModel`이 "모든 항목을 먼저 검사한 뒤 글을 만든다"를 지키려면 검사만 따로 불러야 한다. 편집기와 `writeChanges`는 계획대로 `serializeItem`만 부른다. (2) 1.1과 1.2에 `layoutJson`의 다른 오류가 그대로 나오는 사례를 하나씩 더했다.
+
 ---
 
-마지막 수정: 2026-11-28 (계획 리뷰 3회차 반영)
-상태: 대기
+마지막 수정: 2026-11-28 09:40
+상태: 진행 중 (단계 2/8)

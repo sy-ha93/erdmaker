@@ -1,3 +1,4 @@
+import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { Issue } from '../model/types.js';
 import { escapePointerToken } from '../parse/pointer.js';
 import { type SchemaName, schemaValidator } from '../schema/ajv.js';
@@ -14,7 +15,19 @@ export function schemaIssues(
   name: SchemaName,
   data: unknown,
 ): Issue[] {
-  const validate = schemaValidator(name);
+  return validatorIssues(file, schemaValidator(name), data);
+}
+
+/**
+ * `schemaIssues` for any compiled schema: `data` checked with `validate`,
+ * each Ajv error as a `schema` issue at `file`, worded and placed the same
+ * way.
+ */
+export function validatorIssues(
+  file: string,
+  validate: ValidateFunction,
+  data: unknown,
+): Issue[] {
   let valid: boolean;
   try {
     valid = validate(data) as boolean;

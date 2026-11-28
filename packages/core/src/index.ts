@@ -24,6 +24,7 @@ export type {
   PhysicalTypes,
   Position,
   PositionIndex,
+  ReadonlyModel,
   ReferentialAction,
   RelationshipData,
   Scope,

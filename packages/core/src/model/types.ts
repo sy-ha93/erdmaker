@@ -291,3 +291,16 @@ export interface Model {
   /** One item per dictionary file, in reading order. */
   dictionaries: ModelItem<DictionaryData>[];
 }
+
+/** `T` read-only all the way down: arrays become `readonly` arrays, object fields `readonly`. */
+export type DeepReadonly<T> = T extends readonly (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+/**
+ * A `Model` that typed code cannot change. A `Model` is one; the functions
+ * that only read a model take this.
+ */
+export type ReadonlyModel = DeepReadonly<Model>;
