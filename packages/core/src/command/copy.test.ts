@@ -46,7 +46,7 @@ describe('믿을 수 없는 입력: 복사', () => {
   );
 
   test('the refused table has a row for each kind of failure of steps 1 and 2', () => {
-    expect(copyRows.length).toBe(27);
+    expect(copyRows.length).toBe(29);
   });
 
   test.each(copyRows.map((row) => [row.name, row] as const))(
@@ -62,6 +62,8 @@ describe('믿을 수 없는 입력: 복사', () => {
       } finally {
         row.cleanup?.();
       }
+      // The inherited-index row must leave `Array.prototype` as it found it.
+      expect(Object.hasOwn(Array.prototype, 0)).toBe(false);
     },
   );
 

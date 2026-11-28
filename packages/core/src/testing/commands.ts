@@ -11,6 +11,12 @@ export interface RejectedInput {
   step: 'shape' | 'copy' | 'type' | 'schema';
   input: () => unknown;
   message: string;
+  /**
+   * The message `readCommand` and `checkCommand` return, before the one-line
+   * pass, when it differs from `message`. Phase 5's `execute` must turn it
+   * into `message` through `oneLineMessage`.
+   */
+  raw?: string;
   /** Undoes what `input` changed outside the value (a prototype). */
   cleanup?: () => void;
 }
@@ -113,6 +119,18 @@ export const REJECTED_INPUTS: readonly RejectedInput[] = [
     step: 'shape',
     input: () => undefined,
     message: 'command must be an object',
+  },
+  {
+    name: 'a function as the command',
+    step: 'shape',
+    input: () => () => ({ type: 'entity.create', name: 'a' }),
+    message: 'command must be an object',
+  },
+  {
+    name: 'a Date as the command',
+    step: 'copy',
+    input: () => new Date(0),
+    message: '/ must be a JSON value',
   },
   {
     name: 'a Date in ext',
@@ -293,6 +311,13 @@ export const REJECTED_INPUTS: readonly RejectedInput[] = [
     step: 'type',
     input: () => ({ type: `a\n${'b'.repeat(98)}` }),
     message: `unknown command type "a\\n${'b'.repeat(48)}…"`,
+  },
+  {
+    name: 'a type with a line separator',
+    step: 'type',
+    input: () => ({ type: 'entity\u2028x' }),
+    raw: 'unknown command type "entity\u2028x"',
+    message: 'unknown command type "entity\\u{2028}x"',
   },
   {
     name: 'a message longer than 500 code points',

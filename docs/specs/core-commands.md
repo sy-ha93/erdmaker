@@ -98,13 +98,13 @@ type CommandResult =
 
 `execute`는 받은 값을 믿지 않는다. 먼저 받은 값을 **한 번 걸으며 평범한 데이터로 복사**하고, 그 뒤의 모든 일은 사본으로만 한다. 다음 순서에서 처음 걸린 것 하나로 `invalid-command` 거부를 낸다(문구는 부록 B).
 
-1. 받은 값이 객체가 아니거나 배열이다.
+1. 받은 값이 객체가 아니거나 배열이다. 함수도 객체가 아니므로 여기서 `command must be an object`이고, 평범하지 않은 객체(`Date`, `Map`, 클래스 인스턴스)는 2에서 `/ must be a JSON value`다.
 2. 복사가 실패한다.
-   - 받는 값: `null`, 불리언, 글, 유한한 수, 배열, 프로토타입이 `Object.prototype`이나 `null`인 객체. 그 밖의 것(함수, 심벌, bigint, `NaN`, 클래스 인스턴스, 배열 안의 `undefined`)은 실패다.
+   - 받는 값: `null`, 불리언, 글, 유한한 수(안전한 정수 범위 밖의 수도 복사는 통과하고, 모델에 들어가면 검증이 `validation`으로 거부한다), 배열, 프로토타입이 `Object.prototype`이나 `null`인 객체. 그 밖의 것(함수, 심벌, bigint, `NaN`, 클래스 인스턴스, 배열 안의 `undefined`)은 실패다.
    - 객체는 열거되는 자기 문자열 키를 차례로 방문해 한 번씩 읽는다. 값이 `undefined`인 속성은 뺀다(`JSON.stringify`와 같다).
    - 배열은 `length`를 한 번 읽고 그 아래 색인을 차례로 읽는다. 색인마다 자기 데이터 속성이어야 한다(빈 칸, 접근자, 물려받은 값은 실패다). 색인이 아닌 자기 속성은 옮기지 않는다. `Array`의 하위 클래스 인스턴스는 F02처럼 실패다.
-   - 읽다가 난 예외(Proxy의 어느 트랩이든)는 모두 잡아 그 자리의 실패로 친다.
-   - 한도 셋: 컨테이너가 32단계보다 깊다(명령 객체가 1단계). 값이 100000개를 넘는다. 글의 길이 합이 1000000 코드 단위를 넘는다. 방문한 키 하나, 배열 항목 하나가 값 하나이고(빼기로 정하기 전에 센다) 키의 길이와 글인 값의 길이가 글의 합에 든다. 깊이 우선으로 걷다가 처음 넘은 곳에서 멈추고, 한 번의 방문이 여러 한도를 넘으면 깊이, 값, 글 순으로 알린다. 순환하는 값은 깊이 한도에 걸린다.
+   - 읽다가 난 예외(Proxy의 어느 트랩이든)는 모두 잡아 그 자리의 실패로 친다. 자리는 값을 읽다 났으면(속성의 값, 배열 색인의 서술자) 그 속성이나 색인의 경로, 키를 나열하거나 컨테이너의 종류를 보다 났으면(객체의 서술자 트랩 포함) 그 컨테이너의 경로다.
+   - 한도 셋: 컨테이너가 32단계보다 깊다(명령 객체가 1단계). 값이 100000개를 넘는다. 글의 길이 합이 1000000 코드 단위를 넘는다. 방문한 키 하나, 배열 항목 하나가 값 하나이고(빼기로 정하기 전에 센다) 키의 길이와 글인 값의 길이가 글의 합에 든다. 깊이 우선으로 걷다가 처음 넘은 곳에서 멈추고, 한 번의 방문이 여러 한도를 넘으면 깊이, 값, 글 순으로 알린다. 한 자리에서는 한도를 먼저 보고 그 값 자신의 실패를 나중에 본다(그 자리의 값은 이미 한 번 읽혔다). 순환하는 값은 깊이 한도에 걸린다.
 3. 사본의 자기 속성 `type`이 글이 아니거나 모르는 종류다.
 4. 그 종류의 스키마에 맞지 않는다. 문구는 F02의 `schema` 오류와 같은 꼴(`<instancePath 또는 "/"> <Ajv 메시지>`)이다. 오류가 여럿이면 Ajv가 낸 순서가 아니라 F02가 `Issue`를 정렬하는 순서(`compareIssues`. `validateModel`이 `schema` 오류에 쓰는 것이고, 위치가 없으니 문구의 코드 단위 순이다)로 첫 것이다.
 
@@ -113,7 +113,7 @@ type CommandResult =
   - 모델 데이터의 값은 형식의 공통 스키마(`urn:erdmaker:format:0.1:common`)의 정의 일곱(`id`, `scope`, `dataType`, `defaultValue`, `validValues`, `physicalTypes`, `ext`)을 `$ref`로 가리키고, 그 정의의 규칙을 그대로 따른다(`ext`와 `physical.types`는 열린 맵이다). 가리키는 형식 스키마는 이것 하나다. 공통 정의가 아닌 필드 규칙(`name`, `physical.name`, `physical.schema`, `order`, `nullable`, `nameSource`, 키의 `kind`, 속성의 `scope`)은 엔터티·주제영역 스키마의 것을 옮겨 적고, 동기화 테스트가 형식 스키마의 그 자리와 같은지 비교한다.
   - ID 목록(`entities`, 키의 `attributes`)은 `{ type: array, items: { $ref: …#/$defs/id }, uniqueItems: true }`로 적는다(`$ref` 옆에 다른 키워드를 두지 않는다. 준비 과정이 받는 꼴이다). `minItems: 1`은 형식이 요구하는 키의 `attributes`와 `addEntities`·`removeEntities`의 `entities`에만 붙인다. `subjectArea.create`의 `entities`는 비어도 되고 없어도 된다.
   - `batch`의 스키마는 봉투만 본다: `commands`가 객체 1~1000개의 배열이다. 하위 명령은 하나씩 자기 종류의 스키마로 본다(FR-08).
-- 거부의 `message`는 한 줄이다. 코어의 작은 도우미가 제어 문자를 CLI의 `oneLine`과 같은 규칙(F02 FR-11)으로 이스케이프하고, 끝난 문구가 코드 포인트 500개를 넘으면 앞의 500개 뒤에 `…`를 붙인다. CLI의 도우미와는 따로이고 CLI는 바꾸지 않는다. `issues` 안의 `Issue`는 `validateModel`이 낸 것과 값이 같고, 이 처리를 거치지 않는다.
+- 거부의 `message`는 한 줄이다. 코어의 작은 도우미가 제어 문자를 CLI의 `oneLine`과 같은 규칙(F02 FR-11)으로 이스케이프하고, 끝난 문구가 코드 포인트 500개를 넘으면 앞의 500개 뒤에 `…`를 붙인다(이 도우미가 쓴 이스케이프가 잘리게 되면 그 앞에서 자른다). CLI의 도우미와는 따로이고 CLI는 바꾸지 않는다. `issues` 안의 `Issue`는 `validateModel`이 낸 것과 값이 같고, 이 처리를 거치지 않는다.
 
 ### FR-04 검증과 거부
 
@@ -334,7 +334,7 @@ writeChanges(fs, before: ReadonlyModel, after: ReadonlyModel): Promise<{ written
 | | 값의 수 | `command has more than 100000 values` |
 | | 글의 길이 | `command has more than 1000000 characters of text` |
 | | `type`이 없거나 글이 아님 | `command type must be a string` |
-| | 모르는 종류 | `unknown command type <t>`. `<t>`는 `type`의 앞 50 코드 단위(넘으면 뒤에 `…`)를 `JSON.stringify`한 것. 예: `unknown command type "entity.rename"` |
+| | 모르는 종류 | `unknown command type <t>`. `<t>`는 `type`의 앞 50 코드 단위(넘으면 뒤에 `…`)를 `JSON.stringify`한 것. 예: `unknown command type "entity.rename"`, 51자 이상이면 `unknown command type "xxx…"`처럼 `…`가 따옴표 안이다 |
 | | 스키마 | 모르는 키: `/ must NOT have additional properties`, `/set must NOT have additional properties`. 빠진 필수 키: `/ must have required property 'name'`. 타입: `/name must be string`. 빈 이름: `/name must NOT have fewer than 1 characters`. `domain`과 타입을 함께: `/ must NOT be valid`(생성), `/set must NOT be valid`(수정). 겹친 목록: `/entities must NOT have duplicate items (items ## 0 and 1 are identical)`. 묶음의 봉투: `/commands must NOT have fewer than 1 items`, `/commands must NOT have more than 1000 items`, `/commands/0 must be object`. 표에 없는 위반의 문구는 계약이 아니다 |
 | | 묶음 안의 묶음 | `commands[<i>]: a batch cannot hold a batch` |
 | `not-found` | | `entity "<id>" does not exist`, `subject area "<id>" does not exist`, `attribute "<id>" does not exist in entity "<e>"`, `key "<id>" does not exist in entity "<e>"` (`before`와 `entity.create`의 `subjectArea`도 같다) |

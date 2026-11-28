@@ -345,6 +345,77 @@ describe('명령 스키마', () => {
     },
   );
 
+  describe('ID lists the spec ties to the format', () => {
+    const LIMITS = ['minItems', 'maxItems', 'items'] as const;
+    /** The limits of an ID list, absent ones left out. */
+    const limits = (schema: Schema) =>
+      new Map(
+        LIMITS.filter((key) => key in schema).map((key) => [key, schema[key]]),
+      );
+    /** Where the command and the format differ in `minItems`, `maxItems` or `items`. */
+    const differences = (command: Schema, format: Schema): string[] => {
+      const ours = limits(command);
+      const theirs = limits(format);
+      return LIMITS.filter(
+        (key) =>
+          JSON.stringify(ours.get(key)) !== JSON.stringify(theirs.get(key)),
+      );
+    };
+    // `addEntities` and `removeEntities` keep their own `minItems: 1` (FR-03).
+    const tied: [string, () => Schema, SchemaName, string][] = [
+      [
+        'key.create attributes',
+        () => propertiesOf(schemaOf('key.create')).attributes as Schema,
+        'entity',
+        '/$defs/key/properties/attributes',
+      ],
+      [
+        'key.update set.attributes',
+        () =>
+          propertiesOf(propertiesOf(schemaOf('key.update')).set as Schema)
+            .attributes as Schema,
+        'entity',
+        '/$defs/key/properties/attributes',
+      ],
+      [
+        'subjectArea.create entities',
+        () => propertiesOf(schemaOf('subjectArea.create')).entities as Schema,
+        'subject-area',
+        '/properties/entities',
+      ],
+    ];
+
+    test.each(tied)(
+      '%s has the minItems, maxItems and items of the format',
+      (_name, command, schema, pointer) => {
+        expect(differences(command(), schemaAt(schema, pointer))).toEqual([]);
+      },
+    );
+
+    test.each(tied)(
+      '%s: a changed format copy is caught',
+      (_name, command, schema, pointer) => {
+        const copy = () =>
+          JSON.parse(JSON.stringify(schemaAt(schema, pointer))) as Record<
+            string,
+            unknown
+          >;
+        const fewer = copy();
+        fewer.minItems = 2;
+        expect(differences(command(), fewer)).toEqual(['minItems']);
+        const capped = copy();
+        capped.maxItems = 5;
+        expect(differences(command(), capped)).toEqual(['maxItems']);
+        const other = copy();
+        other.items = { type: 'string' };
+        expect(differences(command(), other)).toEqual(['items']);
+        const dropped = copy();
+        delete dropped.items;
+        expect(differences(command(), dropped)).toEqual(['items']);
+      },
+    );
+  });
+
   test('each copied rule is found in the format schema where expected', () => {
     // The rules FR-03 names, at least once each.
     const seen = new Set<string>();
@@ -426,8 +497,8 @@ describe('명령 스키마', () => {
   const typeRows = REJECTED_INPUTS.filter((row) => row.step === 'type');
   const schemaRows = REJECTED_INPUTS.filter((row) => row.step === 'schema');
 
-  test('the refused table has the four type messages and the schema messages of appendix B', () => {
-    expect(typeRows.length).toBe(4);
+  test('the refused table has the type messages and the schema messages of appendix B', () => {
+    expect(typeRows.length).toBe(5);
     expect(schemaRows.length).toBe(13);
   });
 
@@ -435,6 +506,21 @@ describe('명령 스키마', () => {
     [...typeRows, ...schemaRows].map((row) => [row.name, row] as const),
   )('refuses %s with its message', (_name, row) => {
     expect(refusal(row.input())).toBe(row.message);
+  });
+
+  test('a raw message is what the input layer returns before the one-line pass', () => {
+    const rows = REJECTED_INPUTS.filter((row) => row.raw !== undefined);
+    expect(rows.map((row) => row.name)).toEqual([
+      'a type with a line separator',
+    ]);
+    for (const row of rows) {
+      const read = readCommand(row.input());
+      expect(read.ok).toBe(false);
+      if (!read.ok) {
+        expect(read.message).toBe(row.raw);
+        expect(oneLineMessage(read.message)).toBe(row.message);
+      }
+    }
   });
 
   test('a __proto__ key is refused and changes no prototype', () => {

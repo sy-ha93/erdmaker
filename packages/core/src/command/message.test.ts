@@ -47,6 +47,51 @@ describe('거부 문구: 한 줄', () => {
     );
   });
 
+  test('never cuts inside an escape it wrote: the cut moves to before it', () => {
+    const sep = ' ';
+    // `\u{2028}` is 8 code points.
+    expect(oneLineMessage(`${'a'.repeat(497)}${sep}`)).toBe(
+      `${'a'.repeat(497)}…`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(493)}${sep}`)).toBe(
+      `${'a'.repeat(493)}…`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(492)}${sep}`)).toBe(
+      `${'a'.repeat(492)}\\u{2028}`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(492)}${sep}b`)).toBe(
+      `${'a'.repeat(492)}\\u{2028}…`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(497)}${sep}${sep}`)).toBe(
+      `${'a'.repeat(497)}…`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(499)}\n`)).toBe(`${'a'.repeat(499)}…`);
+    expect(oneLineMessage(`${'a'.repeat(498)}\t`)).toBe(
+      `${'a'.repeat(498)}\\t`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(498)}\r!`)).toBe(
+      `${'a'.repeat(498)}\\r…`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(495)}\u0000`)).toBe(
+      `${'a'.repeat(495)}\\u{0}`,
+    );
+    expect(oneLineMessage(`${'a'.repeat(496)}\u0000`)).toBe(
+      `${'a'.repeat(496)}…`,
+    );
+  });
+
+  test('a backslash of the text itself is cut like any character', () => {
+    expect(oneLineMessage(`${'a'.repeat(499)}\\n`)).toBe(
+      `${'a'.repeat(499)}\\…`,
+    );
+  });
+
+  test('stops at the cut: a million line breaks give 250 escapes and an ellipsis', () => {
+    expect(oneLineMessage('\n'.repeat(1_000_000))).toBe(
+      `${'\\n'.repeat(250)}…`,
+    );
+  });
+
   test('counts code points after escaping', () => {
     // 100 newlines become 200 characters.
     expect(oneLineMessage(`${'\n'.repeat(100)}${'a'.repeat(300)}`)).toBe(

@@ -17,22 +17,28 @@ const SHORT_ESCAPES: ReadonlyMap<string, string> = new Map([
 /** The most code points of a rejection message (spec FR-03). */
 const MAX_CODE_POINTS = 500;
 
+const BREAKING_CHAR = new RegExp(`^${LINE_BREAKING.source}$`, 'u');
+
 /**
  * A rejection message as one line (spec FR-03): every character of
  * `LINE_BREAKING` written as `\n`, `\r`, `\t` or `\u{<lowercase hex>}`, the
  * backslash and every other character as they are; then, when longer than
- * 500 code points, the first 500 and `…`.
+ * 500 code points, the first 500 and `…`. An escape this function wrote is
+ * never cut: when it would not fit whole, the cut moves to before it. One
+ * pass that stops at the cut.
  */
 export function oneLineMessage(text: string): string {
-  const line = text.replace(
-    LINE_BREAKING,
-    (char) =>
-      SHORT_ESCAPES.get(char) ?? `\\u{${char.codePointAt(0)!.toString(16)}}`,
-  );
+  let out = '';
   let count = 0;
-  for (let index = 0; index < line.length; count += 1) {
-    if (count === MAX_CODE_POINTS) return `${line.slice(0, index)}…`;
-    index += line.codePointAt(index)! > 0xffff ? 2 : 1;
+  for (const char of text) {
+    const escaped = BREAKING_CHAR.test(char)
+      ? (SHORT_ESCAPES.get(char) ?? `\\u{${char.codePointAt(0)!.toString(16)}}`)
+      : char;
+    // An escape is ASCII: its length is its code points.
+    const size = escaped === char ? 1 : escaped.length;
+    if (count + size > MAX_CODE_POINTS) return `${out}…`;
+    out += escaped;
+    count += size;
   }
-  return line;
+  return out;
 }
