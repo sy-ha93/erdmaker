@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 1/8 완료)
+**상태**: 진행 중 (단계 2/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -249,14 +249,14 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 2: 입력 층
 
 **목표**: 믿을 수 없는 값 하나를 "검사를 통과한 평범한 사본"이나 "거부 문구 하나"로 바꿀 수 있다. `index.ts`는 바뀌지 않는다(결정 2).
-**위험**: 낮음 · **상태**: 대기 · **수용 기준**: 없음 (AC-01의 스키마 부분, AC-11의 표를 먼저) · **요구사항**: FR-03
+**위험**: 낮음 · **상태**: 완료 · **수용 기준**: 없음 (AC-01의 스키마 부분, AC-11의 표를 먼저) · **요구사항**: FR-03
 
-- [ ] 2.1 `command/types.ts`: 부록 A의 17종, 부록 B의 코드 여덟, FR-01의 `Editor`·`CommandResult`·`Issues`. 타입만이다.
-- [ ] 2.2 **테스트**: `command/message.test.ts`, `describe('거부 문구: 한 줄')`. CLI `oneLine`과 같은 문자 집합의 이스케이프(분석 1.3절 마지막 줄), 역슬래시와 짝을 이룬 서로게이트는 그대로, 코드 포인트 500개는 그대로이고 501개는 500개 뒤 `…`, `AWKWARD_STRINGS`와 무작위 글에 던지지 않고 결과에 줄바꿈이 없다. **구현**: `command/message.ts`. CLI의 코드를 가져오지 않고 규칙을 옮겨 적는다.
-- [ ] 2.3 **테스트**: `testing/commands.ts`에 `REJECTED_INPUTS`, `ACCEPTED_INPUTS`(AC-11의 두 표 전부)를 적고, `command/copy.test.ts`, `describe('믿을 수 없는 입력: 복사')`가 FR-03의 1~2에 해당하는 줄을 돌린다: 부록 B의 첫 다섯 문구, 한도의 경계(32단/33단, 100000/100001, 1000000/1000001), 한도의 순서(깊이 → 값 → 글)와 "빼기 전에 센다", 사본이 입력과 객체를 공유하지 않는다, `__proto__`가 자기 속성이다. **구현**: `command/copy.ts`(분석 4.7).
-- [ ] 2.4 **테스트**: `testing/commands.ts`에 `SAMPLE_COMMANDS`(명령과 시작 모델만. 기대값은 단계 5~6에서 채운다)를 적고, `command/schemas.test.ts`, `describe('명령 스키마')`가 AC-01의 스키마 문장을 모두 단언한다: 키가 17종, 준비 과정과 `schemaAjv()`로 컴파일됨, 표본이 17종을 덮고 모두 통과, 부록 B의 스키마 문구 전부, 깊이 얼어 있음, 옮겨 적은 필드 규칙이 `schemaAt`의 것과 `toEqual`, 필수 키가 빠지고 모르는 키가 든 명령의 문구, `type` 문구 넷(없음, 글 아님, 모르는 종류, 50 코드 단위 자르기). **구현**: `command/schemas.ts`, `command/check.ts`(결정 6). 스키마 쓰는 규칙은 FR-03의 "명령 스키마" 세 항목과 분석 3.2다.
-- [ ] 2.5 **검증**: 5장의 단계 관문. `pnpm exec vitest run -t '명령 스키마'`에서 통과한 테스트가 1개 이상이다.
-- [ ] 2.6 커밋한다(`Add the command input layer: bounded copy, schemas, messages`).
+- [x] 2.1 `command/types.ts`: 부록 A의 17종, 부록 B의 코드 여덟, FR-01의 `Editor`·`CommandResult`·`Issues`. 타입만이다.
+- [x] 2.2 **테스트**: `command/message.test.ts`, `describe('거부 문구: 한 줄')`. CLI `oneLine`과 같은 문자 집합의 이스케이프(분석 1.3절 마지막 줄), 역슬래시와 짝을 이룬 서로게이트는 그대로, 코드 포인트 500개는 그대로이고 501개는 500개 뒤 `…`, `AWKWARD_STRINGS`와 무작위 글에 던지지 않고 결과에 줄바꿈이 없다. **구현**: `command/message.ts`. CLI의 코드를 가져오지 않고 규칙을 옮겨 적는다.
+- [x] 2.3 **테스트**: `testing/commands.ts`에 `REJECTED_INPUTS`, `ACCEPTED_INPUTS`(AC-11의 두 표 전부)를 적고, `command/copy.test.ts`, `describe('믿을 수 없는 입력: 복사')`가 FR-03의 1~2에 해당하는 줄을 돌린다: 부록 B의 첫 다섯 문구, 한도의 경계(32단/33단, 100000/100001, 1000000/1000001), 한도의 순서(깊이 → 값 → 글)와 "빼기 전에 센다", 사본이 입력과 객체를 공유하지 않는다, `__proto__`가 자기 속성이다. **구현**: `command/copy.ts`(분석 4.7).
+- [x] 2.4 **테스트**: `testing/commands.ts`에 `SAMPLE_COMMANDS`(명령과 시작 모델만. 기대값은 단계 5~6에서 채운다)를 적고, `command/schemas.test.ts`, `describe('명령 스키마')`가 AC-01의 스키마 문장을 모두 단언한다: 키가 17종, 준비 과정과 `schemaAjv()`로 컴파일됨, 표본이 17종을 덮고 모두 통과, 부록 B의 스키마 문구 전부, 깊이 얼어 있음, 옮겨 적은 필드 규칙이 `schemaAt`의 것과 `toEqual`, 필수 키가 빠지고 모르는 키가 든 명령의 문구, `type` 문구 넷(없음, 글 아님, 모르는 종류, 50 코드 단위 자르기). **구현**: `command/schemas.ts`, `command/check.ts`(결정 6). 스키마 쓰는 규칙은 FR-03의 "명령 스키마" 세 항목과 분석 3.2다.
+- [x] 2.5 **검증**: 5장의 단계 관문. `pnpm exec vitest run -t '명령 스키마'`에서 통과한 테스트가 1개 이상이다.
+- [x] 2.6 커밋한다(`Add the command input layer: bounded copy, schemas, messages`).
 
 ### 단계 3: ID와 경로
 
@@ -494,7 +494,28 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 - 1.5: 단계 관문 `exit=0`, 불변 증명 `exit=0`. 42개 파일 673개 통과(657 + 7 + 7 + 2), `pnpm test` 73.97초(단계 0과 거의 같다).
 - 계획과 달라진 점: (1) 모듈 표의 `serialize-item.ts`에 `itemText`, `serializeItem` 말고 `checkItemData`도 내보낸다. `serializeModel`이 "모든 항목을 먼저 검사한 뒤 글을 만든다"를 지키려면 검사만 따로 불러야 한다. 편집기와 `writeChanges`는 계획대로 `serializeItem`만 부른다. (2) 1.1과 1.2에 `layoutJson`의 다른 오류가 그대로 나오는 사례를 하나씩 더했다.
 
+### 단계 2 (2026-11-28)
+
+- 2.1: `command/types.ts`에 명령 17종의 인터페이스(`batch`의 `commands`는 `batch`를 뺀 16종의 `SubCommand`), `Command`, `CommandType`, `RejectionCode`(여덟), `Issues`, `CommandResult`, `Editor`. 목록 필드는 `readonly` 배열이라 읽기 전용 배열도 넘길 수 있다.
+- 2.2: `message.test.ts`, `describe('거부 문구: 한 줄')`, 테스트 18개. 구현 전에 모듈이 없어 실패하는 것을 봤다. `message.ts`의 `oneLineMessage`는 CLI `oneLine`의 문자 집합과 이스케이프를 옮겨 적고(코드는 가져오지 않는다), 이스케이프한 **뒤의** 글을 코드 포인트 500개로 자른다.
+- 2.3: `testing/commands.ts`에 `REJECTED_INPUTS`(44줄: `shape` 5, `copy` 22(문구가 500 코드 포인트를 넘는 줄 포함), `type` 4, `schema` 13)와 `ACCEPTED_INPUTS`(7줄). 줄마다 입력을 만드는 함수와 `execute`가 돌려줄 최종 문구(한 줄 처리와 자르기 뒤)를 든다. `copy.test.ts`, `describe('믿을 수 없는 입력: 복사')`, 테스트 52개: `shape`·`copy` 27줄을 `copyCommand`와 `readCommand` 양쪽으로, 받는 7줄은 사본과 `toEqual`, 그 밖에 객체 공유 없음, `__proto__` 서술자, `-0`·`1e300`·`5e-324`, `Infinity`·bigint·심벌·`Map`·박싱한 글, 키의 포인터 이스케이프, 폐기된 Proxy, 길이가 거짓인 배열 Proxy, 속성과 `length`를 한 번씩 읽음, 첫 실패 뒤에는 읽지 않음, 한 방문 안의 한도 순서, 배열 항목과 키가 값 하나씩, 20만 단 중첩과 길이 1000만의 빈 배열이 스택을 키우지 않고 곧 거부됨, 무작위 JSON 300개가 그대로 복사됨. `copy.ts`의 `copyCommand`는 명시적 스택으로 깊이 우선 한 번 걷는다. 색인 경로는 실패할 때만 부모 고리를 따라 만든다(경로 글을 컨테이너마다 만들면 긴 키가 겹쳐 제곱이 된다).
+- 2.4: `SAMPLE_COMMANDS` 17개(종류마다 하나. `entity.delete`와 `batch`는 빈 모델, 나머지는 예제. `entity.delete`는 `before`에 `entity.create`). `schemas.test.ts`, `describe('명령 스키마')`, 테스트 65개. `schemas.ts`의 `commandSchemas`(손으로 쓴 TS, 모듈을 읽을 때 스택으로 깊이 얼림)와 `check.ts`의 `commandValidator`(종류마다 처음 쓸 때 `schemaAjv().compile(prepareSchema(s, s))` 한 번), `checkCommand`(FR-03 3~4), `readCommand`(1~4, `batch`는 봉투까지). 오류 고르기는 `validatorIssues`의 결과를 `compareIssues`로 한 번 훑어 가장 작은 것이다(정렬하지 않는다).
+  - 동기화: 명령 스키마의 모델 필드(자기 필드와 `set` 안)를 모두 훑어 셋 가운데 하나임을 본다. (1) 공통 정의 일곱 가운데 하나를 가리키는 홀로 선 `$ref`이고, 형식의 같은 자리도 같은 `$ref`다. (2) ID 목록(`{ type: array, items: { $ref: …id }, uniqueItems: true }`, `minItems: 1`은 키의 `attributes`와 `addEntities`·`removeEntities`에만). (3) 옮겨 적은 규칙이고 `schemaAt`의 그 자리와 `toEqual`이다. 옮겨 적은 것은 18자리(엔터티의 `name`·`definition`·`note`·`nameSource`·`physical`, 속성의 `name`·`definition`·`note`·`scope`·`nullable`·`physical`·`nameSource`, 키의 `kind`·`name`·`physical`, 주제영역의 `name`·`definition`·`order`)이고 테스트가 이 목록을 고정한다. 부록 A의 필드, `set`의 키, `unset`의 이름 목록도 종류마다 글자 그대로 비교한다.
+  - 컴파일: `schemaAjv()`의 `compile`을 감시해 17종에 정확히 17번 불리고, 결과가 `commandValidator`의 것과 `toBe`이며, 컴파일한 스키마가 `prepareSchema(s, s)`와 `toEqual`이다. ID 목록의 `uniqueItems`가 준비 과정의 `erdmakerUniqueItems`로 바뀌는 것도 본다.
+- 2.5: 단계 관문 `exit=0`. 45개 파일 808개 통과(673 + 18 + 52 + 65), `pnpm test` 74.60초(단계 1보다 0.6초. 새 세 파일은 따로 돌리면 약 1.5초). `-t '명령 스키마'`에서 65개 통과.
+- 깨뜨려 확인한 것(각각 되돌림. 실패한 테스트 수): 깊이보다 값 한도를 먼저 봄(1), 값을 세지 않음(5), `undefined`인 값을 세지 않음(1), 속성을 두 번 읽음(1), 받지 않는 값을 글 한도보다 먼저 봄(처음에는 살아남아 "글 한도를 넘는 키의 값이 `NaN`" 사례를 더했다. 그 뒤 1), `Object.defineProperty` 대신 대입(3), Ajv가 낸 순서의 첫 오류(2), 모르는 종류에서 `…`를 뺌(2), 격리 제어 문자를 이스케이프하지 않음(1), 코드 단위로 자름(1), 옮겨 적은 `description` 한 글자 바꿈(2), 주제영역 `name`의 `minLength`를 뺌(2), 일부만 얼림(1). 살아남은 변이 하나: 배열 색인의 서술자에서 `value` 확인을 빼는 것. 접근자 서술자에는 `value`가 없어 값이 `undefined`가 되고 어차피 거부되므로 결과가 같은 변이다.
+- 스펙과 계획이 정하지 않아 정한 것:
+  1. **읽다가 난 예외의 자리**: 속성 값을 읽다 난 것(`get` 트랩, 던지는 getter)은 그 속성의 경로(`/type`, `/ext/a`), 키를 나열하거나 종류를 보다 난 것(`ownKeys`, 서술자 트랩, 폐기된 Proxy, `getPrototypeOf`)은 컨테이너의 경로(`/`, `/ext`)다. F02의 `checkJsonValue`가 접근자를 그 속성 경로로 알리는 것과 같다.
+  2. **한 방문 안의 순서**: 스펙은 한도 셋의 순서만 정한다. 깊이 → 값 → 글 → 그 값 자신의 실패(읽기 예외, 받지 않는 값) 순으로 했다. "빼기 전에 센다"와 같은 생각으로, 세는 일이 판정보다 먼저다. 깊이를 알려면 값을 읽어 종류를 봐야 하므로 값은 한도를 보기 전에 한 번 읽는다(그래서 "33단계째 컨테이너가 값 한도도 넘기는 입력"이 깊이다).
+  3. **`unknown command type`의 `…`**: 부록 B의 "앞 50 코드 단위(넘으면 뒤에 `…`)를 `JSON.stringify`한 것"을 자른 글에 `…`를 붙인 뒤 `JSON.stringify`한다고 읽었다. 그래서 `…`는 따옴표 안에 있다(`"xxx…"`).
+  4. **배열 Proxy의 `length`**: 음이 아닌 안전한 정수가 아니면 그 배열 자리의 `must be a JSON value`다.
+  5. **사본의 모양**: 프로토타입이 `null`인 입력 객체도 사본은 `Object.prototype` 객체다. 수는 유한하면 받는다(`1e300` 포함. F02의 `checkJsonValue`는 안전하지 않은 정수를 거부하지만 FR-03은 "유한한 수"다).
+  6. **옮겨 적기**: 형식 스키마의 조각을 `description`, 속성 `nullable`의 `default: true`, `physical`의 `required: []`까지 글자 그대로 옮겨, 동기화 테스트가 아무것도 빼지 않고 `toEqual`한다. 스펙이 꼽은 여덟 말고 `definition`·`note`(`{ type: string }`)도 옮겨 적은 것으로 보고 비교한다. 공통 `scope`는 기본값이 있어 속성의 `scope`만 옮겨 적었다(엔터티와 키는 `$ref`).
+  7. **문구의 마무리 자리**: `readCommand`와 `checkCommand`는 한 줄 처리 전의 문구를 돌려준다. `commands[<i>]: ` 접두를 붙인 뒤 한 번 처리하도록 편집기(단계 5)가 `oneLineMessage`를 부른다. 표의 `message`는 최종 문구이고 단계 2의 테스트는 `oneLineMessage`를 거쳐 비교한다.
+  8. **물려받은 색인의 줄**: 배열의 프로토타입은 `Array.prototype`이어야 하므로 진짜로 물려받게 하려면 `Array.prototype[0]`을 잠깐 정의해야 한다. 그 줄은 `cleanup`을 갖고 테스트가 `finally`에서 부른다.
+- 계획과 달라진 점: (1) `ACCEPTED_INPUTS`의 줄은 기대 모델 대신 입력 층이 남길 사본(`copy`)을 든다. 모델의 기대는 편집기가 생기는 단계 5에서 이것으로 만든다. (2) `copy.test.ts`가 `check.ts`의 `readCommand`도 부르므로 2.3의 테스트는 2.4의 구현 뒤에 통과했다(실패는 구현 전에 봤다). (3) `check.ts`가 `commandValidator`도 내보낸다(컴파일 테스트용. `index.ts`에는 없다). (4) **`batch` 안의 `batch`** (`commands[<i>]: a batch cannot hold a batch`)는 `checkCommand`에 넣지 않았다. 하위 명령의 차례(FR-08 (2))에서 색인과 함께 보는 일이라 단계 5의 편집기에서 한다.
+
 ---
 
-마지막 수정: 2026-11-28 09:40
-상태: 진행 중 (단계 2/8)
+마지막 수정: 2026-11-28 09:36
+상태: 진행 중 (단계 3/8)
