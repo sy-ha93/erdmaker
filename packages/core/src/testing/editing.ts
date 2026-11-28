@@ -1,4 +1,5 @@
 import type { CommandResult } from '../command/types.js';
+import type { FileSystemAdapter } from '../fs/adapter.js';
 import { createMemoryFileSystem } from '../fs/memory.js';
 import { loadModel } from '../model/load.js';
 import type {
@@ -90,3 +91,19 @@ export function deepFreeze<T>(value: T): T {
 /** A plain deep copy, to compare a model with what it was. */
 export const snapshotOf = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
+
+/** Every file the adapter lists, with its text, by path in code unit order. */
+export async function adapterFiles(
+  fs: FileSystemAdapter,
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const pending = [''];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    for (const entry of await fs.list(dir)) {
+      const path = dir === '' ? entry.name : `${dir}/${entry.name}`;
+      if (entry.kind === 'directory') pending.push(path);
+      else found.set(path, await fs.readText(path));
+    }
+  }
+  return new Map([...found].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}

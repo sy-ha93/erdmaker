@@ -5,7 +5,7 @@
 **분석 보고서**: [docs/analysis/core-commands.md](../analysis/core-commands.md)
 **결정 기록**: [docs/decisions/core-commands.md](../decisions/core-commands.md) (D-00~D-05)
 **브랜치**: `feature/core-commands`
-**상태**: 진행 중 (단계 6/8 완료)
+**상태**: 진행 중 (단계 7/8 완료)
 
 스펙과 분석이 다르면 스펙을 따른다. 스펙은 분석 뒤에, 그리고 계획 리뷰 1~3회차 뒤에 고쳐졌다(분석 5장 S1~S9와 11장 Q1~Q4는 스펙 본문에 있다. 2장 "계획에서 정한 것" 3). 이 계획은 스펙의 규칙을 다시 적지 않는다. 구현자는 FR·AC 번호와 부록의 줄로 스펙을 찾아 읽는다.
 
@@ -331,14 +331,14 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
 ### 단계 7: 통합, 번들, 시간
 
 **목표**: 명령 → 저장 → 다시 읽기가 끝에서 끝까지 맞고, 번들과 방지선이 통과한다. 제품 코드는 바뀌지 않는 것이 정상이고, 그래서 **새 단언은 쓰자마자 통과할 수 있다.** 걸음마다 적힌 변이 하나를 제품 코드에 잠깐 넣어 그 걸음의 테스트가 적힌 단언에서 실패하는 것을 보고 되돌린다. 본 실패를 7장에 적는다. 테스트가 진짜 결함을 찾으면 실패하는 테스트를 남기고 고친 뒤 7장에 적는다.
-**위험**: 낮음 · **상태**: 대기 · **수용 기준**: AC-02, AC-03, AC-05, AC-09, AC-15 · **요구사항**: FR-08~FR-10
+**위험**: 낮음 · **상태**: 완료 · **수용 기준**: AC-02, AC-03, AC-05, AC-09, AC-15 · **요구사항**: FR-08~FR-10
 
-- [ ] 7.1 `command/undo-roundtrip.test.ts`, `describe('실행 취소 왕복')`: AC-03 전부(표본마다 기대 `written`·`removed`, 주석 사례의 어댑터 호출 0번). **변이**: `undo`가 스냅숏의 모델 대신 그 얕은 사본을 **`editor.model`로 내놓게** 한다(결과의 `model`도 그 사본이다). 실패해야 하는 것은 **"`editor.model`이 시작 모델과 `toBe`" 단언**이다(항목 객체는 그대로라 호출 0번 단언은 통과한다. 그것으로 실패를 확인한 것으로 치지 않는다).
-- [ ] 7.2 `command/write-changes.test.ts`, `describe('바뀐 파일만')`: AC-05의 명령으로 하는 사례 전부(직렬화·읽기·쓰기가 하나, 나머지 28개 바이트, `edges` 그대로, 쓰기와 지우기의 순서, `definiton` 사례와 `listReservedFiles`를 준 사례, 폴더 `entities/Customer.yaml` 사례). 감시는 `writeChanges` 바로 앞에서 비운다. 변이를 위한 사례 하나를 더한다: **AC-13의 묶음**(예제에 만든 관계 없는 엔터티를 지우고 같은 `id`와 값으로 다시 만들면서 `order.ord_dtm`의 `definition`을 바꾼다) 뒤의 저장에서 `serializeItem`된 것과 읽힌 것이 `entities/order.yaml` 하나뿐이다. **변이**: 손댔지만 글이 같은 항목을 원래 객체로 되돌리는 것을 끈다(다시 만든 엔터티도 직렬화되고 읽혀 이 단언이 깨진다).
-- [ ] 7.3 `command/reload.test.ts`, `describe('다시 읽기')`: AC-09의 마지막 문단. **변이**: 새 엔터티의 경로를 `entities/<id>.yml`로 만든다(다시 읽은 모델에 그 엔터티가 없다).
-- [ ] 7.4 `packages/cli/src/bundle.test.ts`: AC-02의 단계. 명령은 `vm` 컨텍스트 안에서 만들고 결과는 안에서 `JSON.stringify`해 꺼낸다(다른 realm의 객체는 복사에서 거부된다. 분석 4.7). **변이**: `index.ts`에서 `writeChanges`를 빼고 다시 빌드한다.
-- [ ] 7.5 `testing/wide-model.ts`(엔터티 n개 × 속성 m개 + 전부 든 주제영역. 오류 0개임을 테스트가 단언한다), `command/editor.perf.test.ts`: AC-15 하나. 제한 시간 `60_000`을 테스트에 적는다. 모델과 편집기 만들기, 준비 실행 1회, 실행마다의 `ok: true`와 "모델이 다른 객체" 단언은 재는 구간 밖이다. 두 값을 번갈아 주므로 실행 사이에 되돌릴 상태가 없다. **변이**: `execute` 안에 `Date.now()`로 300 ms를 채우는 빈 반복을 넣는다. 벽시계로 기다리므로 컴퓨터가 아무리 빨라도 다섯 번 모두 300 ms 이상이고 가장 빠른 것도 250 ms를 넘는다. 검증을 더 부르는 변이는 여기서 쓰지 않는다(빠른 컴퓨터에서는 250 ms 안에 들 수 있다. 그것은 5.1의 "정확히 1번" 단언이 잡는다).
-- [ ] 7.6 **검증**: 변이가 남지 않았다는 증명(둘 다 종료 상태 0), 5장의 단계 관문, 시간 테스트 15번. `pnpm test`를 세 번 이어 돌려 모두 통과하고 시간이 단계 0의 값 + 8초 이하다.
+- [x] 7.1 `command/undo-roundtrip.test.ts`, `describe('실행 취소 왕복')`: AC-03 전부(표본마다 기대 `written`·`removed`, 주석 사례의 어댑터 호출 0번). **변이**: `undo`가 스냅숏의 모델 대신 그 얕은 사본을 **`editor.model`로 내놓게** 한다(결과의 `model`도 그 사본이다). 실패해야 하는 것은 **"`editor.model`이 시작 모델과 `toBe`" 단언**이다(항목 객체는 그대로라 호출 0번 단언은 통과한다. 그것으로 실패를 확인한 것으로 치지 않는다).
+- [x] 7.2 `command/write-changes.test.ts`, `describe('바뀐 파일만')`: AC-05의 명령으로 하는 사례 전부(직렬화·읽기·쓰기가 하나, 나머지 28개 바이트, `edges` 그대로, 쓰기와 지우기의 순서, `definiton` 사례와 `listReservedFiles`를 준 사례, 폴더 `entities/Customer.yaml` 사례). 감시는 `writeChanges` 바로 앞에서 비운다. 변이를 위한 사례 하나를 더한다: **AC-13의 묶음**(예제에 만든 관계 없는 엔터티를 지우고 같은 `id`와 값으로 다시 만들면서 `order.ord_dtm`의 `definition`을 바꾼다) 뒤의 저장에서 `serializeItem`된 것과 읽힌 것이 `entities/order.yaml` 하나뿐이다. **변이**: 손댔지만 글이 같은 항목을 원래 객체로 되돌리는 것을 끈다(다시 만든 엔터티도 직렬화되고 읽혀 이 단언이 깨진다).
+- [x] 7.3 `command/reload.test.ts`, `describe('다시 읽기')`: AC-09의 마지막 문단. **변이**: 새 엔터티의 경로를 `entities/<id>.yml`로 만든다(다시 읽은 모델에 그 엔터티가 없다).
+- [x] 7.4 `packages/cli/src/bundle.test.ts`: AC-02의 단계. 명령은 `vm` 컨텍스트 안에서 만들고 결과는 안에서 `JSON.stringify`해 꺼낸다(다른 realm의 객체는 복사에서 거부된다. 분석 4.7). **변이**: `index.ts`에서 `writeChanges`를 빼고 다시 빌드한다.
+- [x] 7.5 `testing/wide-model.ts`(엔터티 n개 × 속성 m개 + 전부 든 주제영역. 오류 0개임을 테스트가 단언한다), `command/editor.perf.test.ts`: AC-15 하나. 제한 시간 `60_000`을 테스트에 적는다. 모델과 편집기 만들기, 준비 실행 1회, 실행마다의 `ok: true`와 "모델이 다른 객체" 단언은 재는 구간 밖이다. 두 값을 번갈아 주므로 실행 사이에 되돌릴 상태가 없다. **변이**: `execute` 안에 `Date.now()`로 300 ms를 채우는 빈 반복을 넣는다. 벽시계로 기다리므로 컴퓨터가 아무리 빨라도 다섯 번 모두 300 ms 이상이고 가장 빠른 것도 250 ms를 넘는다. 검증을 더 부르는 변이는 여기서 쓰지 않는다(빠른 컴퓨터에서는 250 ms 안에 들 수 있다. 그것은 5.1의 "정확히 1번" 단언이 잡는다).
+- [x] 7.6 **검증**: 변이가 남지 않았다는 증명(둘 다 종료 상태 0), 5장의 단계 관문, 시간 테스트 15번. `pnpm test`를 세 번 이어 돌려 모두 통과하고 시간이 단계 0의 값 + 8초 이하다.
 
   ```bash
   (set -euo pipefail
@@ -347,7 +347,7 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
    git diff --cached --quiet HEAD -- "${p[@]}")
   ```
 
-- [ ] 7.7 커밋한다(`Add the round trip, bundle and time tests for commands`).
+- [x] 7.7 커밋한다(`Add the round trip, bundle and time tests for commands`).
 
 ### 단계 8: 문서와 마무리
 
@@ -638,7 +638,19 @@ F02에서 이어 오는 규칙이다. 리뷰는 이 목록으로 본다.
   6. **생성 명령의 찾기 순서**: `entity`, 다음 `before`(부록 A의 필드 순), 그다음 `id-taken`.
 - 계획과 달라진 점: (1) 처리 셋 말고 공통 모듈 `handlers/members.ts`, `handlers/update.ts`를 더했다. (2) 단계 5 리뷰의 항목 가운데 단계 6의 처리가 있어야 하는 것(섞인 얼린 묶음, 무작위 시험, 섞인 일의 수)을 이 커밋에 넣었다. (3) AC-08 (아)의 "찾아본 후보 셋"은 단계 3의 함수 수준 테스트가 세고, 편집기 수준은 결과 `s_4`만 본다. (4) 단계 5의 계획과 다른 점 (3)·(5)(AC-13의 `entity.update` 대신 `attribute.update`, `subjectArea.create`의 받는 두 줄)는 스펙의 줄 그대로 채웠다(단계 5의 `entity.update` 사례는 남겨 두었다).
 
+### 단계 7 (2026-11-28)
+
+제품 코드는 바뀌지 않았다(7.6의 증명). 새 테스트가 찾은 결함은 없다. 변이마다 넣어 실패를 본 뒤 `git checkout`으로 되돌렸다.
+
+- 7.1 `undo-roundtrip.test.ts`, `describe('실행 취소 왕복')`, 테스트 20개: 표본 17종이 모두 `items`를 가짐, 표본마다(시작 모델은 `before`를 실행해 저장한 것) 실행 → 저장(기대 `written`·`removed`는 표본의 `items`에서: 값이 있는 파일은 쓰고 `null`인 파일은 지운다) → `undo` → 저장 뒤 어댑터의 파일과 바이트가 처음과 같고 `editor.model`이 시작 모델과 `toBe` → `redo` → 저장 뒤 가운데 상태와 같음, 스펙에 적힌 두 목록(`entity.create` 이름 `배송` → `written: [entities/baesong.yaml]`, `subjectArea.delete sales` → `removed` 둘), 주석 사례(어댑터 호출 0번, 주석이 남음). 어댑터의 파일을 모으는 도우미 `adapterFiles`를 `testing/editing.ts`에 더했다. **변이**(`undo`가 스냅숏 모델의 얕은 사본을 `editor.model`과 결과로 내놓음): 18개 실패, 모두 "`editor.model`이 시작 모델과 `toBe`"(`undo-roundtrip.test.ts` 61행과 88행)에서. 주석 사례(호출 0번)는 계획대로 통과했다.
+- 7.2 `write-changes.test.ts`, `describe('바뀐 파일만')`, 테스트 9개: `attribute.update`(직렬화·읽기·쓰기가 `entities/order.yaml` 하나, 나열·지우기 0번, 나머지 28개 바이트 그대로), `subjectArea.removeEntities`(쓴 것 둘, `edges` 그대로), `subjectArea.delete`(쓴 것 0, 지운 것 둘), 쓰기와 지우기가 든 묶음(`writeText` 셋이 모두 `remove` 둘보다 앞이고 각각 경로 순), 새 경로의 `writeText` 실패(거부, `remove` 0번, 지우려던 두 파일의 바이트 그대로), `entities/stray.yaml`·`entities-old/x.yaml`이 저장 두 번 뒤에도 남고 밖에서 이미 지운 `layouts/sales.json`도 `removed`에 듦, `definiton` 사례(`reservedFiles` 없이는 `customer`와 저장 거부, `listReservedFiles`를 주면 `customer_2`와 저장 성공), 폴더 `entities/Customer.yaml` 사례, AC-13의 묶음. 모든 사례에서 바뀌지 않은 항목(매니페스트와 사전 포함)이 전 항목과 `toBe`이고, 예제의 사례에서 `model.yaml`과 `dictionary/`는 어댑터 호출에 나오지 않는다. **변이**(끝의 비교에서 글이 같은 항목을 원래 객체로 되돌리지 않음): AC-13 묶음 사례 1개 실패, `serializeItem`된 파일이 `['entities/memo.yaml', 'entities/order.yaml']`(1378행).
+- 7.3 `reload.test.ts`, `describe('다시 읽기')`, 테스트 2개: 예제에서 `entity.create`(`배송`)와 `subjectArea.create`(`entities: [product, address]`) 뒤 저장하고 다시 읽으면 `issues`·`validateModel`이 0개, `serializeModel`이 같고 `baesong`이 `address`와 `category` 사이다. `dictionaries: [entities]`인 빈 모델에서 `entity.create`가 부록 B 3번 문구의 `id-taken`, `subjectArea.create`는 같은 다시 읽기 단언을 통과한다. **변이**(새 엔터티의 경로를 `entities/<id>.yml`로): 2개 실패. 첫째는 다시 읽은 모델에 그 엔터티가 없어 `serializeModel`이 30개 대 31개(29행), 둘째는 문구의 경로가 `.yml`이 되어 거부 결과가 다름(71행).
+- 7.4 `packages/cli/src/bundle.test.ts`: 있던 테스트에 단계를 더했다. 컨텍스트 안에서 `loadModel`, `createEditor`, `execute({ type: 'entity.create', name: '배송' })`, `writeChanges`, `validateProject`를 부르고 결과를 안에서 `JSON.stringify`한다. `ok: true`, `id: baesong`, `written: ['entities/baesong.yaml']`, 오류 0개, 엔터티 11개. **변이**(`index.ts`에서 `writeChanges`를 빼고 다시 빌드): `TypeError: erdcore.writeChanges is not a function`(124행)으로 1개 실패. 되돌리고 다시 빌드해 통과를 봤다.
+- 7.5 `testing/wide-model.ts`의 `wideModel(entities, attributes)`(속성은 `type: { base: string, length: 40 }`, 주제영역 `all`에 전부, 매니페스트 있음), `editor.perf.test.ts`, 테스트 하나(제한 시간 `60_000`). 오류 0개와 엔터티 1000개를 단언하고, `e500.a7`의 `definition`을 두 값으로 번갈아 바꾸는 `attribute.update`를 준비 1회 뒤 5회 잰다. 매번 재는 구간 밖에서 `ok: true`, 결과의 `model`과 `editor.model`이 전과 다른 객체임을 단언한다. 잰 다섯 값은 `annotate`로 남긴다(`--reporter=verbose`에 보인다. 판정에는 쓰이지 않는다). **변이**(`execute` 앞에 `Date.now()`로 300 ms를 채우는 빈 반복): 다섯 값 353~360 ms, 가장 빠른 것 353.3 ms ≥ 250으로 실패.
+- 7.6 변이 증명 `exit=0`. 단계 관문 `exit=0`, 67개 파일 1219개 통과(1187 + 20 + 9 + 2 + 1), `pnpm test` 78.05초. 시간 테스트 15번 `exit=0`(15번 모두 통과). 따로 `--reporter=verbose`로 15번 더 돌려 잰 값: 실행마다 가장 빠른 값이 56.0 / 57.6 / 58.5 ms(최소 / 중앙 / 최대), 잰 75개 전부는 56.0 / 59.2 / 73.3 ms(한도의 약 4.4배 여유). `pnpm test`를 세 번 이어 돌려 모두 통과: 81.18, 81.93, 81.32초(단계 0의 73.99초 + 8초 = 81.99초 이하. 여유가 작다). 새 테스트 파일은 따로 돌리면 합쳐 약 2초이고(`undo-roundtrip`·`reload`·`write-changes` 1.00초, 번들 0.67초, 시간 테스트 약 0.8초), 나머지는 같은 날의 실행마다의 흔들림이다(관문의 실행은 78.05초).
+- 계획과 달라진 점: (1) 표본의 기대 `written`·`removed`를 따로 적지 않고 단계 6이 채운 `items`의 파일에서 만든다(`items`는 "명령 동작"이 실제 데이터와 비교한다). (2) `testing/editing.ts`에 `adapterFiles`를 더했다. (3) 시간 테스트의 `describe` 이름은 스펙에 없어 `편집기: 시간`으로 했다.
+
 ---
 
-마지막 수정: 2026-11-28 11:00
-상태: 진행 중 (단계 6/8 완료)
+마지막 수정: 2026-11-28 11:20
+상태: 진행 중 (단계 7/8 완료)

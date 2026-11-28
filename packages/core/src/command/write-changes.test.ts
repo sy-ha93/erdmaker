@@ -3,12 +3,21 @@ import type { FileSystemAdapter } from '../fs/adapter.js';
 import { createMemoryFileSystem } from '../fs/memory.js';
 import { loadModel } from '../model/load.js';
 import { serializeItem } from '../model/serialize-item.js';
-import type { EntityData, Model, ModelItem } from '../model/types.js';
+import type {
+  EntityData,
+  Model,
+  ModelItem,
+  ReadonlyModel,
+} from '../model/types.js';
+import { succeeded } from '../testing/editing.js';
 import { exampleFiles } from '../testing/example.js';
 import {
+  accessError,
   recordingFileSystem,
   type RecordingFileSystem,
 } from '../testing/recording-fs.js';
+import { createEditor } from './editor.js';
+import { listReservedFiles } from './paths.js';
 import { writeChanges } from './write-changes.js';
 
 vi.mock('../model/serialize-item.js', async (importOriginal) => {
@@ -1035,5 +1044,339 @@ describe('저장의 조건', () => {
         expect(call.path.startsWith('dictionary')).toBe(false);
       }
     });
+  });
+});
+
+/** Every item of a model with its file, the manifest and dictionaries included. */
+function itemsByFile(model: ReadonlyModel): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  if (model.manifest) out.set(model.manifest.file, model.manifest);
+  for (const list of [
+    model.entities,
+    model.relationships,
+    model.subtypes,
+    model.subjectAreas,
+    model.layouts,
+    model.dictionaries,
+  ] as const) {
+    for (const item of list) out.set(item.file, item);
+  }
+  return out;
+}
+
+/** Every item of `after` outside `touched` is the object `before` held at its file. */
+function expectUntouchedShared(
+  before: ReadonlyModel,
+  after: ReadonlyModel,
+  touched: readonly string[],
+): void {
+  const old = itemsByFile(before);
+  for (const [file, item] of itemsByFile(after)) {
+    if (!touched.includes(file)) expect(item, file).toBe(old.get(file));
+  }
+}
+
+/** No call touched the manifest or the dictionary folder of the example. */
+function expectManifestUnread(fs: RecordingFileSystem): void {
+  for (const call of fs.calls) {
+    expect(call.path).not.toBe('model.yaml');
+    expect(call.path.startsWith('dictionary')).toBe(false);
+  }
+}
+
+/** The example in a recording adapter, loaded, and an editor of it. */
+async function exampleEditor(files = exampleFiles()) {
+  const fs = recordingFileSystem(files);
+  const before = await load(fs);
+  return { fs, before, editor: createEditor(before) };
+}
+
+describe('바뀐 파일만', () => {
+  test('attribute.update: one item serialized, read and written; the other 28 files keep their bytes', async () => {
+    const { fs, before, editor } = await exampleEditor();
+    const start = await snapshot(fs);
+    succeeded(
+      editor.execute({
+        type: 'attribute.update',
+        entity: 'order',
+        id: 'ord_dtm',
+        set: { definition: '주문한 시각.' },
+      }),
+    );
+    ready(fs);
+    expect(await writeChanges(fs, before, editor.model)).toEqual({
+      written: ['entities/order.yaml'],
+      removed: [],
+    });
+    expect(serialized()).toEqual(['entities/order.yaml']);
+    expect(fs.paths('readText')).toEqual(['entities/order.yaml']);
+    expect(fs.paths('writeText')).toEqual(['entities/order.yaml']);
+    expect(fs.paths('list')).toEqual([]);
+    expect(fs.paths('remove')).toEqual([]);
+    const end = await snapshot(fs);
+    expect([...end.keys()].sort()).toEqual([...start.keys()].sort());
+    let same = 0;
+    for (const [path, text] of start) {
+      if (path === 'entities/order.yaml') continue;
+      expect(end.get(path), path).toBe(text);
+      same += 1;
+    }
+    expect(same).toBe(28);
+    expectUntouchedShared(before, editor.model, ['entities/order.yaml']);
+  });
+
+  test('subjectArea.removeEntities: the layout and the area are written, the edges stay', async () => {
+    const { fs, before, editor } = await exampleEditor();
+    const edges = JSON.parse(await fs.readText('layouts/sales.json')).edges;
+    succeeded(
+      editor.execute({
+        type: 'subjectArea.removeEntities',
+        id: 'sales',
+        entities: ['order'],
+      }),
+    );
+    ready(fs);
+    expect(await writeChanges(fs, before, editor.model)).toEqual({
+      written: ['layouts/sales.json', 'subject-areas/sales.yaml'],
+      removed: [],
+    });
+    expect(fs.paths('writeText')).toEqual([
+      'layouts/sales.json',
+      'subject-areas/sales.yaml',
+    ]);
+    expectManifestUnread(fs);
+    const layout = JSON.parse(await fs.readText('layouts/sales.json'));
+    expect(layout.edges).toEqual(edges);
+    expect(Object.keys(layout.nodes)).not.toContain('order');
+    expectUntouchedShared(before, editor.model, [
+      'layouts/sales.json',
+      'subject-areas/sales.yaml',
+    ]);
+  });
+
+  test('subjectArea.delete: nothing written, the two files removed', async () => {
+    const { fs, before, editor } = await exampleEditor();
+    succeeded(editor.execute({ type: 'subjectArea.delete', id: 'sales' }));
+    ready(fs);
+    expect(await writeChanges(fs, before, editor.model)).toEqual({
+      written: [],
+      removed: ['layouts/sales.json', 'subject-areas/sales.yaml'],
+    });
+    expect(changes(fs)).toEqual([
+      { op: 'remove', path: 'layouts/sales.json' },
+      { op: 'remove', path: 'subject-areas/sales.yaml' },
+    ]);
+    expectManifestUnread(fs);
+    const end = await snapshot(fs);
+    expect(end.has('layouts/sales.json')).toBe(false);
+    expect(end.has('subject-areas/sales.yaml')).toBe(false);
+    expectUntouchedShared(before, editor.model, []);
+  });
+
+  test('a save with writes and removals: every writeText first, then every remove, each in path order', async () => {
+    const { fs, before, editor } = await exampleEditor();
+    succeeded(
+      editor.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.create', id: 'b', name: 'B' },
+          { type: 'subjectArea.delete', id: 'sales' },
+          { type: 'entity.create', id: 'a', name: 'A' },
+          {
+            type: 'attribute.update',
+            entity: 'order',
+            id: 'ord_dtm',
+            set: { definition: '주문한 시각.' },
+          },
+        ],
+      }),
+    );
+    ready(fs);
+    expect(await writeChanges(fs, before, editor.model)).toEqual({
+      written: ['entities/a.yaml', 'entities/b.yaml', 'entities/order.yaml'],
+      removed: ['layouts/sales.json', 'subject-areas/sales.yaml'],
+    });
+    expect(changes(fs)).toEqual([
+      { op: 'writeText', path: 'entities/a.yaml' },
+      { op: 'writeText', path: 'entities/b.yaml' },
+      { op: 'writeText', path: 'entities/order.yaml' },
+      { op: 'remove', path: 'layouts/sales.json' },
+      { op: 'remove', path: 'subject-areas/sales.yaml' },
+    ]);
+    expectManifestUnread(fs);
+    expectUntouchedShared(before, editor.model, [
+      'entities/a.yaml',
+      'entities/b.yaml',
+      'entities/order.yaml',
+    ]);
+  });
+
+  test('a failed writeText of a new path refuses the save before any remove', async () => {
+    const { fs, before, editor } = await exampleEditor();
+    const area = await fs.readText('subject-areas/sales.yaml');
+    const layout = await fs.readText('layouts/sales.json');
+    succeeded(
+      editor.execute({
+        type: 'batch',
+        commands: [
+          { type: 'subjectArea.delete', id: 'sales' },
+          { type: 'entity.create', id: 'a', name: 'A' },
+        ],
+      }),
+    );
+    // A path the checks could not see as taken: its writeText fails.
+    fs.faults.write.add('entities/a.yaml');
+    ready(fs);
+    await expect(writeChanges(fs, before, editor.model)).rejects.toThrow(
+      accessError('open', 'entities/a.yaml'),
+    );
+    expect(fs.paths('writeText')).toEqual(['entities/a.yaml']);
+    expect(fs.paths('remove')).toEqual([]);
+    expect(await fs.readText('subject-areas/sales.yaml')).toBe(area);
+    expect(await fs.readText('layouts/sales.json')).toBe(layout);
+    expectManifestUnread(fs);
+    expectUntouchedShared(before, editor.model, ['entities/a.yaml']);
+  });
+
+  test('paths before did not hold stay after several commands and saves; a file gone already counts as removed', async () => {
+    const files = exampleFiles();
+    files['entities/stray.yaml'] = 'not: [a model file\n';
+    files['entities-old/x.yaml'] = 'id: x\n';
+    const { fs, before, editor } = await exampleEditor(files);
+    expect(before.entities.map((e) => e.file)).not.toContain(
+      'entities/stray.yaml',
+    );
+    succeeded(editor.execute({ type: 'entity.create', id: 'x', name: 'X' }));
+    succeeded(
+      editor.execute({
+        type: 'entity.update',
+        id: 'x',
+        set: { definition: 'x' },
+      }),
+    );
+    ready(fs);
+    await writeChanges(fs, before, editor.model);
+    const saved = editor.model;
+    succeeded(editor.execute({ type: 'entity.delete', id: 'x' }));
+    succeeded(editor.execute({ type: 'subjectArea.delete', id: 'sales' }));
+    // Gone already, from outside the editor.
+    await fs.remove('layouts/sales.json');
+    ready(fs);
+    expect(await writeChanges(fs, saved, editor.model)).toEqual({
+      written: [],
+      removed: [
+        'entities/x.yaml',
+        'layouts/sales.json',
+        'subject-areas/sales.yaml',
+      ],
+    });
+    expectManifestUnread(fs);
+    expectUntouchedShared(saved, editor.model, []);
+    expect(await fs.readText('entities/stray.yaml')).toBe(
+      files['entities/stray.yaml'],
+    );
+    expect(await fs.readText('entities-old/x.yaml')).toBe(
+      files['entities-old/x.yaml'],
+    );
+  });
+
+  test('a file left out on reading: without reservedFiles the save is refused, with listReservedFiles the id is customer_2', async () => {
+    const text = 'id: customer\nname: C\ndefiniton: x\nattributes: []\n';
+    const fs = recordingFileSystem({
+      'model.yaml': MANIFEST,
+      'entities/customer.yaml': text,
+    });
+    const before = await load(fs);
+    expect(before.entities).toEqual([]);
+
+    const editor = createEditor(before);
+    expect(
+      succeeded(editor.execute({ type: 'entity.create', name: 'Customer' })).id,
+    ).toBe('customer');
+    ready(fs);
+    await expect(writeChanges(fs, before, editor.model)).rejects.toThrow(
+      occupied('entities/customer.yaml'),
+    );
+    expect(changes(fs)).toEqual([]);
+    expect(await fs.readText('entities/customer.yaml')).toBe(text);
+
+    const reserved = createEditor(before, {
+      reservedFiles: await listReservedFiles(fs, ''),
+    });
+    expect(
+      succeeded(reserved.execute({ type: 'entity.create', name: 'Customer' }))
+        .id,
+    ).toBe('customer_2');
+    ready(fs);
+    expect(await writeChanges(fs, before, reserved.model)).toEqual({
+      written: ['entities/customer_2.yaml'],
+      removed: [],
+    });
+    expect(await fs.readText('entities/customer.yaml')).toBe(text);
+  });
+
+  test('a folder entities/Customer.yaml: the batch that removes old and makes customer cannot be saved', async () => {
+    const old = entity('entities/old.yaml', 'old');
+    const files = {
+      'model.yaml': MANIFEST,
+      'entities/old.yaml': textOf(old),
+      'entities/Customer.yaml/z.yaml': 'a: 1\n',
+    };
+    const fs = recordingFileSystem(files);
+    const before = await load(fs);
+    const editor = createEditor(before);
+    succeeded(
+      editor.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.delete', id: 'old' },
+          { type: 'entity.create', id: 'customer', name: 'Customer' },
+        ],
+      }),
+    );
+    ready(fs);
+    await expect(writeChanges(fs, before, editor.model)).rejects.toThrow(
+      occupied('entities/customer.yaml'),
+    );
+    expect(changes(fs)).toEqual([]);
+    expect(await snapshot(fs)).toEqual(new Map(Object.entries(files)));
+  });
+
+  test('the AC-13 batch: delete and remake an entity outside every relationship, change order.ord_dtm; only order.yaml is serialized and read', async () => {
+    const { fs, before: loaded } = await exampleEditor();
+    const memo = {
+      type: 'entity.create',
+      id: 'memo',
+      name: '메모',
+      definition: '관계 없는 엔터티.',
+    };
+    const setup = createEditor(loaded);
+    succeeded(setup.execute(memo));
+    await writeChanges(fs, loaded, setup.model);
+    const saved = await load(fs);
+    const editor = createEditor(saved);
+    succeeded(
+      editor.execute({
+        type: 'batch',
+        commands: [
+          { type: 'entity.delete', id: 'memo' },
+          memo,
+          {
+            type: 'attribute.update',
+            entity: 'order',
+            id: 'ord_dtm',
+            set: { definition: '주문한 시각.' },
+          },
+        ],
+      }),
+    );
+    ready(fs);
+    expect(await writeChanges(fs, saved, editor.model)).toEqual({
+      written: ['entities/order.yaml'],
+      removed: [],
+    });
+    expect(serialized()).toEqual(['entities/order.yaml']);
+    expect(fs.paths('readText')).toEqual(['entities/order.yaml']);
+    expectUntouchedShared(saved, editor.model, ['entities/order.yaml']);
   });
 });
